@@ -1,0 +1,3699 @@
+--- original/gml_GlobalScript_scr09_Meta.gml
++++ patched/gml_GlobalScript_scr09_Meta.gml
+@@ -19,4 +19,6 @@
+     global.mGameCleanupScript[arg0] = scr09_Cleanup;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineHUDHAlign[arg0] = 1;
++    global.mGameOnlineHUDVAlign[arg0] = 0;
+ }
+--- original/gml_GlobalScript_scr12_Meta.gml
++++ patched/gml_GlobalScript_scr12_Meta.gml
+@@ -17,4 +17,6 @@
+     global.mGameCleanupScript[arg0] = scr12_Cleanup;
+     global.mGameTitleMusic[arg0] = bgm00_lonestar_stingTitle;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineHUDHAlign[arg0] = 2;
++    global.mGameOnlineHUDVAlign[arg0] = 0;
+ }
+--- original/gml_GlobalScript_scr14_GetSponsee.gml
++++ patched/gml_GlobalScript_scr14_GetSponsee.gml
+@@ -1,57 +1,28 @@
+-function scr14_GetSponsee()
++function scr14_GetSponsee(arg0, arg1, arg2)
+ {
+-    sponsee[0] = -4;
+-    sponsee[1] = -4;
+-    sponsee[2] = -4;
+-    scrShuffle(quibbles);
+-    var listPos = 0;
+-    var sponseeNum = 0;
+-    do
++    sponsee[arg0][0] = -4;
++    sponsee[arg0][1] = -4;
++    sponsee[arg0][2] = -4;
++    var sponseeNum;
++    for (sponseeNum = 0; sponseeNum < arg2 && ds_list_size(arg1) > 0; sponseeNum++)
+     {
+-        var inCurrentRace = false;
+-        if (ds_list_find_value(quibbles, listPos) == currQ[0] || ds_list_find_value(quibbles, listPos) == currQ[1] || ds_list_find_value(quibbles, listPos) == currQ[2])
+-        {
+-            inCurrentRace = true;
++        sponsee[arg0][sponseeNum] = ds_list_find_value(arg1, 0);
++        ds_list_delete(arg1, 0);
+         }
+-        var alreadySponsored = false;
+-        if (ds_list_find_value(quibbles, listPos).sponsor != -1)
+-        {
+-            alreadySponsored = true;
+-        }
+-        var inFutureRace = false;
+-        for (var j = deckIndex; j < (roundsToWin * 3); j++)
+-        {
+-            if (ds_list_find_value(quibbleDeck, j) == ds_list_find_value(quibbles, listPos))
+-            {
+-                inFutureRace = true;
+-            }
+-        }
+-        if (!inCurrentRace && !alreadySponsored && inFutureRace)
+-        {
+-            sponsee[sponseeNum] = ds_list_find_value(quibbles, listPos);
+-            listPos++;
+-            sponseeNum++;
+-        }
+-        else
+-        {
+-            listPos++;
+-        }
+-    }
+-    until (sponseeNum == 3 || listPos == NUM_QUIBBLES);
+-    sponseeCost[0] = 0;
+-    sponseeCost[1] = 0;
+-    sponseeCost[2] = 0;
++    sponseeCost[arg0][0] = 0;
++    sponseeCost[arg0][1] = 0;
++    sponseeCost[arg0][2] = 0;
+     for (var j = 0; j < 3; j++)
+     {
+-        if (sponsee[j] != -4)
++        if (sponsee[arg0][j] != -4)
+         {
+             var wp = 0;
+-            if (sponsee[j].races > 0)
++            if (sponsee[arg0][j].races > 0)
+             {
+-                wp = sponsee[j].wins / sponsee[j].races;
++                wp = sponsee[arg0][j].wins / sponsee[arg0][j].races;
+                 wp *= 100;
+             }
+-            sponseeCost[j] = round(sponsee[j].qSpeed + wp);
++            sponseeCost[arg0][j] = round(sponsee[arg0][j].qSpeed + wp);
+         }
+     }
+     return sponseeNum;
+--- original/gml_GlobalScript_scr14_GetStable.gml
++++ patched/gml_GlobalScript_scr14_GetStable.gml
+@@ -1,29 +1,17 @@
+-function scr14_GetStable()
++function scr14_GetStable(arg0)
+ {
+-    stable[0] = -4;
+-    stable[1] = -4;
+-    stableRetired[0] = true;
+-    stableRetired[1] = true;
+-    var j = 0;
+-    for (var i = 0; i < NUM_QUIBBLES; i++)
++    stableRetired[arg0][0] = true;
++    stableRetired[arg0][1] = true;
++    for (var j = 0; j < 2; j++)
+     {
+-        if (ds_list_find_value(quibbles, i).sponsor == currPlayer)
+-        {
+-            stable[j] = ds_list_find_value(quibbles, i);
+             var k = deckIndex - 3;
+             while (k < (roundsToWin * 3))
+             {
+-                if (ds_list_find_value(quibbleDeck, k) == ds_list_find_value(quibbles, i))
++            if (ds_list_find_value(quibbleDeck, k) == stable[arg0][j])
+                 {
+-                    stableRetired[j] = false;
++                stableRetired[arg0][j] = false;
+                 }
+                 k++;
+-            }
+-            j++;
+-            if (j > 1)
+-            {
+-                break;
+-            }
+         }
+     }
+ }
+--- original/gml_GlobalScript_scr14_MessageSet.gml
++++ patched/gml_GlobalScript_scr14_MessageSet.gml
+@@ -1,5 +1,9 @@
+ function scr14_MessageSet(arg0)
+ {
++    if (numPlayers == 2 && pfo_is_online() && currPlayer != pfo_get_online_player_index())
++    {
++        exit;
++    }
+     scrMessageSet(arg0);
+     scrMessageInsertBreaks(336);
+ }
+--- original/gml_GlobalScript_scr14_Meta.gml
++++ patched/gml_GlobalScript_scr14_Meta.gml
+@@ -19,4 +19,6 @@
+     global.mGameCleanupScript[arg0] = scr14_Cleanup;
+     global.mGameTitleMusic[arg0] = bgm14_title;
+     global.mGameTitleMusicLoop[arg0] = true;
++    global.mGameOnlineHUDHAlign[arg0] = 2;
++    global.mGameOnlineHUDVAlign[arg0] = 0;
+ }
+--- original/gml_GlobalScript_scr18_Meta.gml
++++ patched/gml_GlobalScript_scr18_Meta.gml
+@@ -19,4 +19,6 @@
+     global.mGameCleanupScript[arg0] = scr18_Cleanup;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineHUDHAlign[arg0] = 0;
++    global.mGameOnlineHUDVAlign[arg0] = 2;
+ }
+--- original/gml_GlobalScript_scr19_Meta.gml
++++ patched/gml_GlobalScript_scr19_Meta.gml
+@@ -19,4 +19,6 @@
+     global.mGameCleanupScript[arg0] = scr19_Cleanup;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineHUDHAlign[arg0] = 0;
++    global.mGameOnlineHUDVAlign[arg0] = 2;
+ }
+--- original/gml_GlobalScript_scr25_Meta.gml
++++ patched/gml_GlobalScript_scr25_Meta.gml
+@@ -19,4 +19,6 @@
+     global.mGameCleanupScript[arg0] = -1;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineHUDHAlign[arg0] = 2;
++    global.mGameOnlineHUDVAlign[arg0] = 0;
+ }
+--- original/gml_GlobalScript_scr30_Meta.gml
++++ patched/gml_GlobalScript_scr30_Meta.gml
+@@ -19,4 +19,6 @@
+     global.mGameCleanupScript[arg0] = scr30_Cleanup;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineHUDHAlign[arg0] = 1;
++    global.mGameOnlineHUDVAlign[arg0] = 0;
+ }
+--- original/gml_GlobalScript_scr31_Meta.gml
++++ patched/gml_GlobalScript_scr31_Meta.gml
+@@ -19,4 +19,6 @@
+     global.mGameCleanupScript[arg0] = scr31_Cleanup;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineHUDHAlign[arg0] = 2;
++    global.mGameOnlineHUDVAlign[arg0] = 0;
+ }
+--- original/gml_GlobalScript_scr32_Meta.gml
++++ patched/gml_GlobalScript_scr32_Meta.gml
+@@ -19,4 +19,6 @@
+     global.mGameCleanupScript[arg0] = scr32_Cleanup;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineHUDHAlign[arg0] = 0;
++    global.mGameOnlineHUDVAlign[arg0] = 2;
+ }
+--- original/gml_GlobalScript_scr39_Meta.gml
++++ patched/gml_GlobalScript_scr39_Meta.gml
+@@ -19,4 +19,6 @@
+     global.mGameCleanupScript[arg0] = -1;
+     global.mGameTitleMusic[arg0] = bgm39_title;
+     global.mGameTitleMusicLoop[arg0] = true;
++    global.mGameOnlineHUDHAlign[arg0] = 2;
++    global.mGameOnlineHUDVAlign[arg0] = 0;
+ }
+--- original/gml_GlobalScript_scr42_Meta.gml
++++ patched/gml_GlobalScript_scr42_Meta.gml
+@@ -19,4 +19,6 @@
+     global.mGameCleanupScript[arg0] = scr42_Cleanup;
+     global.mGameTitleMusic[arg0] = bgm42_stingTitle;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineHUDHAlign[arg0] = 2;
++    global.mGameOnlineHUDVAlign[arg0] = 0;
+ }
+--- original/gml_GlobalScript_scr44_Meta.gml
++++ patched/gml_GlobalScript_scr44_Meta.gml
+@@ -19,4 +19,6 @@
+     global.mGameCleanupScript[arg0] = -1;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineHUDHAlign[arg0] = 0;
++    global.mGameOnlineHUDVAlign[arg0] = 2;
+ }
+--- original/gml_GlobalScript_scr45_Meta.gml
++++ patched/gml_GlobalScript_scr45_Meta.gml
+@@ -20,4 +20,6 @@
+     global.mGameDepthScript[arg0] = -1;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineHUDHAlign[arg0] = 1;
++    global.mGameOnlineHUDVAlign[arg0] = 0;
+ }
+--- original/gml_GlobalScript_scr47_Meta.gml
++++ patched/gml_GlobalScript_scr47_Meta.gml
+@@ -19,4 +19,6 @@
+     global.mGameCleanupScript[arg0] = -1;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineHUDHAlign[arg0] = 1;
++    global.mGameOnlineHUDVAlign[arg0] = 2;
+ }
+--- original/gml_GlobalScript_scr48_Meta.gml
++++ patched/gml_GlobalScript_scr48_Meta.gml
+@@ -19,4 +19,6 @@
+     global.mGameCleanupScript[arg0] = -1;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineHUDHAlign[arg0] = 2;
++    global.mGameOnlineHUDVAlign[arg0] = 0;
+ }
+--- original/gml_GlobalScript_scr49_Meta.gml
++++ patched/gml_GlobalScript_scr49_Meta.gml
+@@ -19,4 +19,6 @@
+     global.mGameCleanupScript[arg0] = scr49_Cleanup;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineHUDHAlign[arg0] = 2;
++    global.mGameOnlineHUDVAlign[arg0] = 0;
+ }
+--- original/gml_GlobalScript_scr50_MessageFast.gml
++++ patched/gml_GlobalScript_scr50_MessageFast.gml
+@@ -1,6 +1,6 @@
+ function scr50_MessageFast(arg0)
+ {
+-    if (controller == 3)
++    if (controller == 3 || (pfo_is_online() && numPlayers == 2 && controller != (pfo_get_online_player_index() + 1)))
+     {
+         exit;
+     }
+--- original/gml_GlobalScript_scr50_MessageFastLocal.gml
++++ patched/gml_GlobalScript_scr50_MessageFastLocal.gml
+@@ -1,6 +1,6 @@
+ function scr50_MessageFastLocal(arg0)
+ {
+-    if (controller == 3)
++    if (controller == 3 || (pfo_is_online() && numPlayers == 2 && controller != (pfo_get_online_player_index() + 1)))
+     {
+         exit;
+     }
+--- original/gml_GlobalScript_scr50_MessageSlow.gml
++++ patched/gml_GlobalScript_scr50_MessageSlow.gml
+@@ -1,6 +1,6 @@
+ function scr50_MessageSlow(arg0)
+ {
+-    if (controller == 3)
++    if (controller == 3 || (pfo_is_online() && numPlayers == 2 && controller != (pfo_get_online_player_index() + 1)))
+     {
+         exit;
+     }
+--- original/gml_GlobalScript_scr50_Meta.gml
++++ patched/gml_GlobalScript_scr50_Meta.gml
+@@ -19,4 +19,6 @@
+     global.mGameCleanupScript[arg0] = scr50_Cleanup;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineHUDHAlign[arg0] = 2;
++    global.mGameOnlineHUDVAlign[arg0] = 0;
+ }
+--- original/gml_GlobalScript_scr50_Sfx.gml
++++ patched/gml_GlobalScript_scr50_Sfx.gml
+@@ -1,6 +1,6 @@
+ function scr50_Sfx(arg0, arg1)
+ {
+-    if (controller == 3)
++    if (controller == 3 || (state != STATE_COMBAT && pfo_is_online() && numPlayers == 2 && controller != (pfo_get_online_player_index() + 1)))
+     {
+         exit;
+     }
+--- original/gml_GlobalScript_scrAch.gml
++++ patched/gml_GlobalScript_scrAch.gml
+@@ -22,7 +22,7 @@
+     if (global.platform == global.PLAT_STEAM)
+     {
+         trace("Attempting to set Steam achievement...", _ach);
+-        if (global.steamReady)
++        if (global.steamReady && (!pfo_is_online() || pfo_get_online_player_index() == 0))
+         {
+             var _achSteamID = scrGetSteamAchID(_ach);
+             if (_achSteamID != "")
+--- original/gml_GlobalScript_scrCheckForAch.gml
++++ patched/gml_GlobalScript_scrCheckForAch.gml
+@@ -261,7 +261,7 @@
+     scrCloseCurrFile();
+     if (global.platform == global.PLAT_STEAM)
+     {
+-        if (global.steamReady)
++        if (global.steamReady && (!pfo_is_online() || pfo_get_online_player_index() == 0))
+         {
+             var _achSteamID = "";
+             for (var i = 0; i < global.ACH_TOTAL; i++)
+--- original/gml_GlobalScript_scrCloseAccount.gml
++++ patched/gml_GlobalScript_scrCloseAccount.gml
+@@ -12,7 +12,7 @@
+     _filestring = base64_encode(_filestring);
+     var _buffer = buffer_create(string_byte_length(_filestring) + 1, buffer_fixed, 1);
+     buffer_write(_buffer, buffer_string, _filestring);
+-    buffer_save(_buffer, global.ACCOUNT_FILE);
++    pfo_buffer_save(_buffer, global.ACCOUNT_FILE);
+     buffer_delete(_buffer);
+     global.accountSaveData = undefined;
+     global.accountSaveData = {};
+--- original/gml_GlobalScript_scrCloseCurrFile.gml
++++ patched/gml_GlobalScript_scrCloseCurrFile.gml
+@@ -21,7 +21,7 @@
+     _filestring = base64_encode(_filestring);
+     var _buffer = buffer_create(string_byte_length(_filestring) + 1, buffer_fixed, 1);
+     buffer_write(_buffer, buffer_string, _filestring);
+-    buffer_save(_buffer, _filename);
++    pfo_buffer_save(_buffer, _filename);
+     buffer_delete(_buffer);
+     global.currProfileSaveNum = 0;
+     global.currProfileSaveData = undefined;
+--- original/gml_GlobalScript_scrDefineMeta.gml
++++ patched/gml_GlobalScript_scrDefineMeta.gml
+@@ -28,6 +28,8 @@
+         global.mGameCleanupScript[i] = -1;
+         global.mGameTitleMusic[i] = -1;
+         global.mGameTitleMusicLoop[i] = false;
++        global.mGameOnlineHUDHAlign[i] = 2;
++        global.mGameOnlineHUDVAlign[i] = 2;
+     }
+     nGame = 1;
+     scr40_Meta(nGame);
+--- original/gml_GlobalScript_scrGetInput.gml
++++ patched/gml_GlobalScript_scrGetInput.gml
+@@ -1,18 +1,18 @@
+ function scrGetInput(arg0)
+ {
++    var getInputType = (argument_count > 1) ? argument[1] : UnknownEnum.Value_0;
++    if ((getInputType & UnknownEnum.Value_1) != 0 && pfo_is_online())
++    {
++        arg0 = 0;
++    }
+     _player = arg0;
+     _slot = global.joySlot[arg0];
+-    if (global.playbackMode && is_array(global.inputPlayback) && instance_exists(oGame))
++    if ((getInputType & UnknownEnum.Value_1) == 0 && pfo_is_online())
+     {
+-        pressStart = keyboard_check_pressed(global.keyMap[_player][global.INP_START]) || gamepad_button_check_pressed(_slot, global.joyMap[_player][global.INP_START]) || keyboard_check_pressed(vk_escape);
+-        if (pressStart)
+-        {
+-            global.inputFrame--;
+-            exit;
++        scrSetInputFromPFOFlags(pfo_remove_extra_input(pfo_get_input(_player)));
+         }
+-        scrPlaybackInputs();
+-        exit;
+-    }
++    else
++    {
+     holdUp = keyboard_check(global.keyMap[_player][global.INP_UP]);
+     holdDown = keyboard_check(global.keyMap[_player][global.INP_DOWN]);
+     holdLeft = keyboard_check(global.keyMap[_player][global.INP_LEFT]);
+@@ -151,6 +151,7 @@
+         fire2released = keyboard_check_released(global.keyMap[_player][global.INP_FIRE2]) || gamepad_button_check_released(_slot, gp_face1) || gamepad_button_check_released(_slot, gp_face4);
+     }
+     pressStart = keyboard_check_pressed(global.keyMap[_player][global.INP_START]) || gamepad_button_check_pressed(_slot, global.joyMap[_player][global.INP_START]) || keyboard_check_pressed(vk_escape);
++        forcePause = global.steamOverlayActivated;
+     if (holdLeft && holdRight)
+     {
+         holdLeft = false;
+@@ -190,4 +191,22 @@
+     {
+         global.inputFocus = 2;
+     }
++    }
++    if ((getInputType & UnknownEnum.Value_2) == 0 && global.playbackMode && is_array(global.inputPlayback) && instance_exists(oGame))
++    {
++        if (pressStart)
++        {
++            global.inputFrame--;
++            exit;
++        }
++        scrPlaybackInputs();
++        exit;
++    }
++}
++
++enum UnknownEnum
++{
++    Value_0,
++    Value_1,
++    Value_2
+ }
+--- original/gml_GlobalScript_scrGetInputBoth.gml
++++ patched/gml_GlobalScript_scrGetInputBoth.gml
+@@ -2,7 +2,7 @@
+ {
+     for (var p = 1; p >= 0; p--)
+     {
+-        scrGetInput(p);
++        scrGetInput(p, (argument_count > 0) ? argument[0] : UnknownEnum.Value_0);
+         bHoldUp[p] = holdUp;
+         bHoldDown[p] = holdDown;
+         bHoldLeft[p] = holdLeft;
+@@ -18,5 +18,11 @@
+         bFire1released[p] = fire1released;
+         bFire2released[p] = fire2released;
+         bPressStart[p] = pressStart;
++        bForcePause[p] = forcePause;
+     }
++}
++
++enum UnknownEnum
++{
++    Value_0
+ }
+--- original/gml_GlobalScript_scrGetInputMerged.gml
++++ patched/gml_GlobalScript_scrGetInputMerged.gml
+@@ -1,6 +1,6 @@
+ function scrGetInputMerged()
+ {
+-    scrGetInputBoth();
++    scrGetInputBoth((argument_count > 0) ? argument[0] : UnknownEnum.Value_0);
+     holdUp = bHoldUp[0] || bHoldUp[1];
+     holdDown = bHoldDown[0] || bHoldDown[1];
+     holdLeft = bHoldLeft[0] || bHoldLeft[1];
+@@ -14,4 +14,10 @@
+     fire1pressed = bFire1pressed[0] || bFire1pressed[1];
+     fire2pressed = bFire2pressed[0] || bFire2pressed[1];
+     pressStart = bPressStart[0] || bPressStart[1];
++    forcePause = bForcePause[0] || bForcePause[1];
++}
++
++enum UnknownEnum
++{
++    Value_0
+ }
+--- original/gml_GlobalScript_scrInit.gml
++++ patched/gml_GlobalScript_scrInit.gml
+@@ -103,13 +103,6 @@
+     global.AM_LIB_TIME = 4000;
+     global.AM_LIB_TIME_PER_GAME = 1200;
+     global.attractModePlaylist = ds_list_create();
+-    for (var i = 1; i <= global.NUM_LIBRARY_GAMES; i++)
+-    {
+-        if (global.mGameAttractModeTimer[i] && global.mGameRoom[i] != -1)
+-        {
+-            ds_list_add(global.attractModePlaylist, i);
+-        }
+-    }
+     global.attractModeIndex = 0;
+     global.playbackMode = false;
+     global.inputPlayback = array_create(0);
+@@ -156,7 +149,7 @@
+     scrFontDefault();
+     global.CARRIAGE_RETURN = "\n";
+     scrInitRandomness();
+-    scrShuffle(global.attractModePlaylist);
++    scrInitAttractModePlaylist();
+     global.BACKUP_MINIMUM_TIME = 72000;
+     global.NUM_BACKUPS = 20;
+     for (var i = 1; i <= global.NUM_PROFILES_ACCESSIBLE; i++)
+--- original/gml_GlobalScript_scrInitAch.gml
++++ patched/gml_GlobalScript_scrInitAch.gml
+@@ -1,7 +1,10 @@
+ function scrInitAch()
+ {
++    if (!verify(oAchManager))
++    {
+     instance_create(-32, -32, oAchManager);
+     scrDefineAch();
++    }
+     scrOpenAccount();
+     for (var i = 0; i < global.ACH_TOTAL; i++)
+     {
+--- original/gml_GlobalScript_scrInputAny.gml
++++ patched/gml_GlobalScript_scrInputAny.gml
+@@ -1,23 +1,22 @@
+ function scrInputAny()
+ {
+-    var _slot0 = global.joySlot[0];
+     if (!global.playbackMode)
+     {
+-        if (holdUp || holdDown || holdLeft || holdRight || fire1 || fire2 || pressStart)
+-        {
+-            return true;
++        return holdUp || holdDown || holdLeft || holdRight || fire1 || fire2 || pressStart;
+         }
+         else
+         {
+-            return false;
++        var player = _player;
++        with (oScreenHandler)
++        {
++            scrGetInput(player, UnknownEnum.Value_2 | ((argument_count > 0) ? argument[0] : UnknownEnum.Value_0));
++            return holdUp || holdDown || holdLeft || holdRight || fire1 || fire2 || pressStart;
+         }
+     }
+-    else if (keyboard_check_pressed(global.keyMap[0][global.INP_UP]) || keyboard_check_pressed(global.keyMap[0][global.INP_DOWN]) || keyboard_check_pressed(global.keyMap[0][global.INP_LEFT]) || keyboard_check_pressed(global.keyMap[0][global.INP_RIGHT]) || keyboard_check_pressed(global.keyMap[0][global.INP_FIRE1]) || keyboard_check_pressed(global.keyMap[0][global.INP_FIRE2]) || keyboard_check_pressed(global.keyMap[0][global.INP_START]) || keyboard_check_pressed(vk_escape) || gamepad_button_check_pressed(_slot0, gp_padu) || gamepad_button_check_pressed(_slot0, gp_padd) || gamepad_button_check_pressed(_slot0, gp_padl) || gamepad_button_check_pressed(_slot0, gp_padr) || gamepad_button_check_pressed(_slot0, global.joyMap[0][global.INP_FIRE1]) || gamepad_button_check_pressed(_slot0, global.joyMap[0][global.INP_FIRE2]) || gamepad_button_check_pressed(_slot0, global.joyMap[0][global.INP_START]))
+-    {
+-        return true;
+     }
+-    else
++
++enum UnknownEnum
+     {
+-        return false;
+-    }
++    Value_0,
++    Value_2 = 2
+ }
+--- original/gml_GlobalScript_scrInputAnyBoth.gml
++++ patched/gml_GlobalScript_scrInputAnyBoth.gml
+@@ -1,24 +1,21 @@
+ function scrInputAnyBoth()
+ {
+-    var _slot0 = global.joySlot[0];
+-    var _slot1 = global.joySlot[1];
+-    if (!global.playbackMode)
++    with (oScreenHandler)
+     {
+-        if (holdUp || holdDown || holdLeft || holdRight || fire1 || fire2 || pressStart)
++        scrGetInputBoth(UnknownEnum.Value_2 | ((argument_count > 0) ? argument[0] : UnknownEnum.Value_0));
++        for (var p = 1; p >= 0; p--)
+         {
++            if (bHoldUp[p] || bHoldDown[p] || bHoldLeft[p] || bHoldRight[p] || bFire1[p] || bFire2[p] || bPressStart[p])
++            {
+             return true;
+         }
+-        else
+-        {
+-            return false;
+         }
+     }
+-    else if (keyboard_check_pressed(global.keyMap[0][global.INP_UP]) || keyboard_check_pressed(global.keyMap[0][global.INP_DOWN]) || keyboard_check_pressed(global.keyMap[0][global.INP_LEFT]) || keyboard_check_pressed(global.keyMap[0][global.INP_RIGHT]) || keyboard_check_pressed(global.keyMap[0][global.INP_FIRE1]) || keyboard_check_pressed(global.keyMap[0][global.INP_FIRE2]) || keyboard_check_pressed(global.keyMap[0][global.INP_START]) || keyboard_check_pressed(vk_escape) || gamepad_button_check_pressed(_slot0, gp_padu) || gamepad_button_check_pressed(_slot0, gp_padd) || gamepad_button_check_pressed(_slot0, gp_padl) || gamepad_button_check_pressed(_slot0, gp_padr) || gamepad_button_check_pressed(_slot0, global.joyMap[0][global.INP_FIRE1]) || gamepad_button_check_pressed(_slot0, global.joyMap[0][global.INP_FIRE2]) || gamepad_button_check_pressed(_slot0, global.joyMap[0][global.INP_START]) || keyboard_check_pressed(global.keyMap[1][global.INP_UP]) || keyboard_check_pressed(global.keyMap[1][global.INP_DOWN]) || keyboard_check_pressed(global.keyMap[1][global.INP_LEFT]) || keyboard_check_pressed(global.keyMap[1][global.INP_RIGHT]) || keyboard_check_pressed(global.keyMap[1][global.INP_FIRE1]) || keyboard_check_pressed(global.keyMap[1][global.INP_FIRE2]) || keyboard_check_pressed(global.keyMap[1][global.INP_START]) || gamepad_button_check_pressed(_slot1, gp_padu) || gamepad_button_check_pressed(_slot1, gp_padd) || gamepad_button_check_pressed(_slot1, gp_padl) || gamepad_button_check_pressed(_slot1, gp_padr) || gamepad_button_check_pressed(_slot1, global.joyMap[0][global.INP_FIRE1]) || gamepad_button_check_pressed(_slot1, global.joyMap[0][global.INP_FIRE2]) || gamepad_button_check_pressed(_slot1, global.joyMap[0][global.INP_START]))
+-    {
+-        return true;
+-    }
+-    else
+-    {
+         return false;
+     }
++
++enum UnknownEnum
++{
++    Value_0,
++    Value_2 = 2
+ }
+--- original/gml_GlobalScript_scrMenuNavigation.gml
++++ patched/gml_GlobalScript_scrMenuNavigation.gml
+@@ -9,7 +9,8 @@
+         arrowRightActive -= 1;
+     }
+     var _startSel = menuSel;
+-    if (keyboard_check_pressed(vk_up))
++    var _usingLocalInput = usingLocalInput();
++    if (_usingLocalInput && keyboard_check_pressed(vk_up))
+     {
+         do
+         {
+@@ -21,7 +22,7 @@
+         }
+         until (itemSelectable[menuSel]);
+     }
+-    else if (keyboard_check_pressed(vk_down))
++    else if (_usingLocalInput && keyboard_check_pressed(vk_down))
+     {
+         do
+         {
+@@ -80,7 +81,7 @@
+         var _numItems = array_length(itemValues[menuSel]);
+         var _left = false;
+         var _right = false;
+-        if (keyboard_check_pressed(vk_left) && _numItems > 1)
++        if (_usingLocalInput && keyboard_check_pressed(vk_left) && _numItems > 1)
+         {
+             arrowLeftActive = arrowActiveMax;
+             _left = true;
+@@ -90,7 +91,7 @@
+             arrowLeftActive = arrowActiveMax;
+             _left = true;
+         }
+-        else if (keyboard_check_pressed(vk_enter))
++        else if (_usingLocalInput && keyboard_check_pressed(vk_enter))
+         {
+             itemIndex[menuSel]++;
+             if (itemIndex[menuSel] > (array_length(itemValues[menuSel]) - 1))
+@@ -106,7 +107,7 @@
+             }
+             return itemIndex[menuSel];
+         }
+-        else if (keyboard_check_pressed(vk_right))
++        else if (_usingLocalInput && keyboard_check_pressed(vk_right))
+         {
+             arrowRightActive = arrowActiveMax;
+             _right = true;
+@@ -155,7 +156,7 @@
+     }
+     if (itemType[menuSel] == TYPE_DUAL_KEY || itemType[menuSel] == TYPE_DUAL_JOY || itemType[menuSel] == TYPE_DUAL_DETECT)
+     {
+-        if (keyboard_check_pressed(vk_enter))
++        if (_usingLocalInput && keyboard_check_pressed(vk_enter))
+         {
+             itemIndex[menuSel]++;
+             if (itemIndex[menuSel] > (array_length(itemValues[menuSel]) - 1))
+@@ -194,7 +195,7 @@
+     }
+     else if (itemType[menuSel] == TYPE_PLAYER)
+     {
+-        if (keyboard_check_pressed(vk_left) || keyboard_check_pressed(vk_right) || keyboard_check_pressed(vk_enter))
++        if (_usingLocalInput && (keyboard_check_pressed(vk_left) || keyboard_check_pressed(vk_right) || keyboard_check_pressed(vk_enter)))
+         {
+             if (keyboard_check_pressed(vk_left))
+             {
+@@ -223,7 +224,7 @@
+     }
+     else if (itemType[menuSel] == TYPE_SINGLE)
+     {
+-        if (keyboard_check_pressed(vk_enter))
++        if (_usingLocalInput && keyboard_check_pressed(vk_enter))
+         {
+             return itemIndex[menuSel];
+         }
+@@ -236,7 +237,7 @@
+     {
+         if (seekingConfirmation)
+         {
+-            if (keyboard_check_pressed(vk_enter))
++            if (_usingLocalInput && keyboard_check_pressed(vk_enter))
+             {
+                 seekingConfirmation = false;
+                 return itemIndex[menuSel];
+@@ -247,7 +248,7 @@
+                 return itemIndex[menuSel];
+             }
+         }
+-        else if (keyboard_check_pressed(vk_enter))
++        else if (_usingLocalInput && keyboard_check_pressed(vk_enter))
+         {
+             scrSfxLibrary(soundWarn[currentSoundSet]);
+             seekingConfirmation = true;
+--- original/gml_GlobalScript_scrOpenAccount.gml
++++ patched/gml_GlobalScript_scrOpenAccount.gml
+@@ -1,11 +1,11 @@
+ function scrOpenAccount()
+ {
+     var _error = false;
+-    if (!file_exists(global.ACCOUNT_FILE))
++    if (!pfo_file_exists(global.ACCOUNT_FILE))
+     {
+         return true;
+     }
+-    var _buffer = buffer_load(global.ACCOUNT_FILE);
++    var _buffer = pfo_buffer_load(global.ACCOUNT_FILE);
+     if (_buffer == -1)
+     {
+         _error = true;
+@@ -31,7 +31,7 @@
+     buffer_delete(_buffer);
+     if (_error)
+     {
+-        file_delete(global.ACCOUNT_FILE);
++        pfo_file_delete(global.ACCOUNT_FILE);
+     }
+     return true;
+ }
+--- original/gml_GlobalScript_scrOpenFileManual.gml
++++ patched/gml_GlobalScript_scrOpenFileManual.gml
+@@ -12,11 +12,11 @@
+         return false;
+     }
+     global.currProfileSaveNum = arg0;
+-    if (!file_exists(_filename))
++    if (!pfo_file_exists(_filename))
+     {
+         return true;
+     }
+-    var _buffer = buffer_load(_filename);
++    var _buffer = pfo_buffer_load(_filename);
+     var _filestring = buffer_read(_buffer, buffer_string);
+     _filestring = base64_decode(_filestring);
+     var _error = false;
+--- original/gml_GlobalScript_scrRandomize.gml
++++ patched/gml_GlobalScript_scrRandomize.gml
+@@ -6,7 +6,7 @@
+     }
+     else
+     {
+-        randomize();
++        pfo_randomize();
+         rng_seed(random(99999999));
+     }
+ }
+--- original/gml_GlobalScript_scrSaveAch.gml
++++ patched/gml_GlobalScript_scrSaveAch.gml
+@@ -1,5 +1,9 @@
+ function scrSaveAch()
+ {
++    if (pfo_is_online() && pfo_get_online_player_index() != 0)
++    {
++        exit;
++    }
+     scrOpenAccount();
+     for (var i = 0; i < global.ACH_TOTAL; i++)
+     {
+--- original/gml_GlobalScript_scrSaveConfig.gml
++++ patched/gml_GlobalScript_scrSaveConfig.gml
+@@ -24,6 +24,6 @@
+     scrWriteConfig("doubledUpButtonsP2", global.doubledUpButtons[1]);
+     scrWriteConfig("joyTypeP1", global.joyType[0]);
+     scrWriteConfig("joyTypeP2", global.joyType[1]);
+-    scrWriteConfig("defaultLanguage", global.LANG_SAVE_ID[global.defaultLanguage]);
++    scrWriteConfig("defaultLanguage", global.LANG_SAVE_ID[is_array(global.onlineDefaultLanguage) ? global.onlineDefaultLanguage[1] : global.defaultLanguage]);
+     scrCloseConfig();
+ }
+--- original/gml_GlobalScript_scrSaveGame.gml
++++ patched/gml_GlobalScript_scrSaveGame.gml
+@@ -36,6 +36,7 @@
+     var _makeBackup = false;
+     if (global.backupTimer >= global.BACKUP_MINIMUM_TIME && global.currFile >= 1 && global.currFile <= global.NUM_PROFILES_ACCESSIBLE)
+     {
++        global.backupTimer = 0;
+         global.backupSaveNum[global.currFile]++;
+         if (global.backupSaveNum[global.currFile] > global.NUM_BACKUPS)
+         {
+@@ -45,10 +46,9 @@
+         _makeBackup = true;
+     }
+     scrCloseCurrFile();
+-    if (_makeBackup)
+-    {
+-        global.backupTimer = 0;
+         var _fileFrom = string_replace(global.SAVE_FILE, "*", string(global.currFile));
++    if (_makeBackup && !is_int64(pfo_file_status(_fileFrom)))
++    {
+         var _fileTo = string_copy(_fileFrom, 1, string_length(_fileFrom) - 4);
+         _fileTo += ("_" + string(global.backupSaveNum[global.currFile]) + ".bak");
+         _fileTo = "backup\\" + _fileTo;
+--- original/gml_Object_o14_Game_Create_0.gml
++++ patched/gml_Object_o14_Game_Create_0.gml
+@@ -184,18 +184,7 @@
+ trackType = 0;
+ eventType = 0;
+ readyTimer = 100;
+-sponsee[0] = -4;
+-sponsee[1] = -4;
+-sponsee[2] = -4;
+-sponseeCost[0] = 0;
+-sponseeCost[1] = 0;
+-sponseeCost[2] = 0;
+ numSponsees = 0;
+-stable[0] = -1;
+-stable[1] = -1;
+-trainDelta[0] = 0;
+-trainDelta[1] = 0;
+-trainDelta[2] = 0;
+ numPlayers = global.numPlayers;
+ numHumanPlayers = numPlayers;
+ if (numPlayers == 1)
+@@ -238,6 +227,17 @@
+     qBet[i] = 0;
+     debt[i] = 0;
+     result[i] = 0;
++    sponsee[i][0] = -4;
++    sponsee[i][1] = -4;
++    sponsee[i][2] = -4;
++    sponseeCost[i][0] = 0;
++    sponseeCost[i][1] = 0;
++    sponseeCost[i][2] = 0;
++    stable[i][0] = -4;
++    stable[i][1] = -4;
++    trainDelta[i][0] = 0;
++    trainDelta[i][1] = 0;
++    turnDone[i] = false;
+ }
+ portraitList = ds_list_create();
+ for (var i = 0; i < NUM_PORTRAITS; i++)
+--- original/gml_Object_o14_Game_Draw_0.gml
++++ patched/gml_Object_o14_Game_Draw_0.gml
+@@ -83,7 +83,7 @@
+     draw_rectangle(viewx, viewy, viewx + global.SCREEN_WIDTH, viewy + global.SCREEN_HEIGHT, 0);
+     if (currPlayer <= 2)
+     {
+-        if (!ai[currPlayer] && numHumanPlayers > 1)
++        if (!ai[currPlayer] && numHumanPlayers > 1 && !(numPlayers == 2 && pfo_is_online() && currPlayer == pfo_get_online_player_index()))
+         {
+             if (portrait[currPlayer] == NUM_PORTRAITS)
+             {
+@@ -105,7 +105,14 @@
+             {
+                 scrSetFont(global.fontDefault);
+                 draw_set_color(c_white);
++                if (numPlayers == 2 && pfo_is_online())
++                {
++                    draw_text_centered(viewx + 192, viewy + 136, "WAITING FOR PLAYER TO FINISH TURN", 8);
++                }
++                else
++                {
+                 scrStringDrawCenterAltExt(viewx + 192, viewy + 136, "look_away", 0, 0, 2);
++                }
+                 var pname = scrString("p" + string(currPlayer + 1));
+                 if (numPlayers == 3)
+                 {
+@@ -282,12 +289,12 @@
+             }
+         }
+     }
+-    if (stable[0] == -4 && stable[1] == -4)
++    if (stable[currPlayer][0] == -4 && stable[currPlayer][1] == -4)
+     {
+         draw_set_color(global.palette[2]);
+         draw_rectangle(672, 176, 703, 207, false);
+     }
+-    if ((stable[0] != -4 && stable[1] != -4) || numSponsees == 0)
++    if ((stable[currPlayer][0] != -4 && stable[currPlayer][1] != -4) || numSponsees == 0)
+     {
+         draw_set_color(global.palette[2]);
+         draw_rectangle(624, 176, 655, 207, false);
+@@ -511,12 +518,12 @@
+     draw_text_ce(1480, 271, "$" + string(cash[currPlayer]), 1);
+     if (sel != 3)
+     {
+-        if (sponsee[sel] != -4)
++        if (sponsee[currPlayer][sel] != -4)
+         {
+             draw_set_color(c_white);
+-            draw_text(1288, 271, string(sponsee[sel].name));
++            draw_text(1288, 271, string(sponsee[currPlayer][sel].name));
+             draw_set_color(global.palette[9]);
+-            draw_text(1384, 271, "$" + string(sponseeCost[sel]));
++            draw_text(1384, 271, "$" + string(sponseeCost[currPlayer][sel]));
+         }
+     }
+     else
+@@ -529,27 +536,27 @@
+     {
+         for (var i = 0; i < 3; i++)
+         {
+-            if (sponsee[i] != -4)
++            if (sponsee[currPlayer][i] != -4)
+             {
+                 var qSprite = s14_qRun;
+-                if (sponsee[i].body == BODY_BLUE)
++                if (sponsee[currPlayer][i].body == BODY_BLUE)
+                 {
+                     qSprite = s14_qRunBlueBody;
+                 }
+-                if (sponsee[i].body == BODY_YELLOW)
++                if (sponsee[currPlayer][i].body == BODY_YELLOW)
+                 {
+                     qSprite = s14_qRunYellowBody;
+                 }
+-                if (sponsee[i].body == BODY_WHITE)
++                if (sponsee[currPlayer][i].body == BODY_WHITE)
+                 {
+                     qSprite = s14_qRunWhiteBody;
+                 }
+                 draw_sprite(qSprite, 0, 1304 + (64 * i), 336);
+-                if (sponsee[i].nose == NOSE_PURPLE)
++                if (sponsee[currPlayer][i].nose == NOSE_PURPLE)
+                 {
+                     draw_sprite(s14_qRunPurpleNose, 0, 1304 + (64 * i), 336);
+                 }
+-                if (sponsee[i].nose == NOSE_YELLOW)
++                if (sponsee[currPlayer][i].nose == NOSE_YELLOW)
+                 {
+                     draw_sprite(s14_qRunYellowNose, 0, 1304 + (64 * i), 336);
+                 }
+@@ -586,7 +593,7 @@
+     draw_text_centered(viewx + 184, viewy + 4, scrStringExt("whose_turn", name[currPlayer], 0, 4), 8);
+     draw_text_bg_centered(viewx + 56, viewy + 142, scrStringExt("trainer", 0, 10, 2), 0, 8, 8, true);
+     draw_text_ce(1864, 271, "$" + string(cash[currPlayer]), 1);
+-    if (sel == 0 && !stable[1 - subsel].trained)
++    if (sel == 0 && !stable[currPlayer][1 - subsel].trained)
+     {
+         draw_set_color(global.palette[9]);
+         draw_text_ce(1864, 303, "$" + string(trainCost), 1);
+@@ -598,57 +605,57 @@
+     }
+     for (var i = 1; i >= 0; i--)
+     {
+-        if (stable[i] != -4)
++        if (stable[currPlayer][i] != -4)
+         {
+             var qSprite = s14_qRun;
+-            if (stable[i].body == BODY_BLUE)
++            if (stable[currPlayer][i].body == BODY_BLUE)
+             {
+                 qSprite = s14_qRunBlueBody;
+             }
+-            if (stable[i].body == BODY_YELLOW)
++            if (stable[currPlayer][i].body == BODY_YELLOW)
+             {
+                 qSprite = s14_qRunYellowBody;
+             }
+-            if (stable[i].body == BODY_WHITE)
++            if (stable[currPlayer][i].body == BODY_WHITE)
+             {
+                 qSprite = s14_qRunWhiteBody;
+             }
+-            var animFrame = floor(timer * (stable[i].qSpeed + trainDelta[i]) * 0.002) % 4;
+-            if (!stable[i].trained)
++            var animFrame = floor(timer * (stable[currPlayer][i].qSpeed + trainDelta[currPlayer][i]) * 0.002) % 4;
++            if (!stable[currPlayer][i].trained)
+             {
+                 animFrame = 0;
+             }
+             draw_sprite(qSprite, animFrame, 1688, 328 - (40 * i));
+-            if (stable[i].nose == NOSE_PURPLE)
++            if (stable[currPlayer][i].nose == NOSE_PURPLE)
+             {
+                 draw_sprite(s14_qRunPurpleNose, animFrame, 1688, 328 - (40 * i));
+             }
+-            if (stable[i].nose == NOSE_YELLOW)
++            if (stable[currPlayer][i].nose == NOSE_YELLOW)
+             {
+                 draw_sprite(s14_qRunYellowNose, animFrame, 1688, 328 - (40 * i));
+             }
+             draw_set_color(c_white);
+-            draw_text(1704, 320 - (40 * i), string(stable[i].name));
++            draw_text(1704, 320 - (40 * i), string(stable[currPlayer][i].name));
+             draw_set_color(global.palette[2]);
+-            draw_text(1704, 328 - (40 * i), scrString("speed") + ": " + string(stable[i].qSpeed));
++            draw_text(1704, 328 - (40 * i), scrString("speed") + ": " + string(stable[currPlayer][i].qSpeed));
+             var cs;
+-            if (stable[i].clumsy > 8)
++            if (stable[currPlayer][i].clumsy > 8)
+             {
+                 cs = scrString("very_clumsy");
+             }
+-            else if (stable[i].clumsy > 6)
++            else if (stable[currPlayer][i].clumsy > 6)
+             {
+                 cs = scrString("clumsy");
+             }
+-            else if (stable[i].clumsy > 4)
++            else if (stable[currPlayer][i].clumsy > 4)
+             {
+                 cs = "";
+             }
+-            else if (stable[i].clumsy > 2)
++            else if (stable[currPlayer][i].clumsy > 2)
+             {
+                 cs = scrString("steady");
+             }
+-            else if (stable[i].clumsy > 2)
++            else if (stable[currPlayer][i].clumsy > 2)
+             {
+                 cs = scrString("very_steady");
+             }
+--- original/gml_Object_o14_Game_Other_11.gml
++++ patched/gml_Object_o14_Game_Other_11.gml
+@@ -9,10 +9,17 @@
+ scr14_GetOdds();
+ for (var i = 0; i < 3; i++)
+ {
++    bet[i] = 10;
++    qBet[i] = 0;
++    if (cash[i] < 10)
++    {
++        cash[i] = 10;
++    }
+     if (debt[i] > 0)
+     {
+         debt[i] += ceil(debt[i] * (INTEREST_RATE / 100));
+     }
++    turnDone[i] = false;
+ }
+ for (var i = 0; i < 3; i++)
+ {
+@@ -68,6 +75,24 @@
+     eventType = scrChoose(0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3);
+ }
+ newsEventToReport = eventType;
++for (var p = 0; p < 3; p++)
++{
++    scr14_GetStable(p);
++    for (var i = 0; i < 2; i++)
++    {
++        if (stable[p][i] != -4)
++        {
++            if (!stable[p][i].trained)
++            {
++                stable[p][i].qSpeed -= TRAIN_AMOUNT;
++            }
++            else
++            {
++                stable[p][i].trained = false;
++            }
++        }
++    }
++}
+ scr14_ChangeState(STATE_TURN_SETUP);
+ 
+ enum e__VW
+--- original/gml_Object_o14_Game_Other_12.gml
++++ patched/gml_Object_o14_Game_Other_12.gml
+@@ -1,10 +1,32 @@
+ if (substate == 0)
+ {
+     substate = 1;
++    var onlineLocalTurn = false;
++    var onlineRemoteTurn = false;
++    if (numPlayers == 2 && pfo_is_online() && currPlayer < 2)
++    {
++        if (turnDone[0] && turnDone[1])
++        {
++            currPlayer = 2;
++        }
++        else if (!turnDone[pfo_get_online_player_index()])
++        {
++            currPlayer = pfo_get_online_player_index();
++            onlineLocalTurn = true;
++        }
++        else
++        {
++            currPlayer = (pfo_get_online_player_index() + 1) % 2;
++            onlineRemoteTurn = true;
++        }
++    }
++    else
++    {
+     currPlayer++;
++    }
+     if (currPlayer >= 3)
+     {
+-        if (numHumanPlayers <= 1)
++        if (numHumanPlayers <= 1 || (numPlayers == 2 && pfo_is_online()))
+         {
+             scr14_ChangeState(STATE_RACE_NEWS);
+         }
+@@ -18,45 +40,92 @@
+     {
+         visible = false;
+     }
+-    numSponsees = scr14_GetSponsee();
+-    scr14_GetStable();
++    if (!onlineRemoteTurn)
++    {
++        var sponseeCandidates = ds_list_create();
++        for (var listPos = 0; listPos < NUM_QUIBBLES; listPos++)
++        {
++            var inCurrentRace = false;
++            if (ds_list_find_value(quibbles, listPos) == currQ[0] || ds_list_find_value(quibbles, listPos) == currQ[1] || ds_list_find_value(quibbles, listPos) == currQ[2])
++            {
++                inCurrentRace = true;
++            }
++            var alreadySponsored = false;
++            if (ds_list_find_value(quibbles, listPos).sponsor != -1)
++            {
++                alreadySponsored = true;
++            }
++            var inFutureRace = false;
++            for (var j = deckIndex; j < (roundsToWin * 3); j++)
++            {
++                if (ds_list_find_value(quibbleDeck, j) == ds_list_find_value(quibbles, listPos))
++                {
++                    inFutureRace = true;
++                }
++            }
++            if (!inCurrentRace && !alreadySponsored && inFutureRace)
++            {
++                ds_list_add(sponseeCandidates, ds_list_find_value(quibbles, listPos));
++            }
++        }
++        scrShuffle(sponseeCandidates);
++        if (onlineLocalTurn)
++        {
++            var numPlayersNeedingSponsees = 2;
+     for (var i = 0; i < 2; i++)
+     {
+-        if (stable[i] != -4)
++                if (stable[i][0] != -4 && stable[i][1] != -4)
+         {
+-            if (!stable[i].trained)
++                    numPlayersNeedingSponsees--;
++                }
++            }
++            var numSponseesPerPlayer = 3;
++            if (numPlayersNeedingSponsees == 2)
+             {
+-                stable[i].qSpeed -= TRAIN_AMOUNT;
++                numSponseesPerPlayer = min(3, floor(ds_list_size(sponseeCandidates) / 2));
+             }
+-            else
++            for (var i = 0; i < 2; i++)
+             {
+-                stable[i].trained = false;
++                var num = scr14_GetSponsee(i, sponseeCandidates, (stable[i][0] != -4 && stable[i][1] != -4) ? 0 : numSponseesPerPlayer);
++                if (i == currPlayer)
++                {
++                    numSponsees = num;
+             }
+         }
+     }
++        else
++        {
++            numSponsees = scr14_GetSponsee(currPlayer, sponseeCandidates, 3);
++        }
++        ds_list_destroy(sponseeCandidates);
++    }
+     thugActionTaken = false;
+     loanActionTaken = false;
+     infoActionTaken = false;
+     sponsorActionTaken = false;
++    if (onlineLocalTurn)
++    {
++        infoText = scrIRandomRange(1, 8);
++    }
++    else
++    {
+     infoText = "";
++    }
+     infoTextShort = "";
+     infoQuibble = -1;
+-    bet[currPlayer] = 10;
+-    qBet[currPlayer] = 0;
+-    if (cash[currPlayer] < 10)
+-    {
+-        cash[currPlayer] = 10;
+-    }
+     __view_set(e__VW.XView, 0, 1536);
+     __view_set(e__VW.YView, 0, 0);
++    if (!onlineRemoteTurn)
++    {
+     scr14_SimulateRace();
+ }
++}
+ if (ai[currPlayer])
+ {
+     scr14_ChangeState(STATE_TURN_AI);
+     exit;
+ }
+-if (fire2pressed || numHumanPlayers == 1)
++if ((numPlayers == 2 && pfo_is_online()) ? (currPlayer == pfo_get_online_player_index()) : (fire2pressed || numHumanPlayers == 1))
+ {
+     musicTrig = false;
+     scr14_ChangeState(STATE_TURN_MAIN);
+--- original/gml_Object_o14_Game_Other_13.gml
++++ patched/gml_Object_o14_Game_Other_13.gml
+@@ -31,7 +31,7 @@
+     {
+         sel = 1;
+         subsel = 2;
+-        if (stable[0] != -4 && stable[1] != -4)
++        if (stable[currPlayer][0] != -4 && stable[currPlayer][1] != -4)
+         {
+             sel = 2;
+         }
+@@ -43,15 +43,7 @@
+     }
+     __view_set(e__VW.XView, 0, 384);
+     __view_set(e__VW.YView, 0, 0);
+-    if (bet[currPlayer] > scr14_GetCash(currPlayer))
+-    {
+-        bet[currPlayer] = scr14_GetCash(currPlayer);
+     }
+-    if (bet[currPlayer] < 10)
+-    {
+-        bet[currPlayer] = 10;
+-    }
+-}
+ if (scrTransitionDone())
+ {
+     if (!musicTrig)
+@@ -64,6 +56,8 @@
+         visible = true;
+     }
+ }
++if (!pfo_send_command_in_progress())
++{
+ var pPos = sel + (subsel * 10);
+ if (pressLeft)
+ {
+@@ -99,7 +93,7 @@
+ }
+ repeat (2)
+ {
+-    if (stable[0] == -4 && stable[1] == -4)
++        if (stable[currPlayer][0] == -4 && stable[currPlayer][1] == -4)
+     {
+         if (sel == 2 && subsel == 2)
+         {
+@@ -137,7 +131,7 @@
+             }
+         }
+     }
+-    if ((stable[0] != -4 && stable[1] != -4) || numSponsees == 0)
++        if ((stable[currPlayer][0] != -4 && stable[currPlayer][1] != -4) || numSponsees == 0)
+     {
+         if (sel == 1 && subsel == 2)
+         {
+@@ -179,6 +173,7 @@
+ if (pPos != (sel + (subsel * 10)))
+ {
+ }
++}
+ if (fire2)
+ {
+     holdCounter++;
+@@ -197,56 +192,26 @@
+     holdCounter = 0;
+     holdThreshold = 16;
+ }
++if (!pfo_send_command_in_progress() || (sel == 1 && subsel == 0) || (sel == 2 && subsel == 0))
++{
+ if (fire2pressed)
+ {
+     if (sel == 0)
+     {
+-        if (qBet[currPlayer] != subsel)
+-        {
+-            scrSfx(sfx_navi04, 30);
+-            qBet[currPlayer] = subsel;
++            pfo_send_command(UnknownEnum.Value_16, int64(subsel), (numPlayers == 2) ? currPlayer : -1);
+         }
+-    }
+     else if (sel == 1 && subsel == 0)
+     {
+-        if (bet[currPlayer] > 10)
+-        {
+-            scrSfx(sfx_select06, 25);
+-            bet[currPlayer] -= 10;
+-            if (bet[currPlayer] < 10)
+-            {
+-                bet[currPlayer] = 10;
++            pfo_send_command(UnknownEnum.Value_17, UnknownEnum.Value_0, (numPlayers == 2) ? currPlayer : -1);
+             }
+-        }
+-    }
+     else if (sel == 2 && subsel == 0)
+     {
+-        if (bet[currPlayer] < scr14_GetCash(currPlayer) && bet[currPlayer] < maxBet)
+-        {
+-            scrSfx(sfx_select06, 25);
+-            bet[currPlayer] += 10;
+-            if (bet[currPlayer] > scr14_GetCash(currPlayer))
+-            {
+-                bet[currPlayer] = scr14_GetCash(currPlayer);
++            pfo_send_command(UnknownEnum.Value_18, UnknownEnum.Value_0, (numPlayers == 2) ? currPlayer : -1);
+             }
+-            if (bet[currPlayer] > maxBet)
+-            {
+-                bet[currPlayer] = maxBet;
+-            }
+-        }
+-    }
+     else if (sel == 3 && subsel == 0)
+     {
+-        if (bet[currPlayer] < scr14_GetCash(currPlayer) && bet[currPlayer] < maxBet)
+-        {
+-            scrSfx(sfx_select06, 25);
+-            bet[currPlayer] = maxBet;
+-            if (bet[currPlayer] > scr14_GetCash(currPlayer))
+-            {
+-                bet[currPlayer] = scr14_GetCash(currPlayer);
++            pfo_send_command(UnknownEnum.Value_19, UnknownEnum.Value_0, (numPlayers == 2) ? currPlayer : -1);
+             }
+-        }
+-    }
+     else if (sel == 1 && subsel == 1)
+     {
+         scrSfx(soundSelect, 50);
+@@ -279,11 +244,10 @@
+     }
+     else if (sel == 3 && subsel == 2)
+     {
+-        muteBGM();
+-        scr14_ChangeState(STATE_TURN_SETUP);
+-        exit;
++            pfo_send_command(UnknownEnum.Value_20, UnknownEnum.Value_0, (numPlayers == 2) ? currPlayer : -1);
+     }
+ }
++}
+ if (!instance_exists(o14_Hand))
+ {
+     exit;
+@@ -320,4 +284,14 @@
+     HPort,
+     Camera,
+     SurfaceID
++}
++
++enum UnknownEnum
++{
++    Value_0,
++    Value_16 = 16,
++    Value_17,
++    Value_18,
++    Value_19,
++    Value_20
+ }
+--- original/gml_Object_o14_Game_Other_14.gml
++++ patched/gml_Object_o14_Game_Other_14.gml
+@@ -30,6 +30,8 @@
+         tSpeak = -1;
+     }
+ }
++if (!pfo_send_command_in_progress())
++{
+ var pPos = sel;
+ if (!loanActionTaken)
+ {
+@@ -85,44 +87,8 @@
+ {
+     if (sel == 0 && !loanActionTaken)
+     {
+-        if (debt[currPlayer] > 0 && debt[currPlayer] <= scr14_GetCash(currPlayer))
+-        {
+-            if (debt[currPlayer] == 0)
+-            {
++            pfo_send_command(UnknownEnum.Value_21, UnknownEnum.Value_0, (numPlayers == 2) ? currPlayer : -1);
+             }
+-            else if (scr14_GetCash(currPlayer) < debt[currPlayer])
+-            {
+-            }
+-            else
+-            {
+-                scrSfx(sfx_speak02b, 71);
+-                scr14_ChangeCash(currPlayer, -debt[currPlayer]);
+-                debt[currPlayer] = 0;
+-                sel = 1;
+-                scr14_MessageSet(scrString("loan_shark_paid_off"));
+-            }
+-        }
+-        else
+-        {
+-            scrSfx(sfx_speak02b, 71);
+-            scr14_ChangeCash(currPlayer, min(1000, maxBet));
+-            debt[currPlayer] += min(1000, maxBet);
+-            loanActionTaken = true;
+-            sel = 1;
+-            if (debt[currPlayer] >= 1000)
+-            {
+-                scr14_MessageSet(scrString("loan_shark_get_loan_1"));
+-            }
+-            else if (debt[currPlayer] >= 500)
+-            {
+-                scr14_MessageSet(scrString("loan_shark_get_loan_2"));
+-            }
+-            else
+-            {
+-                scr14_MessageSet(scrString("loan_shark_get_loan_3"));
+-            }
+-        }
+-    }
+     else if (sel == 1)
+     {
+         scrSfx(sfx_select08, 40);
+@@ -130,6 +96,7 @@
+         exit;
+     }
+ }
++}
+ if (!instance_exists(o14_Hand))
+ {
+     exit;
+@@ -166,4 +133,10 @@
+     HPort,
+     Camera,
+     SurfaceID
++}
++
++enum UnknownEnum
++{
++    Value_0,
++    Value_21 = 21
+ }
+--- original/gml_Object_o14_Game_Other_15.gml
++++ patched/gml_Object_o14_Game_Other_15.gml
+@@ -204,6 +204,8 @@
+ }
+ else if (substate == 2)
+ {
++    if (!pfo_send_command_in_progress())
++    {
+     var pPos = subsel;
+     if (pressUp)
+     {
+@@ -237,16 +239,10 @@
+         }
+         else
+         {
+-            scrSfx(sfx_speak01b, 71);
+-            thugActionTaken = true;
+-            scr14_ChangeCash(currPlayer, -thugActionCost);
+-            scr14_AddThugAction(currPlayer, thugActionID, subsel);
+-            sel = 3;
+-            subsel = 1;
+-            substate = 1;
+-            scr14_MessageSet(scrString("thug_finalize_purchase"));
++                pfo_send_command(UnknownEnum.Value_22, (int64(thugActionID) << UnknownEnum.Value_2) | (int64(subsel) & UnknownEnum.Value_3), (numPlayers == 2) ? currPlayer : -1);
+         }
+     }
++    }
+     if (!instance_exists(o14_Hand))
+     {
+         exit;
+@@ -293,4 +289,11 @@
+     HPort,
+     Camera,
+     SurfaceID
++}
++
++enum UnknownEnum
++{
++    Value_2 = 2,
++    Value_3,
++    Value_22 = 22
+ }
+--- original/gml_Object_o14_Game_Other_16.gml
++++ patched/gml_Object_o14_Game_Other_16.gml
+@@ -6,10 +6,10 @@
+     __view_set(e__VW.YView, 0, 224);
+     sel = 0;
+     subsel = 1;
+-    if (infoText == "")
++    if (infoText == "" || is_real(infoText))
+     {
+         scr14_MessageSet(scrString("info_got_a_tip"));
+-        var r = scrIRandomRange(1, 8);
++        var r = is_real(infoText) ? infoText : scrIRandomRange(1, 8);
+         infoText = scrString("tip") + ":" + global.CARRIAGE_RETURN + global.CARRIAGE_RETURN;
+         infoText += scrString("tip_" + string(r));
+     }
+@@ -115,6 +115,8 @@
+ }
+ else if (substate == 2)
+ {
++    if (!pfo_send_command_in_progress())
++    {
+     var pPos = subsel;
+     if (pressUp)
+     {
+@@ -146,98 +148,12 @@
+             substate = 1;
+             scr14_MessageSet(scrString("info_cancel"));
+         }
+-        else if (scr14_GetCash(currPlayer) >= INFO_COST)
+-        {
+-            scrSfx(sfx_speak00b, 71);
+-            infoActionTaken = true;
+-            infoQuibble = subsel;
+-            var clumsyStr;
+-            if (currQ[infoQuibble].clumsy > 8)
+-            {
+-                clumsyStr = scrString("very_clumsy");
+-            }
+-            else if (currQ[infoQuibble].clumsy > 6)
+-            {
+-                clumsyStr = scrString("clumsy");
+-            }
+-            else if (currQ[infoQuibble].clumsy > 4)
+-            {
+-                clumsyStr = "";
+-            }
+-            else if (currQ[infoQuibble].clumsy > 2)
+-            {
+-                clumsyStr = scrString("steady");
+-            }
+-            else if (currQ[infoQuibble].clumsy > 2)
+-            {
+-                clumsyStr = scrString("very_steady");
+-            }
+             else
+             {
+-                clumsyStr = "STEADY";
++                pfo_send_command(UnknownEnum.Value_23, int64(subsel), (numPlayers == 2) ? currPlayer : -1);
+             }
+-            var speedStr;
+-            if (infoQuibble == scr14_GetRanking(RANK_FASTEST))
+-            {
+-                speedStr = scrString("fastest");
+             }
+-            else if (infoQuibble == scr14_GetRanking(RANK_SECOND_FASTEST))
+-            {
+-                speedStr = scrString("second_fastest");
+             }
+-            else if (infoQuibble == scr14_GetRanking(RANK_SLOWEST))
+-            {
+-                speedStr = scrString("slowest");
+-            }
+-            infoText = currQ[infoQuibble].name + ":" + global.CARRIAGE_RETURN + global.CARRIAGE_RETURN + speedStr + " " + scrString("quibble_in_race") + ".";
+-            if (clumsyStr != "")
+-            {
+-                infoText += (global.CARRIAGE_RETURN + global.CARRIAGE_RETURN + clumsyStr + ".");
+-            }
+-            if (eventType)
+-            {
+-                if (eventType == EVENT_METEOR)
+-                {
+-                    infoText += (global.CARRIAGE_RETURN + global.CARRIAGE_RETURN + scrString("tip_meteor"));
+-                }
+-                if (eventType == EVENT_POLLUTION)
+-                {
+-                    infoText += (global.CARRIAGE_RETURN + global.CARRIAGE_RETURN + scrString("tip_pollution"));
+-                }
+-                if (eventType == EVENT_GARBAGE)
+-                {
+-                    infoText += (global.CARRIAGE_RETURN + global.CARRIAGE_RETURN + scrString("tip_garbage"));
+-                }
+-            }
+-            if (speedStr == scrString("second_fastest"))
+-            {
+-                speedStr = scrStringExt("second_fastest_abbrev", 0, 8, 0);
+-            }
+-            if (clumsyStr == scrString("very_clumsy"))
+-            {
+-                clumsyStr = scrStringExt("very_clumsy_abbrev", 0, 8, 0);
+-            }
+-            if (clumsyStr == scrString("very_steady"))
+-            {
+-                clumsyStr = scrStringExt("very_steady_abbrev", 0, 8, 0);
+-            }
+-            infoTextShort = speedStr;
+-            if (clumsyStr != "")
+-            {
+-                infoTextShort += ("," + clumsyStr);
+-            }
+-            sel = 0;
+-            subsel = 1;
+-            substate = 1;
+-            scr14_ChangeCash(currPlayer, -INFO_COST);
+-            scr14_MessageSet(scrString("info_buy_3"));
+-        }
+-        else
+-        {
+-            scrSfx(soundInactive, 55);
+-            scr14_MessageSet(scrString("info_low_cash"));
+-        }
+-    }
+     if (!instance_exists(o14_Hand))
+     {
+         exit;
+@@ -270,4 +186,9 @@
+     HPort,
+     Camera,
+     SurfaceID
++}
++
++enum UnknownEnum
++{
++    Value_23 = 23
+ }
+--- original/gml_Object_o14_Game_Other_17.gml
++++ patched/gml_Object_o14_Game_Other_17.gml
+@@ -1,7 +1,7 @@
+ var numStable = 0;
+ for (var i = 0; i < 2; i++)
+ {
+-    if (stable[i] != -4)
++    if (stable[currPlayer][i] != -4)
+     {
+         numStable++;
+     }
+@@ -41,6 +41,8 @@
+             tSpeak = -1;
+         }
+     }
++    if (!pfo_send_command_in_progress())
++    {
+     var pPos = sel;
+     do
+     {
+@@ -61,7 +63,7 @@
+             sel = 0;
+         }
+     }
+-    until (sel == 3 || sponsee[sel] != -4);
++        until (sel == 3 || sponsee[currPlayer][sel] != -4);
+     if (numStable == 3)
+     {
+         sel = 3;
+@@ -77,7 +79,7 @@
+     {
+         if (sel != 3)
+         {
+-            var msg = scrStringVal("breeder_has_won", sponsee[sel].name, sponsee[sel].wins, sponsee[sel].races);
++                var msg = scrStringVal("breeder_has_won", sponsee[currPlayer][sel].name, sponsee[currPlayer][sel].wins, sponsee[currPlayer][sel].races);
+             scr14_MessageSet(msg);
+         }
+         else if (numStable == 3)
+@@ -99,30 +101,16 @@
+     {
+         if (sel != 3)
+         {
+-            if (scr14_GetCash(currPlayer) >= sponseeCost[sel])
+-            {
+-                scrSfx(sfx_speak03b, 71);
+-                scr14_MessageSet(scrString("breeder_bye"));
+-                scr14_ChangeCash(currPlayer, -sponseeCost[sel]);
+-                sponsee[sel].sponsor = currPlayer;
+-                sponsee[sel] = -4;
+-                scr14_GetStable();
+-                sponsorActionTaken = true;
+-                sel = 3;
++                pfo_send_command(UnknownEnum.Value_24, int64(sel), (numPlayers == 2) ? currPlayer : -1);
+             }
+             else
+             {
+-                scrSfx(soundInactive, 55);
+-                scr14_MessageSet(scrString("breeder_low_cash"));
+-            }
+-        }
+-        else
+-        {
+             scrSfx(sfx_select08, 40);
+             scr14_ChangeState(STATE_TURN_MAIN);
+             exit;
+         }
+     }
++    }
+     if (!instance_exists(o14_Hand))
+     {
+         exit;
+@@ -160,4 +148,9 @@
+     HPort,
+     Camera,
+     SurfaceID
++}
++
++enum UnknownEnum
++{
++    Value_24 = 24
+ }
+--- original/gml_Object_o14_Game_Other_18.gml
++++ patched/gml_Object_o14_Game_Other_18.gml
+@@ -19,6 +19,8 @@
+ var pPos = sel + (subsel * 10);
+ var oldSel = sel;
+ var oldSubsel = subsel;
++if (!pfo_send_command_in_progress())
++{
+ if (pressLeft)
+ {
+     sel--;
+@@ -58,7 +60,7 @@
+             subsel = 0;
+         }
+     }
+-    until (subsel == 1 || stable[1 - subsel] != -4);
++        until (subsel == 1 || stable[currPlayer][1 - subsel] != -4);
+ }
+ if (sel == 1)
+ {
+@@ -68,7 +70,7 @@
+         subsel = 1;
+     }
+ }
+-if (stable[0] == -4 && stable[1] == -4)
++    if (stable[currPlayer][0] == -4 && stable[currPlayer][1] == -4)
+ {
+     sel = 1;
+     subsel = 1;
+@@ -76,27 +78,28 @@
+ if (pPos != (sel + (subsel * 10)))
+ {
+ }
++}
+ var selQ = 1 - subsel;
+ trainCost = TRAIN_COST;
+-if ((stable[selQ].qSpeed + TRAIN_AMOUNT) > SPEED_UPPER)
++if ((stable[currPlayer][selQ].qSpeed + TRAIN_AMOUNT) > SPEED_UPPER)
+ {
+-    trainCost += (((stable[selQ].qSpeed + TRAIN_AMOUNT) - SPEED_UPPER) * TRAIN_COST);
++    trainCost += (((stable[currPlayer][selQ].qSpeed + TRAIN_AMOUNT) - SPEED_UPPER) * TRAIN_COST);
+ }
+ if (sel != oldSel || subsel != oldSubsel)
+ {
+     if (sel != 1)
+     {
+-        if (stableRetired[selQ])
++        if (stableRetired[currPlayer][selQ])
+         {
+             scr14_MessageSet(scrString("trainer_no_upcoming_races"));
+         }
+-        else if (!stable[selQ].trained)
++        else if (!stable[currPlayer][selQ].trained)
+         {
+-            scr14_MessageSet(scrStringExt("trainer_select_1", stable[selQ].name, 0, 0));
++            scr14_MessageSet(scrStringExt("trainer_select_1", stable[currPlayer][selQ].name, 0, 0));
+         }
+         else
+         {
+-            scr14_MessageSet(scrStringExt("trainer_select_2", stable[selQ].name, 0, 0));
++            scr14_MessageSet(scrStringExt("trainer_select_2", stable[currPlayer][selQ].name, 0, 0));
+         }
+     }
+     else
+@@ -104,9 +107,9 @@
+         scr14_MessageSet(scrString("trainer_goodbye"));
+         for (var i = 0; i < 2; i++)
+         {
+-            if (stable[i] != -4)
++            if (stable[currPlayer][i] != -4)
+             {
+-                if (!stable[i].trained)
++                if (!stable[currPlayer][i].trained)
+                 {
+                     scr14_MessageSet(scrString("trainer_warning"));
+                 }
+@@ -114,6 +117,8 @@
+         }
+     }
+ }
++if (!pfo_send_command_in_progress())
++{
+ if (fire1pressed)
+ {
+     scrSfx(sfx_select08, 40);
+@@ -124,44 +129,16 @@
+ {
+     if (sel == 0)
+     {
+-        if (stableRetired[selQ])
+-        {
+-            scr14_MessageSet(scrString("trainer_retired"));
++            pfo_send_command(UnknownEnum.Value_25, int64(selQ), (numPlayers == 2) ? currPlayer : -1);
+         }
+-        else if (scr14_GetCash(currPlayer) >= trainCost && !stable[selQ].trained)
+-        {
+-            scrSfx(sfx_speak04b, 71);
+-            var r = scrIRandomRange(1, 2);
+-            if (r == 1)
+-            {
+-                scr14_MessageSet(scrString("trainer_train_1"));
+-            }
+             else
+             {
+-                scr14_MessageSet(scrString("trainer_train_2"));
+-            }
+-            scr14_ChangeCash(currPlayer, -trainCost);
+-            trainDelta[selQ] = TRAIN_AMOUNT;
+-            stable[selQ].trained = true;
+-        }
+-        else if (stable[selQ].trained)
+-        {
+-            scrSfx(soundInactive, 55);
+-            scr14_MessageSet(scrStringExt("trainer_already_trained", stable[selQ].name, 0, 0));
+-        }
+-        else
+-        {
+-            scrSfx(soundInactive, 55);
+-            scr14_MessageSet(scrString("trainer_low_cash"));
+-        }
+-    }
+-    else
+-    {
+         scrSfx(sfx_select08, 40);
+         scr14_ChangeState(STATE_TURN_MAIN);
+         exit;
+     }
+ }
++}
+ if (!instance_exists(o14_Hand))
+ {
+     exit;
+@@ -198,4 +175,9 @@
+     HPort,
+     Camera,
+     SurfaceID
++}
++
++enum UnknownEnum
++{
++    Value_25 = 25
+ }
+--- original/gml_Object_o14_Game_Other_19.gml
++++ patched/gml_Object_o14_Game_Other_19.gml
+@@ -16,32 +16,33 @@
+         debt[n] = 0;
+     }
+     var i = rand(0, 2);
+-    if (cash[n] >= 100 && (cash[n] - 100) > maxBet && (stable[0] == -4 || stable[1] == -4))
++    if (cash[n] >= 100 && (cash[n] - 100) > maxBet && (stable[n][0] == -4 || stable[n][1] == -4))
+     {
+-        if (sponsee[i] != -4)
++        if (sponsee[n][i] != -4)
+         {
+             cash[n] -= 100;
+-            sponsee[i].sponsor = n;
++            sponsee[n][i].sponsor = n;
++            stable[n][(stable[n][0] == -4) ? 0 : 1] = sponsee[n][i];
+             if (scrIRandomRange(1, 3) == 1)
+             {
+                 aiTrain[n][i] = false;
+             }
+-            scr14_GetStable();
++            scr14_GetStable(n);
+         }
+     }
+     for (i = 0; i < 2; i++)
+     {
+-        if (stable[i] != -4 && aiTrain[n][i])
++        if (stable[n][i] != -4 && aiTrain[n][i])
+         {
+             trainCost = TRAIN_COST;
+-            if ((stable[i].qSpeed + TRAIN_AMOUNT) > SPEED_UPPER)
++            if ((stable[n][i].qSpeed + TRAIN_AMOUNT) > SPEED_UPPER)
+             {
+-                trainCost += (((stable[i].qSpeed + TRAIN_AMOUNT) - SPEED_UPPER) * TRAIN_COST);
++                trainCost += (((stable[n][i].qSpeed + TRAIN_AMOUNT) - SPEED_UPPER) * TRAIN_COST);
+             }
+-            if (cash[n] >= trainCost && (cash[n] - trainCost) > 300 && stable[i].qSpeed < 75)
++            if (cash[n] >= trainCost && (cash[n] - trainCost) > 300 && stable[n][i].qSpeed < 75)
+             {
+                 cash[n] -= trainCost;
+-                stable[i].qSpeed += TRAIN_AMOUNT;
++                stable[n][i].qSpeed += TRAIN_AMOUNT;
+             }
+         }
+     }
+--- original/gml_Object_o14_Game_Step_0.gml
++++ patched/gml_Object_o14_Game_Step_0.gml
+@@ -13,8 +13,19 @@
+     }
+     else if (state == STATE_TURN_AI || state == STATE_RACE_NEWS || state == STATE_RACE || state == STATE_RACE_RESULTS || state == STATE_GAME_END || state == STATE_GAME_RESULTS || state == STATE_RACE_LOOK_AT_SCREEN)
+     {
++        if (numPlayers == 2 && pfo_is_online())
++        {
++            scrGetInputMerged();
++        }
++        else
++        {
+         scrGetInput(0);
+     }
++    }
++    else if (numPlayers == 2 && pfo_is_online())
++    {
++        scrGetInput(0, UnknownEnum.Value_1);
++    }
+     else if (numPlayers == 1 || numPlayers == 3 || (numPlayers == 2 && currPlayer == 0))
+     {
+         scrGetInput(0);
+@@ -84,6 +95,328 @@
+         event_user(15);
+         break;
+ }
++
++function scr14_CurrentPlayerIsLocal()
++{
++    return numPlayers != 2 || !pfo_is_online() || currPlayer == pfo_get_online_player_index();
++}
++
++function scr14_Sfx(arg0, arg1)
++{
++    if (numPlayers == 2 && pfo_is_online() && currPlayer != pfo_get_online_player_index())
++    {
++        exit;
++    }
++    scrSfx(arg0, arg1);
++}
++
++var savedCurrPlayer = currPlayer;
++var repeatCount = 1;
++var commandPlayer = -1;
++if (numPlayers == 2)
++{
++    repeatCount = 2;
++    currPlayer = 0;
++    commandPlayer = 0;
++}
++repeat (repeatCount)
++{
++    var param = [UnknownEnum.Value_0];
++    if (pfo_receive_command(UnknownEnum.Value_16, param, commandPlayer))
++    {
++        var _subsel = real(param[0]);
++        if (qBet[currPlayer] != _subsel)
++        {
++            scr14_Sfx(sfx_navi04, 30);
++            qBet[currPlayer] = _subsel;
++        }
++    }
++    else if (pfo_receive_command(UnknownEnum.Value_17, 0, commandPlayer))
++    {
++        if (bet[currPlayer] > 10)
++        {
++            scr14_Sfx(sfx_select06, 25);
++            bet[currPlayer] -= 10;
++            if (bet[currPlayer] < 10)
++            {
++                bet[currPlayer] = 10;
++            }
++        }
++    }
++    else if (pfo_receive_command(UnknownEnum.Value_18, 0, commandPlayer))
++    {
++        if (bet[currPlayer] < scr14_GetCash(currPlayer) && bet[currPlayer] < maxBet)
++        {
++            scr14_Sfx(sfx_select06, 25);
++            bet[currPlayer] += 10;
++            if (bet[currPlayer] > scr14_GetCash(currPlayer))
++            {
++                bet[currPlayer] = scr14_GetCash(currPlayer);
++            }
++            if (bet[currPlayer] > maxBet)
++            {
++                bet[currPlayer] = maxBet;
++            }
++        }
++    }
++    else if (pfo_receive_command(UnknownEnum.Value_19, 0, commandPlayer))
++    {
++        if (bet[currPlayer] < scr14_GetCash(currPlayer) && bet[currPlayer] < maxBet)
++        {
++            scr14_Sfx(sfx_select06, 25);
++            bet[currPlayer] = maxBet;
++            if (bet[currPlayer] > scr14_GetCash(currPlayer))
++            {
++                bet[currPlayer] = scr14_GetCash(currPlayer);
++            }
++        }
++    }
++    else if (pfo_receive_command(UnknownEnum.Value_20, 0, commandPlayer))
++    {
++        turnDone[currPlayer] = true;
++        if (numPlayers != 2 || !pfo_is_online() || turnDone[pfo_get_online_player_index()])
++        {
++            if (state == STATE_TURN_SETUP)
++            {
++                substate = 0;
++            }
++            else
++            {
++                muteBGM();
++                scr14_ChangeState(STATE_TURN_SETUP);
++            }
++        }
++    }
++    else if (pfo_receive_command(UnknownEnum.Value_21, 0, commandPlayer))
++    {
++        if (debt[currPlayer] > 0 && debt[currPlayer] <= scr14_GetCash(currPlayer))
++        {
++            if (debt[currPlayer] == 0)
++            {
++            }
++            else if (scr14_GetCash(currPlayer) < debt[currPlayer])
++            {
++            }
++            else
++            {
++                scr14_Sfx(sfx_speak02b, 71);
++                scr14_ChangeCash(currPlayer, -debt[currPlayer]);
++                debt[currPlayer] = 0;
++                if (scr14_CurrentPlayerIsLocal())
++                {
++                    sel = 1;
++                    scr14_MessageSet(scrString("loan_shark_paid_off"));
++                }
++            }
++        }
++        else
++        {
++            scr14_Sfx(sfx_speak02b, 71);
++            scr14_ChangeCash(currPlayer, min(1000, maxBet));
++            debt[currPlayer] += min(1000, maxBet);
++            if (scr14_CurrentPlayerIsLocal())
++            {
++                loanActionTaken = true;
++                sel = 1;
++                if (debt[currPlayer] >= 1000)
++                {
++                    scr14_MessageSet(scrString("loan_shark_get_loan_1"));
++                }
++                else if (debt[currPlayer] >= 500)
++                {
++                    scr14_MessageSet(scrString("loan_shark_get_loan_2"));
++                }
++                else
++                {
++                    scr14_MessageSet(scrString("loan_shark_get_loan_3"));
++                }
++            }
++        }
++    }
++    else if (pfo_receive_command(UnknownEnum.Value_22, param, commandPlayer))
++    {
++        var _thugActionID = real(param[0] >> UnknownEnum.Value_2);
++        var _subsel = real(param[0] & UnknownEnum.Value_3);
++        var _thugActionCost = COST[_thugActionID];
++        scr14_Sfx(sfx_speak01b, 71);
++        if (scr14_CurrentPlayerIsLocal())
++        {
++            thugActionTaken = true;
++        }
++        scr14_ChangeCash(currPlayer, -_thugActionCost);
++        scr14_AddThugAction(currPlayer, _thugActionID, _subsel);
++        if (scr14_CurrentPlayerIsLocal())
++        {
++            sel = 3;
++            subsel = 1;
++            substate = 1;
++            scr14_MessageSet(scrString("thug_finalize_purchase"));
++        }
++    }
++    else if (pfo_receive_command(UnknownEnum.Value_23, param, commandPlayer))
++    {
++        var _subsel = real(param[0]);
++        if (scr14_GetCash(currPlayer) >= INFO_COST)
++        {
++            scr14_Sfx(sfx_speak00b, 71);
++            if (scr14_CurrentPlayerIsLocal())
++            {
++                infoActionTaken = true;
++                infoQuibble = _subsel;
++                var clumsyStr;
++                if (currQ[infoQuibble].clumsy > 8)
++                {
++                    clumsyStr = scrString("very_clumsy");
++                }
++                else if (currQ[infoQuibble].clumsy > 6)
++                {
++                    clumsyStr = scrString("clumsy");
++                }
++                else if (currQ[infoQuibble].clumsy > 4)
++                {
++                    clumsyStr = "";
++                }
++                else if (currQ[infoQuibble].clumsy > 2)
++                {
++                    clumsyStr = scrString("steady");
++                }
++                else if (currQ[infoQuibble].clumsy > 2)
++                {
++                    clumsyStr = scrString("very_steady");
++                }
++                else
++                {
++                    clumsyStr = "STEADY";
++                }
++                var speedStr;
++                if (infoQuibble == scr14_GetRanking(RANK_FASTEST))
++                {
++                    speedStr = scrString("fastest");
++                }
++                else if (infoQuibble == scr14_GetRanking(RANK_SECOND_FASTEST))
++                {
++                    speedStr = scrString("second_fastest");
++                }
++                else if (infoQuibble == scr14_GetRanking(RANK_SLOWEST))
++                {
++                    speedStr = scrString("slowest");
++                }
++                infoText = currQ[infoQuibble].name + ":" + global.CARRIAGE_RETURN + global.CARRIAGE_RETURN + speedStr + " " + scrString("quibble_in_race") + ".";
++                if (clumsyStr != "")
++                {
++                    infoText += (global.CARRIAGE_RETURN + global.CARRIAGE_RETURN + clumsyStr + ".");
++                }
++                if (eventType)
++                {
++                    if (eventType == EVENT_METEOR)
++                    {
++                        infoText += (global.CARRIAGE_RETURN + global.CARRIAGE_RETURN + scrString("tip_meteor"));
++                    }
++                    if (eventType == EVENT_POLLUTION)
++                    {
++                        infoText += (global.CARRIAGE_RETURN + global.CARRIAGE_RETURN + scrString("tip_pollution"));
++                    }
++                    if (eventType == EVENT_GARBAGE)
++                    {
++                        infoText += (global.CARRIAGE_RETURN + global.CARRIAGE_RETURN + scrString("tip_garbage"));
++                    }
++                }
++                if (speedStr == scrString("second_fastest"))
++                {
++                    speedStr = scrStringExt("second_fastest_abbrev", 0, 8, 0);
++                }
++                if (clumsyStr == scrString("very_clumsy"))
++                {
++                    clumsyStr = scrStringExt("very_clumsy_abbrev", 0, 8, 0);
++                }
++                if (clumsyStr == scrString("very_steady"))
++                {
++                    clumsyStr = scrStringExt("very_steady_abbrev", 0, 8, 0);
++                }
++                infoTextShort = speedStr;
++                if (clumsyStr != "")
++                {
++                    infoTextShort += ("," + clumsyStr);
++                }
++                sel = 0;
++                subsel = 1;
++                substate = 1;
++            }
++            scr14_ChangeCash(currPlayer, -INFO_COST);
++            scr14_MessageSet(scrString("info_buy_3"));
++        }
++        else
++        {
++            scr14_Sfx(soundInactive, 55);
++            scr14_MessageSet(scrString("info_low_cash"));
++        }
++    }
++    else if (pfo_receive_command(UnknownEnum.Value_24, param, commandPlayer))
++    {
++        var _sel = real(param[0]);
++        if (scr14_GetCash(currPlayer) >= sponseeCost[currPlayer][_sel])
++        {
++            scr14_Sfx(sfx_speak03b, 71);
++            scr14_MessageSet(scrString("breeder_bye"));
++            scr14_ChangeCash(currPlayer, -sponseeCost[currPlayer][_sel]);
++            sponsee[currPlayer][_sel].sponsor = currPlayer;
++            stable[currPlayer][(stable[currPlayer][0] == -4) ? 0 : 1] = sponsee[currPlayer][_sel];
++            scr14_GetStable(currPlayer);
++            if (scr14_CurrentPlayerIsLocal())
++            {
++                sponsorActionTaken = true;
++                sel = 3;
++            }
++        }
++        else
++        {
++            scr14_Sfx(soundInactive, 55);
++            scr14_MessageSet(scrString("breeder_low_cash"));
++        }
++    }
++    else if (pfo_receive_command(UnknownEnum.Value_25, param, commandPlayer))
++    {
++        var _selQ = real(param[0]);
++        var _trainCost = TRAIN_COST;
++        if ((stable[currPlayer][_selQ].qSpeed + TRAIN_AMOUNT) > SPEED_UPPER)
++        {
++            _trainCost += (((stable[currPlayer][_selQ].qSpeed + TRAIN_AMOUNT) - SPEED_UPPER) * TRAIN_COST);
++        }
++        if (stableRetired[currPlayer][_selQ])
++        {
++            scr14_MessageSet(scrString("trainer_retired"));
++        }
++        else if (scr14_GetCash(currPlayer) >= _trainCost && !stable[currPlayer][_selQ].trained)
++        {
++            scr14_Sfx(sfx_speak04b, 71);
++            var r = scrIRandomRange(1, 2);
++            if (r == 1)
++            {
++                scr14_MessageSet(scrString("trainer_train_1"));
++            }
++            else
++            {
++                scr14_MessageSet(scrString("trainer_train_2"));
++            }
++            scr14_ChangeCash(currPlayer, -_trainCost);
++            trainDelta[currPlayer][_selQ] = TRAIN_AMOUNT;
++            stable[currPlayer][_selQ].trained = true;
++        }
++        else if (stable[currPlayer][_selQ].trained)
++        {
++            scr14_Sfx(soundInactive, 55);
++            scr14_MessageSet(scrStringExt("trainer_already_trained", stable[currPlayer][_selQ].name, 0, 0));
++        }
++        else
++        {
++            scr14_Sfx(soundInactive, 55);
++            scr14_MessageSet(scrString("trainer_low_cash"));
++        }
++    }
++    currPlayer++;
++    commandPlayer++;
++}
++currPlayer = savedCurrPlayer;
+ for (var i = 0; i < 3; i++)
+ {
+     var numRepeats = 1;
+@@ -124,12 +457,44 @@
+ }
+ for (var i = 0; i < 3; i++)
+ {
++    if (bet[i] > scr14_GetCash(i))
++    {
++        bet[i] = scr14_GetCash(i);
++    }
++    if (bet[i] < 10)
++    {
++        bet[i] = 10;
++    }
++}
++for (var p = 0; p < 3; p++)
++{
++    for (var i = 0; i < 2; i++)
++    {
+     if ((timer % 48) == 0)
+     {
+-        if (trainDelta[i] > 0 && stable[i] != -4)
++            if (trainDelta[p][i] > 0 && stable[p][i] != -4)
+         {
+-            trainDelta[i]--;
+-            stable[i].qSpeed++;
++                trainDelta[p][i]--;
++                stable[p][i].qSpeed++;
+         }
+     }
++    }
++}
++
++enum UnknownEnum
++{
++    Value_0,
++    Value_1,
++    Value_2,
++    Value_3,
++    Value_16 = 16,
++    Value_17,
++    Value_18,
++    Value_19,
++    Value_20,
++    Value_21,
++    Value_22,
++    Value_23,
++    Value_24,
++    Value_25
+ }
+--- original/gml_Object_o30_Game_Step_0.gml
++++ patched/gml_Object_o30_Game_Step_0.gml
+@@ -5,7 +5,21 @@
+     subState = 0;
+     stateTimer = 0;
+ }
++if (numPlayers == 2 && !global.attractMode)
++{
++    if ((state == STATE_2P_GAMBLE && subState >= 3) || (state >= STATE_PREP_FIGHT && state <= STATE_GAME_OVER))
++    {
++        global.onlineFavoredPlayer = controller - 1;
++    }
++}
++if (state == STATE_2P_STATS)
++{
++    scrGetInputMerged();
++}
++else
++{
+ scrGetInput(controller - 1);
++}
+ event_user(state);
+ timer++;
+ if (holdFlicker)
+--- original/gml_Object_o35_iSpellWall_Draw_0.gml
++++ patched/gml_Object_o35_iSpellWall_Draw_0.gml
+@@ -17,7 +17,7 @@
+ var _x = global.SCREEN_WIDTH / 2;
+ var _y = round(y + (global.SCREEN_HEIGHT / 2));
+ var _prevRNG = scrGetRandomState();
+-randomize();
++pfo_randomize();
+ rng_seed(random(99999999));
+ if (o35_Game.gameState != UnknownEnum.Value_1 && o35_Game.gameState != UnknownEnum.Value_9)
+ {
+--- original/gml_Object_o50_Game_Create_0.gml
++++ patched/gml_Object_o50_Game_Create_0.gml
+@@ -262,6 +262,7 @@
+ flicker20 = false;
+ flicker8 = false;
+ hudShiftX = 0;
++miniHudShiftX = 0;
+ scenarioY = 0;
+ newBuildType = -1;
+ newBuildX = 0;
+@@ -278,7 +279,14 @@
+ }
+ else if (numPlayers == 2)
+ {
++    if (pfo_is_online())
++    {
++        fogOfWar = true;
++    }
++    else
++    {
+     fogOfWar = false;
++    }
+ }
+ else if (numPlayers == 0)
+ {
+--- original/gml_Object_o50_Game_Draw_0.gml
++++ patched/gml_Object_o50_Game_Draw_0.gml
+@@ -388,7 +388,7 @@
+                     }
+                 }
+             }
+-            if (loc.revealed || (loc.owner == player && numPlayers == 2 && !combatFlash && state != STATE_END_COMBAT && state != STATE_END_TURN) || (loc.owner == 1 && numPlayers == 1) || !fogOfWar)
++            if ((!pfo_is_online() && numPlayers == 2 && loc.revealed[player] && !combatFlash && state != STATE_END_COMBAT && state != STATE_END_TURN) || (pfo_is_online() && numPlayers == 2 && loc.revealed[pfo_get_online_player_index() + 1]) || (numPlayers == 1 && loc.revealed[1]) || (!pfo_is_online() && loc.owner == player && numPlayers == 2 && !combatFlash && state != STATE_END_COMBAT && state != STATE_END_TURN) || (pfo_is_online() && numPlayers == 2 && loc.owner == (pfo_get_online_player_index() + 1)) || (loc.owner == 1 && numPlayers == 1) || !fogOfWar)
+             {
+                 var xShift = 0;
+                 for (k = 0; k < NUM_BUILDINGS; k++)
+@@ -416,7 +416,7 @@
+                 {
+                     if (loc.resources[k])
+                     {
+-                        if (loc.owner == player)
++                        if ((pfo_is_online() && numPlayers == 2) ? (loc.owner == (pfo_get_online_player_index() + 1)) : (loc.owner == player))
+                         {
+                             if (!flicker20)
+                             {
+@@ -515,7 +515,7 @@
+             }
+         }
+     }
+-    if ((fogOfWar == false && !custom) || controller != 3)
++    if ((pfo_is_online() && numPlayers == 2) ? (controller == (pfo_get_online_player_index() + 1)) : ((fogOfWar == false && !custom) || controller != 3))
+     {
+         var OFF_COLOR = 24;
+         if (selectMode == 1)
+@@ -565,9 +565,13 @@
+                     {
+                         var xPos = scrIRandomRange(GRID_LEFT + (GRID_WIDTH * i), (GRID_LEFT + (GRID_WIDTH * i) + GRID_WIDTH) - 8);
+                         var yPos = scrIRandomRange(GRID_TOP + (GRID_HEIGHT * j), (GRID_TOP + (GRID_HEIGHT * j) + GRID_HEIGHT) - 8);
+-                        scrFX(s50_StarFX, 0.3, scrQuantize(xPos, 8), scrQuantize(yPos, 8));
++                        var starFX = scrFX(s50_StarFX, 0.3, scrQuantize(xPos, 8), scrQuantize(yPos, 8));
++                        if (is_int64(map[i][j].sparkleTimer) && (pfo_is_online() && numPlayers == 2 && controller != (pfo_get_online_player_index() + 1)))
++                        {
++                            starFX.visible = false;
+                     }
+                 }
++                }
+                 map[i][j].sparkleTimer--;
+             }
+         }
+@@ -580,7 +584,7 @@
+             draw_sprite(s50_Combat, 1, GRID_LEFT + (GRID_WIDTH * selX) + 24, GRID_TOP + (GRID_HEIGHT * selY) + 16);
+         }
+     }
+-    if ((numPlayers == 2 && fogOfWar && !combatFlash && state != STATE_END_COMBAT && state != STATE_END_TURN) || (numPlayers == 1 && fogOfWar && player == 1) || (numPlayers == 1 && !fogOfWar && (player == 1 || !custom)) || (numPlayers == 2 && !fogOfWar) || aiVersus)
++    if ((!pfo_is_online() && numPlayers == 2 && fogOfWar && !combatFlash && state != STATE_END_COMBAT && state != STATE_END_TURN) || (pfo_is_online() && numPlayers == 2 && controller == (pfo_get_online_player_index() + 1)) || (numPlayers == 1 && fogOfWar && player == 1) || (numPlayers == 1 && !fogOfWar && (player == 1 || !custom)) || (!pfo_is_online() && numPlayers == 2 && !fogOfWar) || aiVersus)
+     {
+         if ((state == STATE_GOD_SELECT && subState == 4) || (state == STATE_ACTIONS && subState == (200 + (10 * OFFERING) + 3)))
+         {
+@@ -931,37 +935,52 @@
+     }
+     else
+     {
+-        draw_sprite(s50_MiniHUD, actionHighlight, HUD_LEFT + hudShiftX, 0);
++        var _hudShiftX = (pfo_is_online() && numPlayers == 2) ? miniHudShiftX : hudShiftX;
++        _hudShiftX = hudShiftX;
++        draw_sprite(s50_MiniHUD, actionHighlight, HUD_LEFT + _hudShiftX, 0);
++        if (pfo_is_online() && numPlayers == 2)
++        {
++            if (player == 1)
++            {
++                draw_set_color(global.palette[9]);
++            }
++            if (player == 2)
++            {
++                draw_set_color(global.palette[4]);
++            }
++            draw_text(HUD_LEFT + _hudShiftX + 8, 0, "P" + string(player));
++            draw_set_color(c_white);
++        }
+         if (godAvail[god] >= GOD_COOLDOWN)
+         {
+             if (!SCRAMBLED_ACTIONS)
+             {
+-                draw_sprite(s50_Gods, GOD_PORTRAITS[god], HUD_LEFT + hudShiftX + 16, 8);
++                draw_sprite(s50_Gods, GOD_PORTRAITS[god], HUD_LEFT + _hudShiftX + 16, 8);
+             }
+             else
+             {
+-                draw_sprite(s50_GodsScrambled, GOD_PORTRAITS[god], HUD_LEFT + hudShiftX + 16, 8);
++                draw_sprite(s50_GodsScrambled, GOD_PORTRAITS[god], HUD_LEFT + _hudShiftX + 16, 8);
+             }
+             if (godPowerFlicker)
+             {
+                 godPowerFlicker--;
+-                draw_sprite(powerSprite, godPower[player][god] - flicker8, HUD_LEFT + hudShiftX + 64, 8);
++                draw_sprite(powerSprite, godPower[player][god] - flicker8, HUD_LEFT + _hudShiftX + 64, 8);
+             }
+             else
+             {
+-                draw_sprite(powerSprite, godPower[player][god], HUD_LEFT + hudShiftX + 64, 8);
++                draw_sprite(powerSprite, godPower[player][god], HUD_LEFT + _hudShiftX + 64, 8);
+             }
+         }
+         else
+         {
+-            draw_sprite(s50_GodsExhausted, GOD_PORTRAITS[god], HUD_LEFT + hudShiftX + 16, 8);
+-            draw_sprite(powerSprite, 0, HUD_LEFT + hudShiftX + 64, 8);
++            draw_sprite(s50_GodsExhausted, GOD_PORTRAITS[god], HUD_LEFT + _hudShiftX + 16, 8);
++            draw_sprite(powerSprite, 0, HUD_LEFT + _hudShiftX + 64, 8);
+         }
+-        draw_text_centered(HUD_TEXT_CENTER + hudShiftX, 56, string_even(GOD_NAMES[god], 4), 8);
++        draw_text_centered(HUD_TEXT_CENTER + _hudShiftX, 56, string_even(GOD_NAMES[god], 4), 8);
+     }
+     draw_set_color(c_white);
+     draw_text(GRID_LEFT, 200, scrMessageWrite(2));
+-    if ((fogOfWar == false && !custom) || controller != 3)
++    if ((pfo_is_online() && numPlayers == 2) ? (controller == (pfo_get_online_player_index() + 1)) : ((fogOfWar == false && !custom) || controller != 3))
+     {
+         if (transfer)
+         {
+@@ -1073,6 +1092,8 @@
+     draw_rectangle(viewx, viewy + 192, viewx + global.SCREEN_WIDTH, viewy + global.SCREEN_HEIGHT, false);
+     if (!global.attractMode)
+     {
++        if (!(pfo_is_online() && numPlayers == 2 && pfo_get_online_player_index() != 0))
++        {
+         if (defendPlayer == 1 && surpriseAttack)
+         {
+             draw_set_color(c_white);
+@@ -1134,7 +1155,8 @@
+                 }
+             }
+         }
+-        if (numPlayers == 2)
++        }
++        if ((!pfo_is_online() && numPlayers == 2) || (pfo_is_online() && numPlayers == 2 && pfo_get_online_player_index() == 1))
+         {
+             if (defendPlayer == 2 && surpriseAttack)
+             {
+@@ -1197,8 +1219,11 @@
+                     }
+                 }
+             }
++            if (!pfo_is_online())
++            {
+             draw_set_color(c_white);
+             draw_line(viewx + 192, viewy + 192, viewx + 192, viewy + 216);
++            }
+         }
+     }
+     else if (!global.attractModeLibrary)
+--- original/gml_Object_o50_Game_KeyPress_49.gml
++++ patched/gml_Object_o50_Game_KeyPress_49.gml
+@@ -9,7 +9,10 @@
+     {
+         for (var j = 0; j < GRID_Y_NUM; j++)
+         {
+-            map[i][j].revealed = false;
++            for (var p = 1; p <= 2; p++)
++            {
++                map[i][j].revealed[p] = false;
++            }
+         }
+     }
+ }
+--- original/gml_Object_o50_Game_Other_11.gml
++++ patched/gml_Object_o50_Game_Other_11.gml
+@@ -833,7 +833,7 @@
+     if (stateTimer++ >= 30)
+     {
+         scrSfx(soundMissionStart, 10);
+-        if (numPlayers == 1 || !fogOfWar)
++        if (numPlayers == 1 || !fogOfWar || pfo_is_online())
+         {
+             futureState = STATE_START_TURN;
+         }
+--- original/gml_Object_o50_Game_Other_12.gml
++++ patched/gml_Object_o50_Game_Other_12.gml
+@@ -29,10 +29,13 @@
+     {
+         for (var j = 0; j < GRID_Y_NUM; j++)
+         {
+-            if (map[i][j].revealed)
++            for (var p = 1; p <= 2; p++)
+             {
+-                map[i][j].revealed--;
++                if (map[i][j].revealed[p])
++                {
++                    map[i][j].revealed[p]--;
+             }
++            }
+             if (map[i][j].frozen)
+             {
+                 map[i][j].frozen--;
+@@ -56,6 +59,7 @@
+     }
+     until (godAvail[god] >= GOD_COOLDOWN);
+     hudShiftX = -HUD_WIDTH;
++    miniHudShiftX = -HUD_WIDTH;
+ }
+ if (subState == 1)
+ {
+--- original/gml_Object_o50_Game_Other_13.gml
++++ patched/gml_Object_o50_Game_Other_13.gml
+@@ -2,6 +2,10 @@
+ {
+     subState = 1;
+     scr50_MessageFastLocal("which_god");
++    if (pfo_is_online() && numPlayers == 2 && controller != (pfo_get_online_player_index() + 1))
++    {
++        scrMessageSet("ENEMY PLAYER TURN");
++    }
+     with (o50_Move)
+     {
+         instance_destroy();
+@@ -92,7 +96,7 @@
+         mute(soundPlayerTransition);
+         scrSfx(soundGodSelect, 30);
+         scr50_MessageFast("");
+-        if (controller == 3)
++        if (controller == 3 || (pfo_is_online() && numPlayers == 2 && controller != (pfo_get_online_player_index() + 1)))
+         {
+             scrMessageSet(scrStringVal("enemy_prays", GOD_NAMES[god]));
+         }
+@@ -116,6 +120,10 @@
+ if (subState == 2)
+ {
+     stateTimer++;
++    if (miniHudShiftX < 0 && (stateTimer % 2) == 0)
++    {
++        miniHudShiftX += 8;
++    }
+     if (stateTimer >= 80)
+     {
+         mute(soundGodSelect);
+@@ -142,7 +150,7 @@
+     }
+     if (stateTimer >= 120)
+     {
+-        if (controller != 3)
++        if (controller != 3 && !(pfo_is_online() && numPlayers == 2 && controller != (pfo_get_online_player_index() + 1)))
+         {
+             scrBGM(bgm50_bless);
+         }
+@@ -227,7 +235,7 @@
+     }
+     if (fire2pressed)
+     {
+-        if (controller != 3)
++        if (controller != 3 && !(pfo_is_online() && numPlayers == 2 && controller != (pfo_get_online_player_index() + 1)))
+         {
+             muteBGM();
+         }
+@@ -245,7 +253,11 @@
+         {
+             var xPos = scrIRandomRange(HUD_LEFT, (HUD_LEFT + HUD_WIDTH) - 8);
+             var yPos = scrIRandomRange(ACTION_TOP + (ACTION_HEIGHT * upgradeIndex), (ACTION_TOP + (ACTION_HEIGHT * upgradeIndex) + ACTION_HEIGHT) - 8);
+-            scrFX(s50_StarFXBlack, 0.3, scrQuantize(xPos, 8), scrQuantize(yPos, 8));
++            var starFX = scrFX(s50_StarFXBlack, 0.3, scrQuantize(xPos, 8), scrQuantize(yPos, 8));
++            if (pfo_is_online() && numPlayers == 2 && controller != (pfo_get_online_player_index() + 1))
++            {
++                starFX.visible = false;
++            }
+         }
+     }
+     if (stateTimer >= 144 || controller == 3)
+--- original/gml_Object_o50_Game_Other_14.gml
++++ patched/gml_Object_o50_Game_Other_14.gml
+@@ -372,11 +372,15 @@
+         {
+             controller = 1;
+         }
+-        if (numPlayers == 1 && player == 1)
++        else if (pfo_is_online() && numPlayers == 2)
+         {
++            controller = (player == 1) ? 2 : 1;
++        }
++        if ((numPlayers == 1 && player == 1) || (pfo_is_online() && numPlayers == 2 && player == (pfo_get_online_player_index() + 1)))
++        {
+             scrMessageSet(scrString("you_attacked"));
+         }
+-        else if (numPlayers == 1 && player == 2)
++        else if ((numPlayers == 1 && player == 2) || (pfo_is_online() && numPlayers == 2 && player != (pfo_get_online_player_index() + 1)))
+         {
+             scrMessageSet(scrString("they_attacked"));
+         }
+@@ -391,14 +395,14 @@
+     }
+     else
+     {
+-        if (controller == 3 && toLoc.owner != player)
++        if ((controller == 3 || (pfo_is_online() && numPlayers == 2 && controller != (pfo_get_online_player_index() + 1))) && toLoc.owner != player)
+         {
+             scrSfx(soundMoveUnits, 70);
+             scrMessageSet(scrString("enemy_expand"));
+         }
+-        else if (controller != 3)
++        else
+         {
+-            scrSfx(soundMoveUnits, 70);
++            scr50_Sfx(soundMoveUnits, 70);
+         }
+         for (var i = 0; i < NUM_UNITS; i++)
+         {
+--- original/gml_Object_o50_Game_Other_15.gml
++++ patched/gml_Object_o50_Game_Other_15.gml
+@@ -78,7 +78,10 @@
+     if (stateTimer >= 120)
+     {
+         mirChoice = false;
++        if (!(pfo_is_online() && numPlayers == 2 && controller != (pfo_get_online_player_index() + 1)))
++        {
+         scrBGM(bgm50_bless);
++        }
+         stateTimer = 0;
+         subState++;
+         upgradeIndex = -1;
+@@ -159,7 +162,10 @@
+     }
+     if (fire2pressed)
+     {
++        if (!(pfo_is_online() && numPlayers == 2 && controller != (pfo_get_online_player_index() + 1)))
++        {
+         muteBGM();
++        }
+         scr50_Sfx(soundMiracle, 50);
+         scr50_MessageSlow(scrStringExt("action_upgraded", "*", 35, 0));
+         subState++;
+@@ -174,9 +180,13 @@
+         {
+             var xPos = scrIRandomRange(HUD_LEFT, (HUD_LEFT + HUD_WIDTH) - 8);
+             var yPos = scrIRandomRange(ACTION_TOP + (ACTION_HEIGHT * upgradeIndex), (ACTION_TOP + (ACTION_HEIGHT * upgradeIndex) + ACTION_HEIGHT) - 8);
+-            scrFX(s50_StarFXBlack, 0.3, scrQuantize(xPos, 8), scrQuantize(yPos, 8));
++            var starFX = scrFX(s50_StarFXBlack, 0.3, scrQuantize(xPos, 8), scrQuantize(yPos, 8));
++            if (pfo_is_online() && numPlayers == 2 && controller != (pfo_get_online_player_index() + 1))
++            {
++                starFX.visible = false;
+         }
+     }
++    }
+     if (stateTimer >= 144)
+     {
+         stateTimer = 100;
+@@ -203,7 +213,7 @@
+         for (var j = 0; j < GRID_Y_NUM; j++)
+         {
+             var loc = map[i][j];
+-            if (loc.owner != 0 && loc.owner != player && !loc.revealed)
++            if (loc.owner != 0 && loc.owner != player && !loc.revealed[player])
+             {
+                 numSelectable++;
+                 selectable[i][j] = true;
+@@ -243,13 +253,13 @@
+     else if (fire2pressed)
+     {
+         scr50_Sfx(soundMiracle, 50);
+-        map[selX][selY].revealed = 7;
++        map[selX][selY].revealed[player] = 7;
+         scr50_MessageSlow(scrString("revealed"));
+         subState = 299;
+         selectMode = 2;
+         if (controller != 3)
+         {
+-            map[selX][selY].sparkleTimer = 48;
++            map[selX][selY].sparkleTimer = UnknownEnum.Value_48;
+         }
+     }
+ }
+@@ -316,7 +326,7 @@
+         {
+             scrSfx(soundMiracle, 50);
+             map[selX][selY].frozen = 3;
+-            if (numPlayers == 1 && player == 2)
++            if ((numPlayers == 1 && player == 2) || (pfo_is_online() && numPlayers == 2 && controller != (pfo_get_online_player_index() + 1)))
+             {
+                 scrMessageSet(scrStringVal("snowed_in_by_comp", unitsFrozen));
+             }
+@@ -397,7 +407,7 @@
+         else
+         {
+             scrSfx(soundMiracle, 50);
+-            if (numPlayers == 1 && player == 2)
++            if ((numPlayers == 1 && player == 2) || (pfo_is_online() && numPlayers == 2 && player != (pfo_get_online_player_index() + 1)))
+             {
+                 scrMessageSet(scrStringVal("killed_by_comp", unitsStruck));
+             }
+@@ -853,4 +863,9 @@
+     var refundAmount = action.params[subY][1];
+     resources[player][refundType] += refundAmount;
+     scr50_MessageFastLocal("what_miracle");
++}
++
++enum UnknownEnum
++{
++    Value_48 = 48
+ }
+--- original/gml_Object_o50_Game_Other_16.gml
++++ patched/gml_Object_o50_Game_Other_16.gml
+@@ -12,6 +12,7 @@
+         stateTimer = 0;
+         subState = 1.5;
+         hudShiftX = 0;
++        miniHudShiftX = 0;
+     }
+ }
+ if (subState == 1.5)
+@@ -135,7 +136,7 @@
+     if (victoryCheck)
+     {
+         scrSfx(soundFlagGained, 80);
+-        if (numPlayers == 1 && player == 1)
++        if ((numPlayers == 1 && player == 1) || (pfo_is_online() && numPlayers == 2 && player == (pfo_get_online_player_index() + 1)))
+         {
+             if (NUM_CONTROL_POINTS == 0 || flagCounter[player] >= 2)
+             {
+@@ -146,7 +147,7 @@
+                 scrMessageSet(scrStringExt("hold_castle_you_1_alt", CASTLES_TO_WIN, 35, 0));
+             }
+         }
+-        if (numPlayers == 1 && player == 2)
++        else if ((numPlayers == 1 && player == 2) || (pfo_is_online() && numPlayers == 2 && player != (pfo_get_online_player_index() + 1)))
+         {
+             if (NUM_CONTROL_POINTS == 0 || flagCounter[player] >= 2)
+             {
+@@ -157,7 +158,7 @@
+                 scrMessageSet(scrStringExt("hold_castle_enemy_1_alt", CASTLES_TO_WIN, 35, 0));
+             }
+         }
+-        if (numPlayers == 2)
++        else if (numPlayers == 2)
+         {
+             scrMessageSet(scrStringExt("hold_castle_p_" + string(flagCounter[player]), player, 35, 0));
+         }
+@@ -185,6 +186,7 @@
+     if ((stateTimer % 2) == 0)
+     {
+         hudShiftX -= 8;
++        miniHudShiftX -= 8;
+     }
+     if (abs(hudShiftX) >= HUD_WIDTH)
+     {
+@@ -212,11 +214,7 @@
+                 controller = 3;
+             }
+         }
+-        if (numPlayers == 1)
+-        {
+-            futureState = STATE_START_TURN;
+-        }
+-        else if (!fogOfWar)
++        if (numPlayers == 1 || !fogOfWar || pfo_is_online())
+         {
+             futureState = STATE_START_TURN;
+         }
+--- original/gml_Object_o50_Game_Other_18.gml
++++ patched/gml_Object_o50_Game_Other_18.gml
+@@ -616,7 +616,10 @@
+             {
+                 if (bPressLeft[inp])
+                 {
++                    if (!(pfo_is_online() && numPlayers == 2 && inp != pfo_get_online_player_index()))
++                    {
+                     scr50_Sfx(soundBattleNavi, 60);
++                    }
+                     orderSel[p]--;
+                     if (orderSel[p] < 1)
+                     {
+@@ -625,7 +628,10 @@
+                 }
+                 if (bPressRight[inp])
+                 {
++                    if (!(pfo_is_online() && numPlayers == 2 && inp != pfo_get_online_player_index()))
++                    {
+                     scr50_Sfx(soundBattleNavi, 60);
++                    }
+                     orderSel[p]++;
+                     if (orderSel[p] > maxOrder)
+                     {
+@@ -634,7 +640,10 @@
+                 }
+                 if (bFire2pressed[inp] && currOrder[p] != orderSel[p])
+                 {
++                    if (!(pfo_is_online() && numPlayers == 2 && inp != pfo_get_online_player_index()))
++                    {
+                     scr50_Sfx(soundBattleSelect, 65);
++                    }
+                     currOrder[p] = orderSel[p];
+                     orderFlicker[p] = 40;
+                     with (o50__Unit)
+--- original/gml_Object_o50_Game_Other_19.gml
++++ patched/gml_Object_o50_Game_Other_19.gml
+@@ -24,6 +24,7 @@
+             defendLoc.units[i] = attackers[i];
+         }
+         defendLoc.owner = player;
++        defendLoc.frozen = false;
+         if (defendLoc.terrain == CASTLE || defendLoc.terrain == CASTLE_P1 || defendLoc.terrain == CASTLE_P2)
+         {
+             defendLoc.terrain = player;
+@@ -39,13 +40,13 @@
+                 retreatLoc.units[i] += defendRunners[i];
+             }
+         }
+-        if (numPlayers == 1 || !fogOfWar || actionIndex == 2)
++        if (numPlayers == 1 || !fogOfWar || pfo_is_online() || actionIndex == 2)
+         {
+-            scr50_MessageSlow(scrString("attack_successful"));
++            scrMessageSet(scrString("attack_successful"));
+         }
+         else
+         {
+-            scr50_MessageSlow(scrStringExt("look_away", !(player - 1) + 1, 42, 0));
++            scrMessageSet(scrStringExt("look_away", !(player - 1) + 1, 42, 0));
+         }
+     }
+     if (combatWinner == DEFENDER)
+@@ -62,20 +63,20 @@
+         {
+             defendLoc.units[i] += defendRunners[i];
+         }
+-        if (numPlayers == 1 || !fogOfWar || actionIndex == 2)
++        if (numPlayers == 1 || !fogOfWar || pfo_is_online() || actionIndex == 2)
+         {
+-            scr50_MessageSlow(scrString("attack_failed"));
++            scrMessageSet(scrString("attack_failed"));
+         }
+         else
+         {
+-            scr50_MessageSlow(scrStringExt("look_away", !(player - 1) + 1, 42, 0));
++            scrMessageSet(scrStringExt("look_away", !(player - 1) + 1, 42, 0));
+         }
+     }
+ }
+ if (subState == 1)
+ {
+     stateTimer++;
+-    if (numPlayers == 1 || !fogOfWar)
++    if (numPlayers == 1 || !fogOfWar || pfo_is_online())
+     {
+         if (stateTimer >= 152)
+         {
+--- original/gml_Object_o50_Game_Other_20.gml
++++ patched/gml_Object_o50_Game_Other_20.gml
+@@ -27,9 +27,9 @@
+     mirX = 0;
+     mirChoice = false;
+     recruitChioce = false;
+-    if (numPlayers == 1)
++    if (numPlayers == 1 || (pfo_is_online() && numPlayers == 2))
+     {
+-        if (winner == 1)
++        if ((numPlayers == 1 && winner == 1) || (numPlayers == 2 && winner == (pfo_get_online_player_index() + 1)))
+         {
+             if (scenarioY != 2)
+             {
+@@ -95,7 +95,10 @@
+             {
+                 endSubMsg = scrStringExt("lost_all_alt", "*", 40, 0);
+             }
++            if (!custom)
++            {
+             scrSaveGame(0);
++            }
+         }
+     }
+     else if (numPlayers == 2)
+--- original/gml_Object_o50_Location_Create_0.gml
++++ patched/gml_Object_o50_Location_Create_0.gml
+@@ -13,7 +13,10 @@
+     buildings[i] = 0;
+ }
+ owner = false;
+-revealed = false;
++for (var p = 1; p <= 2; p++)
++{
++    revealed[p] = false;
++}
+ frozen = false;
+ terrain = o50_Game.GRASS;
+ sparkleTimer = 0;
+--- original/gml_Object_oConfirm_Step_1.gml
++++ patched/gml_Object_oConfirm_Step_1.gml
+@@ -11,11 +11,11 @@
+     instance_destroy();
+     exit;
+ }
+-if (pressLeft || pressRight || keyboard_check_pressed(vk_left) || keyboard_check_pressed(vk_right))
++if (pressLeft || pressRight)
+ {
+     sel = !sel;
+ }
+-if (fire2pressed || keyboard_check_pressed(vk_enter))
++if (fire2pressed)
+ {
+     choice = !sel;
+ }
+--- original/gml_Object_oGame_Step_0.gml
++++ patched/gml_Object_oGame_Step_0.gml
+@@ -39,11 +39,11 @@
+ }
+ if (!global.attractModeLibrary)
+ {
+-    if (bPressStart[0] || global.steamOverlayActivated)
++    if (bPressStart[0] || bForcePause[0])
+     {
+         scrPause(0);
+     }
+-    else if (bPressStart[1])
++    else if (bPressStart[1] || bForcePause[1])
+     {
+         scrPause(1);
+     }
+--- original/gml_Object_oLibrary_Create_0.gml
++++ patched/gml_Object_oLibrary_Create_0.gml
+@@ -25,6 +25,7 @@
+ STATE_PRE_GAMES_BUFFER = 6;
+ STATE_DEBUG = 7;
+ STATE_CORRUPT_FILE = 8;
++STATE_ONLINE = 9;
+ debugSelX = 0;
+ debugSelY = 0;
+ numRegularOptions = 6;
+@@ -125,3 +126,7 @@
+     scrLoadProfile(global.ARCADE_MODE_PROFILE);
+     state = STATE_PRE_GAMES_BUFFER;
+ }
++lobbyList = ds_list_create();
++lobbyUsers = ds_list_create();
++lobbyStartingGame = false;
++lobbyListSearchedFirstTime = false;
+--- original/gml_Object_oLibrary_Destroy_0.gml
++++ patched/gml_Object_oLibrary_Destroy_0.gml
+@@ -8,3 +8,5 @@
+     ds_list_destroy(sortCategory);
+     sortCategory = -1;
+ }
++ds_list_destroy(lobbyList);
++ds_list_destroy(lobbyUsers);
+--- original/gml_Object_oLibrary_Draw_0.gml
++++ patched/gml_Object_oLibrary_Draw_0.gml
+@@ -81,6 +81,9 @@
+     draw_rectangle_color(8, 24, 199, 151, c_black, c_black, c_black, c_black, 0);
+     if (substate == SUB_CRACK_WAIT)
+     {
++        var old = false;
++        if (old)
++        {
+         scrSetFont(global.fontHandwriting);
+         draw_set_color(global.palette[17]);
+         var _str = scrStringVal("crack_launch_text", "[2");
+@@ -91,6 +94,19 @@
+         draw_text(8, 200, "v" + global.betaVersion);
+         scrFontDefault();
+     }
++        else
++        {
++            scrSetFont(global.fontHandwriting);
++            draw_set_color(global.palette[17]);
++            var _str = string_line_breaks("PRESS [2] TO PLAY ONLINE FOREVER", 24, 2);
++            scrDrawTextInput(8, 176, _str[0], 0, 0, false);
++            scrDrawTextInput(8, 184, _str[1], 0, 0, false);
++            scrDrawTextInput(8, 192, "PRESS [1] FOR LOCAL PLAY", 0, 0, false);
++            scrSetFont(global.fontThinOutline);
++            draw_text(8, 200, "v" + global.betaVersion);
++            scrFontDefault();
++        }
++    }
+     if (substate == SUB_CRACK_WAIT)
+     {
+         if (CROSS_FADE)
+@@ -125,11 +141,25 @@
+ if (state == STATE_LASER_X)
+ {
+     scrFillScreen(0);
++    if (pfo_is_online())
++    {
++        draw_sprite(sLaserXOnline, 0, 96, 12);
++    }
++    else
++    {
+     draw_sprite(sLaserX, 0, 192, 92);
++    }
+     scrSetFont(global.fontTall);
+     draw_set_color(c_white);
++    if (pfo_is_online())
++    {
++        draw_text_centered(192, 176, "PLAY FOREVER: ONLINE", 8);
++    }
++    else
++    {
+     scrStringDrawCE(192, 176, "laser_x_slogan", 2);
+ }
++}
+ if (state == STATE_INTRO)
+ {
+     scrLibraryIntro(INTRO_SCENE);
+@@ -959,4 +989,8 @@
+ if (state == STATE_PRE_GAMES_BUFFER)
+ {
+     scrFillScreen(0);
++}
++if (state == STATE_ONLINE)
++{
++    scrLibraryOnlineStateDraw();
+ }
+--- original/gml_Object_oLibrary_Other_10.gml
++++ patched/gml_Object_oLibrary_Other_10.gml
+@@ -16,10 +16,17 @@
+     {
+         exit;
+     }
++    if (!pfo_all_players_loaded())
++    {
++        exit;
++    }
+     with (oAudioHandler)
+     {
++        if (!audio_is_playing(bgmCracktro))
++        {
+         bgmCracktro = audio_play_sound(bgm00_cracktro, 100, true);
+     }
++    }
+     CROSS_FADE = 2;
+     ANIMATE_END = false;
+     FRAMES_PER_IMG = 850;
+@@ -204,7 +211,7 @@
+         stateCounter = 800;
+         imgEnd = false;
+     }
+-    if (fire2pressed)
++    if (fire1pressed)
+     {
+         with (oAudioHandler)
+         {
+@@ -221,6 +228,18 @@
+         {
+             scrSwitchSub(SUB_CRACK_EXIT_PLAIN);
+         }
++    }
++    else if (fire2pressed)
++    {
++        with (oCrackHelix)
++        {
++            instance_destroy();
++        }
++        with (oTextCrack)
++        {
++            instance_destroy();
++        }
++        scrSwitchState(STATE_ONLINE);
+     }
+ }
+ else if (substate == SUB_CRACK_EXIT_ANIM)
+--- original/gml_Object_oLibrary_Other_11.gml
++++ patched/gml_Object_oLibrary_Other_11.gml
+@@ -12,11 +12,16 @@
+         }
+         bgmLxStinger = audio_play_sound(bgm00_stingLX, 100, false);
+     }
++    allPlayersLoaded = false;
+     scrSwitchSub(SUB_WAIT);
+ }
+ else if (substate == SUB_WAIT)
+ {
+-    if (stateCounter++ > 252)
++    if (!allPlayersLoaded)
++    {
++        allPlayersLoaded = pfo_file_exists(string_replace(global.SAVE_FILE, "*", "1")) >= 0 && pfo_file_exists(string_replace(global.SAVE_FILE, "*", "2")) >= 0 && pfo_file_exists(string_replace(global.SAVE_FILE, "*", "3")) >= 0 && pfo_file_exists(global.ACCOUNT_FILE) >= 0 && pfo_all_players_loaded();
++    }
++    if (stateCounter++ > 252 && allPlayersLoaded)
+     {
+         scrSwitchSub(SUB_EXIT);
+     }
+--- original/gml_Object_oLibrary_Other_12.gml
++++ patched/gml_Object_oLibrary_Other_12.gml
+@@ -312,7 +312,7 @@
+             }
+             break;
+     }
+-    if ((fire2pressed || pressStart || keyboard_check_pressed(vk_space) || keyboard_check_pressed(vk_enter)) && (INTRO_TIME > 10 || INTRO_SCENE > 1))
++    if ((fire2pressed || pressStart) && (INTRO_TIME > 10 || INTRO_SCENE > 1))
+     {
+         if (INTRO_SCENE < 24)
+         {
+--- original/gml_Object_oLibrary_Other_14.gml
++++ patched/gml_Object_oLibrary_Other_14.gml
+@@ -217,9 +217,9 @@
+ else if (substate == SUB_DELETING)
+ {
+     var filename = string_replace(global.SAVE_FILE, "*", string(menuSel + 1));
+-    if (file_exists(filename))
++    if (pfo_file_exists(filename))
+     {
+-        file_delete(filename);
++        pfo_file_delete(filename);
+     }
+     for (var i = 0; i < 22; i++)
+     {
+@@ -361,12 +361,13 @@
+ else if (substate == SUB_COPYING)
+ {
+     var fileFrom = string_replace(global.SAVE_FILE, "*", string(copyFrom + 1));
+-    var fileTo = string_replace(global.SAVE_FILE, "*", string(menuSel + 1));
+-    if (file_exists(fileTo))
++    var fileTo = string_replace(global.SAVE_FILE, "*", string(copyTo + 1));
++    pfo_file_exists(fileFrom);
++    if (pfo_file_exists(fileTo))
+     {
+-        file_delete(fileTo);
++        pfo_file_delete(fileTo);
+     }
+-    file_copy(fileFrom, fileTo);
++    pfo_file_copy(fileFrom, fileTo);
+     scrOpenFileManual(copyTo + 1);
+     var nameOfCopy = string_copy(profileName[copyFrom + 1], 1, global.MAX_PROFILE_NAME_LENGTH - 4);
+     nameOfCopy += " CPY";
+--- original/gml_Object_oLibrary_Other_25.gml
++++ patched/gml_Object_oLibrary_Other_25.gml
+@@ -16,6 +16,10 @@
+     {
+         exit;
+     }
++    if (!pfo_all_players_loaded())
++    {
++        exit;
++    }
+     global.attractModeIndex++;
+     if (global.attractModeIndex == ds_list_size(global.attractModePlaylist))
+     {
+--- original/gml_Object_oLibrary_Step_1.gml
++++ patched/gml_Object_oLibrary_Step_1.gml
+@@ -29,13 +29,13 @@
+     pauseAvail = false;
+     scrInputClear();
+ }
+-if (pauseAvail && (pressStart || global.steamOverlayActivated))
++if (pauseAvail && (pressStart || forcePause))
+ {
+-    if (bPressStart[0] || global.steamOverlayActivated)
++    if (bPressStart[0] || bForcePause[0])
+     {
+         scrPause(0);
+     }
+-    else if (bPressStart[1])
++    else if (bPressStart[1] || bForcePause[1])
+     {
+         scrPause(1);
+     }
+--- original/gml_Object_oOkay_Step_0.gml
++++ patched/gml_Object_oOkay_Step_0.gml
+@@ -5,7 +5,7 @@
+ }
+ if (!delayInput)
+ {
+-    scrGetInputMerged();
++    scrGetInputMerged(UnknownEnum.Value_3);
+ }
+ else
+ {
+@@ -17,6 +17,12 @@
+ }
+ x = scrViewX() + (__view_get(e__VW.WView, 0) / 2);
+ y = scrViewY() + (__view_get(e__VW.HView, 0) / 2);
++
++enum UnknownEnum
++{
++    Value_2 = 2,
++    Value_3
++}
+ 
+ enum e__VW
+ {
+--- original/gml_Object_oPauseMenu_Create_0.gml
++++ patched/gml_Object_oPauseMenu_Create_0.gml
+@@ -157,3 +157,13 @@
+ inputListenerTimer = 0;
+ padCount = scrGetJoyCount();
+ depth = -1000;
++
++localInputDisabled = function()
++{
++    return player <= 1 && pfo_is_online() && pfo_get_online_player_index() != player;
++};
++
++usingLocalInput = function()
++{
++    return !pfo_is_online() || (state >= STATE_KEYCONFIG && state <= STATE_AUDIO) || (state == STATE_UNPAUSE && statePrev >= STATE_KEYCONFIG && statePrev <= STATE_AUDIO);
++};
+--- original/gml_Object_oPauseMenu_Draw_0.gml
++++ patched/gml_Object_oPauseMenu_Draw_0.gml
+@@ -36,8 +36,17 @@
+     scrSetFont(global.fontTall);
+     scrDrawTextCentered(string_even(menuHeader, 3), _xview, _yview + 8, 8, _wview);
+     scrFontDefault();
+-    if (is_array(itemType))
++    if (usingLocalInput() && localInputDisabled())
+     {
++        scrSetFont(global.fontTall);
++        draw_set_color(global.palette[0]);
++        var _textLines = string_line_breaks("PLAYER " + ((pfo_get_online_player_index() == 1) ? "1" : "2") + " CHANGING LOCAL SETTINGS", 20, 2);
++        draw_text_centered(_xview + 192, TOP + 48, _textLines[0], 8);
++        draw_text_centered(_xview + 192, TOP + 64, _textLines[1], 8);
++        scrFontDefault();
++    }
++    else if (is_array(itemType))
++    {
+         var _yPos = TOP;
+         for (var i = 0; i < array_length(itemType); i++)
+         {
+@@ -271,7 +280,14 @@
+             {
+                 draw_text(LEFT_TEXT_X, _yPos, itemName[i]);
+                 draw_set_halign(fa_right);
++                if (!pfo_is_online())
++                {
+                 draw_sprite(sMenuP1P2, itemIndex[i], RIGHT_TEXT_X - 32, TOP);
++                }
++                else
++                {
++                    draw_sprite_part(sMenuP1P2, 0, 0, 0, 16, 8, RIGHT_TEXT_X - 16, TOP);
++                }
+                 draw_set_halign(fa_left);
+                 _yPos += 12;
+             }
+@@ -294,6 +310,8 @@
+         }
+         scrFontDefault();
+     }
++    if (!localInputDisabled())
++    {
+     if (state == STATE_ROOT_LIBRARY || state == STATE_ROOT_GAME)
+     {
+         if (scrInGame())
+@@ -439,6 +457,7 @@
+             }
+         }
+     }
++    }
+     if (state == STATE_MILESTONES)
+     {
+         var MILES_GAP = 32;
+@@ -496,10 +515,13 @@
+             _infoY += 8;
+         }
+     }
++    if (!localInputDisabled())
++    {
+     if (state == STATE_PROFILESET)
+     {
+         scrDrawTextInput(_xTip, _yTip, scrStringVal("menu_tip_confirm", "[2]") + "    " + scrStringVal("menu_tip_back", "[1]"), 0, 0, 2);
+     }
++    }
+     if (state == STATE_NAME)
+     {
+         scrSetFont(global.fontTall);
+@@ -551,7 +573,10 @@
+         }
+         draw_sprite(sMenuHand, 0, ((_xview + tx) - 24) + (charSpaceH * nameSelX), _yview + ty + 1 + (16 * nameSelY));
+         scrFontDefault();
++        if (!localInputDisabled())
++        {
+         scrDrawTextInput(_xTip, _yTip, scrStringVal("menu_tip_cancel", "[1]"), 0, 0, 2);
++        }
+     }
+ }
+ if (state == STATE_TERMINAL)
+--- original/gml_Object_oPauseMenu_Other_12.gml
++++ patched/gml_Object_oPauseMenu_Other_12.gml
+@@ -35,32 +35,33 @@
+ }
+ else if (substate == SUB_NAV)
+ {
++    if (!pfo_send_command_in_progress() && !localInputDisabled())
++    {
+     var choice = scrMenuNavigation();
+     if (choice == -2)
+     {
+-        scrSfxLibrary(soundSubExit[currentSoundSet]);
+-        scrSwitchState(statePrev);
+-        exit;
++            pfo_send_command(UnknownEnum.Value_1);
+     }
+-    if (pressStart)
++        else if (pressStart)
+     {
+-        scrSwitchState(STATE_UNPAUSE);
+-        exit;
++            pfo_send_command(UnknownEnum.Value_2);
+     }
+-    if (keyboard_check_pressed(vk_f1))
++        else if (keyboard_check_pressed(vk_f1))
+     {
+         scrSfxLibrary(soundSet[currentSoundSet]);
+         scrSwitchSub(SUB_RESET);
+-        exit;
+     }
+-    if (choice >= 0)
++        else if (choice >= 0)
+     {
+         switch (menuSel)
+         {
+             case OP_PLAYER:
+                 scrSfxLibrary(soundToggle[currentSoundSet]);
++                    if (!pfo_is_online())
++                    {
+                 currPlayer = choice;
+                 scrSwitchSub(SUB_INIT);
++                    }
+                 break;
+             case OP_UP:
+             case OP_DOWN:
+@@ -74,10 +75,19 @@
+                 scrSwitchSub(SUB_GET_KEY);
+                 break;
+             case OP_BACK:
++                    pfo_send_command(UnknownEnum.Value_1);
++                    break;
++            }
++        }
++    }
++    if (pfo_receive_command(UnknownEnum.Value_1))
++    {
+                 scrSfxLibrary(soundSubExit[currentSoundSet]);
+                 scrSwitchState(statePrev);
+-                break;
+         }
++    else if (pfo_receive_command(UnknownEnum.Value_2))
++    {
++        scrSwitchState(STATE_UNPAUSE);
+     }
+ }
+ else if (substate == SUB_GET_KEY)
+@@ -203,4 +213,10 @@
+             scrSwitchSub(SUB_INIT);
+         }
+     }
++}
++
++enum UnknownEnum
++{
++    Value_1 = 1,
++    Value_2
+ }
+--- original/gml_Object_oPauseMenu_Other_13.gml
++++ patched/gml_Object_oPauseMenu_Other_13.gml
+@@ -74,6 +74,8 @@
+ }
+ else if (substate == SUB_NAV)
+ {
++    if (!pfo_send_command_in_progress() && !localInputDisabled())
++    {
+     if (scrGetJoyCount() != padCount)
+     {
+         scrFixJoyDisconnect();
+@@ -85,21 +87,19 @@
+     var choice = scrMenuNavigation();
+     if (choice == -2)
+     {
+-        scrSfxLibrary(soundSubExit[currentSoundSet]);
+-        scrSwitchState(statePrev);
+-        exit;
++            pfo_send_command(UnknownEnum.Value_1);
+     }
+-    if (pressStart)
++        else if (pressStart)
+     {
+-        scrSwitchState(STATE_UNPAUSE);
+-        exit;
++            pfo_send_command(UnknownEnum.Value_2);
+     }
+-    if (keyboard_check_pressed(vk_f1))
++        else if (keyboard_check_pressed(vk_f1))
+     {
+         scrSfxLibrary(soundSet[currentSoundSet]);
+         scrSwitchSub(SUB_RESET);
+-        exit;
+     }
++        else
++        {
+     if (gamepad_button_check(joySlot, gp_shoulderl) && gamepad_button_check(joySlot, gp_shoulderr))
+     {
+         resetCounter++;
+@@ -113,16 +113,18 @@
+         resetCounter = 0;
+         scrSfxLibrary(soundSet[currentSoundSet]);
+         scrSwitchSub(SUB_RESET);
+-        exit;
+     }
+-    if (choice >= 0)
++            else if (choice >= 0)
+     {
+         switch (menuSel)
+         {
+             case OP_PLAYER:
+                 scrSfxLibrary(soundToggle[currentSoundSet]);
++                        if (!pfo_is_online())
++                        {
+                 currPlayer = choice;
+                 scrSwitchSub(SUB_INIT);
++                        }
+                 break;
+             case OP_SLOT:
+                 scrSfxLibrary(soundPrime[currentSoundSet]);
+@@ -146,10 +148,20 @@
+                 scrSwitchSub(SUB_GET_JOY);
+                 break;
+             case OP_BACK:
++                        pfo_send_command(UnknownEnum.Value_1);
++                        break;
++                }
++            }
++        }
++    }
++    if (pfo_receive_command(UnknownEnum.Value_1))
++    {
+                 scrSfxLibrary(soundSubExit[currentSoundSet]);
+                 scrSwitchState(statePrev);
+-                break;
+         }
++    else if (pfo_receive_command(UnknownEnum.Value_2))
++    {
++        scrSwitchState(STATE_UNPAUSE);
+     }
+ }
+ else if (substate == SUB_GET_JOY)
+@@ -374,4 +386,10 @@
+     {
+         scrSwitchSub(SUB_INIT);
+     }
++}
++
++enum UnknownEnum
++{
++    Value_1 = 1,
++    Value_2
+ }
+--- original/gml_Object_oPauseMenu_Other_14.gml
++++ patched/gml_Object_oPauseMenu_Other_14.gml
+@@ -37,30 +37,27 @@
+ }
+ else if (substate == SUB_NAV)
+ {
++    if (!pfo_send_command_in_progress() && !localInputDisabled())
++    {
+     var choice = scrMenuNavigation();
+     if (prevFullScreen != window_get_fullscreen())
+     {
+         scrSwitchSub(SUB_INIT);
+-        exit;
+     }
+-    if (choice == -2)
++        else if (choice == -2)
+     {
+-        scrSfxLibrary(soundSubExit[currentSoundSet]);
+-        scrSwitchState(statePrev);
+-        exit;
++            pfo_send_command(UnknownEnum.Value_1);
+     }
+-    if (pressStart)
++        else if (pressStart)
+     {
+-        scrSwitchState(STATE_UNPAUSE);
+-        exit;
++            pfo_send_command(UnknownEnum.Value_2);
+     }
+-    if (keyboard_check_pressed(vk_f1))
++        else if (keyboard_check_pressed(vk_f1))
+     {
+         scrSfxLibrary(soundSet[currentSoundSet]);
+         scrSwitchSub(SUB_RESET);
+-        exit;
+     }
+-    if (choice >= 0)
++        else if (choice >= 0)
+     {
+         switch (menuSel)
+         {
+@@ -123,10 +120,19 @@
+                 scrSwitchSub(SUB_DELAY);
+                 break;
+             case OP_BACK:
++                    pfo_send_command(UnknownEnum.Value_1);
++                    break;
++            }
++        }
++    }
++    if (pfo_receive_command(UnknownEnum.Value_1))
++    {
+                 scrSfxLibrary(soundSubExit[currentSoundSet]);
+                 scrSwitchState(statePrev);
+-                break;
+         }
++    else if (pfo_receive_command(UnknownEnum.Value_2))
++    {
++        scrSwitchState(STATE_UNPAUSE);
+     }
+ }
+ else if (substate == SUB_DELAY)
+@@ -173,4 +179,10 @@
+             scrSwitchSub(SUB_INIT);
+         }
+     }
++}
++
++enum UnknownEnum
++{
++    Value_1 = 1,
++    Value_2
+ }
+--- original/gml_Object_oPauseMenu_Other_15.gml
++++ patched/gml_Object_oPauseMenu_Other_15.gml
+@@ -20,25 +20,23 @@
+ }
+ else if (substate == SUB_NAV)
+ {
++    if (!pfo_send_command_in_progress() && !localInputDisabled())
++    {
+     var choice = scrMenuNavigation();
+     if (choice == -2)
+     {
+-        scrSfxLibrary(soundSubExit[currentSoundSet]);
+-        scrSwitchState(statePrev);
+-        exit;
++            pfo_send_command(UnknownEnum.Value_1);
+     }
+-    if (pressStart)
++        else if (pressStart)
+     {
+-        scrSwitchState(STATE_UNPAUSE);
+-        exit;
++            pfo_send_command(UnknownEnum.Value_2);
+     }
+-    if (keyboard_check_pressed(vk_f1))
++        else if (keyboard_check_pressed(vk_f1))
+     {
+         scrSfxLibrary(soundSet[currentSoundSet]);
+         scrSwitchSub(SUB_RESET);
+-        exit;
+     }
+-    if (choice >= 0)
++        else if (choice >= 0)
+     {
+         switch (menuSel)
+         {
+@@ -74,10 +72,19 @@
+                 }
+                 break;
+             case OP_BACK:
++                    pfo_send_command(UnknownEnum.Value_1);
++                    break;
++            }
++        }
++    }
++    if (pfo_receive_command(UnknownEnum.Value_1))
++    {
+                 scrSfxLibrary(soundSubExit[currentSoundSet]);
+                 scrSwitchState(statePrev);
+-                break;
+         }
++    else if (pfo_receive_command(UnknownEnum.Value_2))
++    {
++        scrSwitchState(STATE_UNPAUSE);
+     }
+ }
+ else if (substate == SUB_RESET)
+@@ -98,4 +105,10 @@
+             scrSwitchSub(SUB_INIT);
+         }
+     }
++}
++
++enum UnknownEnum
++{
++    Value_1 = 1,
++    Value_2
+ }
+--- original/gml_Object_oPauseMenu_Step_1.gml
++++ patched/gml_Object_oPauseMenu_Step_1.gml
+@@ -1,19 +1,36 @@
+-if (state != STATE_JOYCONFIG && (inputListenerTimer++ % 30) == 0 && scrGetJoyCount() != padCount)
++if (!localInputDisabled() && state != STATE_JOYCONFIG && (inputListenerTimer++ % 30) == 0 && scrGetJoyCount() != padCount)
+ {
+     scrFixJoyDisconnect();
+     player = 2;
+     joySlot = global.joySlot[0];
+ }
++if (usingLocalInput())
++{
+ if (player <= 1)
+ {
+-    scrGetInput(player);
++        scrGetInput(player, UnknownEnum.Value_3);
+ }
+ else
+ {
+-    scrGetInputMerged();
++        scrGetInputMerged(UnknownEnum.Value_3);
+ }
++}
++else if (player <= 1)
++{
++    scrGetInput(player, UnknownEnum.Value_2);
++}
++else
++{
++    scrGetInput(pfo_get_online_player_index(), UnknownEnum.Value_2);
++}
+ if (global.crashToTerminal)
+ {
+     state = STATE_TERMINAL;
+ }
+ scrRunStateMachine();
++
++enum UnknownEnum
++{
++    Value_2 = 2,
++    Value_3
++}
+--- original/gml_Object_oSteamController_Create_0.gml
++++ patched/gml_Object_oSteamController_Create_0.gml
+@@ -8,3 +8,14 @@
+     exit;
+ }
+ depth = -10000;
++global.betaVersion += (" - PFO 50 v" + extension_get_version("PFO"));
++alertMessageText = "";
++alertMessageTimer = -1;
++showFps = false;
++showPing = false;
++showFrame = false;
++showDelay = true;
++prevGame = 0;
++global.onlineDefaultLanguage = undefined;
++global.onlineFavoredPlayer = -1;
++pfo_start();
+--- original/gml_Object_oSteamController_Other_3.gml
++++ patched/gml_Object_oSteamController_Other_3.gml
+@@ -1,2 +1,3 @@
++pfo_quit();
+ steam_shutdown();
+ scrQuit();
+--- original/gml_Object_oSteamController_Step_0.gml
++++ patched/gml_Object_oSteamController_Step_0.gml
+@@ -1,19 +0,0 @@
+-steam_update();
+-if (!global.steamReady)
+-{
+-    if (steam_initialised())
+-    {
+-        if (steam_stats_ready())
+-        {
+-            global.steamReady = true;
+-        }
+-    }
+-}
+-if (steam_is_overlay_activated())
+-{
+-    global.steamOverlayActivated = true;
+-}
+-else
+-{
+-    global.steamOverlayActivated = false;
+-}
+--- original/gml_Object_oTitleScreens_Create_0.gml
++++ patched/gml_Object_oTitleScreens_Create_0.gml
+@@ -84,6 +84,10 @@
+     {
+         return false;
+     }
++    if (!pfo_all_players_loaded())
++    {
++        return false;
++    }
+     return true;
+ };
+ 
+--- original/gml_Object_oTitleScreens_Step_1.gml
++++ patched/gml_Object_oTitleScreens_Step_1.gml
+@@ -9,11 +9,11 @@
+ until (state == _prior && substate == _priorSub);
+ if (state != STATE_BLACKSCREEN)
+ {
+-    if (bPressStart[0] || global.steamOverlayActivated)
++    if (bPressStart[0] || bForcePause[0])
+     {
+         scrPause(0);
+     }
+-    else if (bPressStart[1])
++    else if (bPressStart[1] || bForcePause[1])
+     {
+         scrPause(1);
+     }
