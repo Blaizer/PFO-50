@@ -181,8 +181,8 @@ function pfo_receive_command(command, param)
 enum PFO
 {
     AllPlayersLoadedBits = 1,
-    InputCommandBits = 5,
-    InputCommandParamBits = 6,
+    InputCommandBits = 7,
+    InputCommandParamBits = 8,
     ExtraInputBits = PFO.AllPlayersLoadedBits + PFO.InputCommandBits + PFO.InputCommandParamBits,
 
     MaxPlayers = 2

@@ -1,3 +1,5 @@
 /.vs/
 /UFO 50/
 obj/
+*.APS
+desktop.ini

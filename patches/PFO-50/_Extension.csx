@@ -10,7 +10,8 @@ void PatchPFO50Extension()
 {
     var extDllName = "PFO.dll";
     var extensionName = "PFO";
-    var extensionVersion = "0.2.7";
+    var extensionVersion = GetModVersion();
+    var gameVersion = GetGameVersion();
 
     var pfoExtension = Data.Extensions.ByName(extensionName);
     if (pfoExtension == null)
@@ -53,6 +54,7 @@ void PatchPFO50Extension()
             pfoExtension.Options.Add(option);
         }
 
+        DefineExtensionOption("gameVersion", gameVersion);
         DefineExtensionOption("onlineStateChangedCallback", "scrOnlineStateChangedCallback");
         DefineExtensionOption("getInputCallback", "scrGetInputCallback");
         DefineExtensionOption("getChecksumCallback", "scrGetChecksumCallback");

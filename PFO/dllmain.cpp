@@ -6,6 +6,8 @@
 #include "YYRValue.h"
 #define YYEXPORT __declspec(dllexport)
 
+#include "../version.h"
+
 YYRunnerInterface* g_pYYRunnerInterface;
 
 [[noreturn]] FORCEINLINE static void unreachable() { __assume(false); }
@@ -33,9 +35,7 @@ static void trace(const char* format, ...)
 namespace
 {
     constexpr char c_ExtensionName[] = "PFO";
-    constexpr char c_ExtensionVersion[] = (""
-#include "../version.h"
-        "");
+    constexpr char c_ExtensionVersion[] = MOD_VERSION;
 
     constexpr int64 c_TimeBeforeResendingMessage = 1'000'000 / 60;
     constexpr int64 c_WaitForInputsDelayTime = 1'000'000 / 60;
@@ -1635,7 +1635,7 @@ namespace
                     assert(ret->m_OwnerPlayerIndex == playerIndex);
                 }
             }
-            else if (playerIndex < 0)
+            else if (playerIndex == -1)
             {
                 assert(ret != nullptr);
                 if (ret->m_Status == EFileStatus::None)
@@ -1729,6 +1729,7 @@ namespace
 
         void SendReliableMessage(ReliableMessage& reliableMessage, CInstance* instance, RValue* arg = nullptr, ChecksumBuffer* checksumBuffer = nullptr)
         {
+        RETRY:
             auto netMessage = g_SteamNetworkingUtils->AllocateMessage(k_cbMaxSteamNetworkingSocketsMessageSizeSend);
 
             Writer writer(static_cast<uint8*>(netMessage->m_pData), netMessage->m_cbSize);
@@ -1782,9 +1783,9 @@ namespace
             g_SteamNetworkingSockets->SendMessages(1, &netMessage, &outResult);
             while (outResult == -k_EResultLimitExceeded)
             {
-                Timing_Sleep(1'000'000 / 120);
+                Timing_Sleep(1'000'000  / 2);
                 trace("Resending file message\n");
-                g_SteamNetworkingSockets->SendMessages(1, &netMessage, &outResult);
+                goto RETRY;
             }
         }
 

@@ -340,26 +340,26 @@
              for (var i = 0; i < global.ACH_TOTAL; i++)
 --- original/gml_GlobalScript_scrCloseAccount.gml
 +++ patched/gml_GlobalScript_scrCloseAccount.gml
-@@ -12,7 +12,7 @@
-     _filestring = base64_encode(_filestring);
-     var _buffer = buffer_create(string_byte_length(_filestring) + 1, buffer_fixed, 1);
-     buffer_write(_buffer, buffer_string, _filestring);
--    buffer_save(_buffer, global.ACCOUNT_FILE);
-+    pfo_buffer_save(_buffer, global.ACCOUNT_FILE);
-     buffer_delete(_buffer);
-     global.accountSaveData = undefined;
-     global.accountSaveData = {};
+@@ -10,7 +10,7 @@
+         _filestring = base64_encode(_filestring);
+         var _buffer = buffer_create(string_byte_length(_filestring) + 1, buffer_fixed, 1);
+         buffer_write(_buffer, buffer_string, _filestring);
+-        buffer_save(_buffer, global.ACCOUNT_FILE);
++        pfo_buffer_save(_buffer, global.ACCOUNT_FILE);
+         buffer_delete(_buffer);
+         global.needToSaveAccount = false;
+     }
 --- original/gml_GlobalScript_scrCloseCurrFile.gml
 +++ patched/gml_GlobalScript_scrCloseCurrFile.gml
-@@ -21,7 +21,7 @@
-     _filestring = base64_encode(_filestring);
-     var _buffer = buffer_create(string_byte_length(_filestring) + 1, buffer_fixed, 1);
-     buffer_write(_buffer, buffer_string, _filestring);
--    buffer_save(_buffer, _filename);
-+    pfo_buffer_save(_buffer, _filename);
-     buffer_delete(_buffer);
-     global.currProfileSaveNum = 0;
-     global.currProfileSaveData = undefined;
+@@ -15,7 +15,7 @@
+         _filestring = base64_encode(_filestring);
+         var _buffer = buffer_create(string_byte_length(_filestring) + 1, buffer_fixed, 1);
+         buffer_write(_buffer, buffer_string, _filestring);
+-        buffer_save(_buffer, _filename);
++        pfo_buffer_save(_buffer, _filename);
+         buffer_delete(_buffer);
+         global.needToSaveProfile = false;
+     }
 --- original/gml_GlobalScript_scrDefineMeta.gml
 +++ patched/gml_GlobalScript_scrDefineMeta.gml
 @@ -28,6 +28,8 @@
@@ -373,48 +373,47 @@
      scr40_Meta(nGame);
 --- original/gml_GlobalScript_scrGetInput.gml
 +++ patched/gml_GlobalScript_scrGetInput.gml
-@@ -1,18 +1,18 @@
+@@ -1,17 +1,17 @@
  function scrGetInput(arg0)
  {
-+    var getInputType = (argument_count > 1) ? argument[1] : UnknownEnum.Value_0;
-+    if ((getInputType & UnknownEnum.Value_1) != 0 && pfo_is_online())
-+    {
+-    var _slot = global.joySlot[argument0];
+-    if (global.playbackMode && is_array(global.inputPlayback) && instance_exists(oGame))
++    var _getInputType = (argument_count > 1) ? argument[1] : UnknownEnum.Value_0;
++    if ((_getInputType & UnknownEnum.Value_1) != 0 && pfo_is_online())
+     {
+-        pressStart = keyboard_check_pressed(global.keyMap[arg0][global.INP_START]) || gamepad_button_check_pressed(_slot, global.joyMap[arg0][global.INP_START]) || keyboard_check_pressed(vk_escape);
+-        if (pressStart)
 +        arg0 = 0;
 +    }
-     _player = arg0;
-     _slot = global.joySlot[arg0];
--    if (global.playbackMode && is_array(global.inputPlayback) && instance_exists(oGame))
-+    if ((getInputType & UnknownEnum.Value_1) == 0 && pfo_is_online())
-     {
--        pressStart = keyboard_check_pressed(global.keyMap[_player][global.INP_START]) || gamepad_button_check_pressed(_slot, global.joyMap[_player][global.INP_START]) || keyboard_check_pressed(vk_escape);
--        if (pressStart)
--        {
++    var _slot = global.joySlot[arg0];
++    if ((_getInputType & UnknownEnum.Value_1) == 0 && pfo_is_online())
+         {
 -            global.inputFrame--;
 -            exit;
-+        scrSetInputFromPFOFlags(pfo_remove_extra_input(pfo_get_input(_player)));
++        scrSetInputFromPFOFlags(pfo_remove_extra_input(pfo_get_input(arg0)));
          }
 -        scrPlaybackInputs();
 -        exit;
 -    }
 +    else
 +    {
-     holdUp = keyboard_check(global.keyMap[_player][global.INP_UP]);
-     holdDown = keyboard_check(global.keyMap[_player][global.INP_DOWN]);
-     holdLeft = keyboard_check(global.keyMap[_player][global.INP_LEFT]);
-@@ -151,6 +151,7 @@
-         fire2released = keyboard_check_released(global.keyMap[_player][global.INP_FIRE2]) || gamepad_button_check_released(_slot, gp_face1) || gamepad_button_check_released(_slot, gp_face4);
+     holdUp = keyboard_check(global.keyMap[arg0][global.INP_UP]);
+     holdDown = keyboard_check(global.keyMap[arg0][global.INP_DOWN]);
+     holdLeft = keyboard_check(global.keyMap[arg0][global.INP_LEFT]);
+@@ -130,6 +130,7 @@
+         fire2released = keyboard_check_released(global.keyMap[arg0][global.INP_FIRE2]) || gamepad_button_check_released(_slot, gp_face1) || gamepad_button_check_released(_slot, gp_face4);
      }
-     pressStart = keyboard_check_pressed(global.keyMap[_player][global.INP_START]) || gamepad_button_check_pressed(_slot, global.joyMap[_player][global.INP_START]) || keyboard_check_pressed(vk_escape);
+     pressStart = keyboard_check_pressed(global.keyMap[arg0][global.INP_START]) || gamepad_button_check_pressed(_slot, global.joyMap[arg0][global.INP_START]) || keyboard_check_pressed(vk_escape);
 +        forcePause = global.steamOverlayActivated;
      if (holdLeft && holdRight)
      {
          holdLeft = false;
-@@ -190,4 +191,22 @@
+@@ -169,4 +170,21 @@
      {
          global.inputFocus = 2;
      }
 +    }
-+    if ((getInputType & UnknownEnum.Value_2) == 0 && global.playbackMode && is_array(global.inputPlayback) && instance_exists(oGame))
++    if ((_getInputType & UnknownEnum.Value_2) == 0 && global.playbackMode && is_array(global.inputPlayback) && instance_exists(oGame))
 +    {
 +        if (pressStart)
 +        {
@@ -422,7 +421,6 @@
 +            exit;
 +        }
 +        scrPlaybackInputs();
-+        exit;
 +    }
 +}
 +
@@ -455,6 +453,16 @@
 +{
 +    Value_0
  }
+--- original/gml_GlobalScript_scrGetInputBothStart.gml
++++ patched/gml_GlobalScript_scrGetInputBothStart.gml
+@@ -1,5 +1,7 @@
+ function scrGetInputBothStart()
+ {
++    scrGetInputBoth();
++    exit;
+     for (var p = 1; p >= 0; p--)
+     {
+         var _slot = global.joySlot[p];
 --- original/gml_GlobalScript_scrGetInputMerged.gml
 +++ patched/gml_GlobalScript_scrGetInputMerged.gml
 @@ -1,6 +1,6 @@
@@ -476,9 +484,19 @@
 +{
 +    Value_0
  }
+--- original/gml_GlobalScript_scrGetInputMergedFire1.gml
++++ patched/gml_GlobalScript_scrGetInputMergedFire1.gml
+@@ -1,5 +1,7 @@
+ function scrGetInputMergedFire1()
+ {
++    scrGetInputMerged();
++    exit;
+     for (var p = 1; p >= 0; p--)
+     {
+         var _slot = global.joySlot[p];
 --- original/gml_GlobalScript_scrInit.gml
 +++ patched/gml_GlobalScript_scrInit.gml
-@@ -103,13 +103,6 @@
+@@ -93,13 +93,6 @@
      global.AM_LIB_TIME = 4000;
      global.AM_LIB_TIME_PER_GAME = 1200;
      global.attractModePlaylist = ds_list_create();
@@ -492,9 +510,9 @@
      global.attractModeIndex = 0;
      global.playbackMode = false;
      global.inputPlayback = array_create(0);
-@@ -156,7 +149,7 @@
-     scrFontDefault();
-     global.CARRIAGE_RETURN = "\n";
+@@ -143,7 +136,7 @@
+     global.currCutscene = -1;
+     scrInitAch();
      scrInitRandomness();
 -    scrShuffle(global.attractModePlaylist);
 +    scrInitAttractModePlaylist();
@@ -506,7 +524,7 @@
 @@ -1,7 +1,10 @@
  function scrInitAch()
  {
-+    if (!verify(oAchManager))
++    if (!instance_exists(oAchManager))
 +    {
      instance_create(-32, -32, oAchManager);
      scrDefineAch();
@@ -516,7 +534,7 @@
      {
 --- original/gml_GlobalScript_scrInputAny.gml
 +++ patched/gml_GlobalScript_scrInputAny.gml
-@@ -1,23 +1,22 @@
+@@ -1,23 +1,21 @@
  function scrInputAny()
  {
 -    var _slot0 = global.joySlot[0];
@@ -530,10 +548,9 @@
          else
          {
 -            return false;
-+        var player = _player;
 +        with (oScreenHandler)
 +        {
-+            scrGetInput(player, UnknownEnum.Value_2 | ((argument_count > 0) ? argument[0] : UnknownEnum.Value_0));
++            scrGetInput(0, UnknownEnum.Value_2 | ((argument_count > 0) ? argument[0] : UnknownEnum.Value_0));
 +            return holdUp || holdDown || holdLeft || holdRight || fire1 || fire2 || pressStart;
          }
      }
@@ -707,7 +724,7 @@
  }
 --- original/gml_GlobalScript_scrOpenFileManual.gml
 +++ patched/gml_GlobalScript_scrOpenFileManual.gml
-@@ -12,11 +12,11 @@
+@@ -8,11 +8,11 @@
          return false;
      }
      global.currProfileSaveNum = arg0;
@@ -858,18 +875,18 @@
          draw_set_color(global.palette[2]);
          draw_rectangle(624, 176, 655, 207, false);
 @@ -511,12 +518,12 @@
-     draw_text_ce(1480, 271, "$" + string(cash[currPlayer]), 1);
+     draw_text_ce(1480, 271 + global.jpvoff, "$" + string(cash[currPlayer]), 1);
      if (sel != 3)
      {
 -        if (sponsee[sel] != -4)
 +        if (sponsee[currPlayer][sel] != -4)
          {
              draw_set_color(c_white);
--            draw_text(1288, 271, string(sponsee[sel].name));
-+            draw_text(1288, 271, string(sponsee[currPlayer][sel].name));
+-            draw_text(1288, 271 + global.jpvoff, string(sponsee[sel].name));
++            draw_text(1288, 271 + global.jpvoff, string(sponsee[currPlayer][sel].name));
              draw_set_color(global.palette[9]);
--            draw_text(1384, 271, "$" + string(sponseeCost[sel]));
-+            draw_text(1384, 271, "$" + string(sponseeCost[currPlayer][sel]));
+-            draw_text(1384, 271 + global.jpvoff, "$" + string(sponseeCost[sel]));
++            draw_text(1384, 271 + global.jpvoff, "$" + string(sponseeCost[currPlayer][sel]));
          }
      }
      else
@@ -908,15 +925,15 @@
                      draw_sprite(s14_qRunYellowNose, 0, 1304 + (64 * i), 336);
                  }
 @@ -586,7 +593,7 @@
-     draw_text_centered(viewx + 184, viewy + 4, scrStringExt("whose_turn", name[currPlayer], 0, 4), 8);
+     draw_text_centered(viewx + 184, viewy + 4, scrStringExt("whose_turn", name[currPlayer], 0, 2), 8);
      draw_text_bg_centered(viewx + 56, viewy + 142, scrStringExt("trainer", 0, 10, 2), 0, 8, 8, true);
-     draw_text_ce(1864, 271, "$" + string(cash[currPlayer]), 1);
+     draw_text_ce(1864, 271 + global.jpvoff, "$" + string(cash[currPlayer]), 1);
 -    if (sel == 0 && !stable[1 - subsel].trained)
 +    if (sel == 0 && !stable[currPlayer][1 - subsel].trained)
      {
          draw_set_color(global.palette[9]);
-         draw_text_ce(1864, 303, "$" + string(trainCost), 1);
-@@ -598,57 +605,57 @@
+         draw_text_ce(1864, 303 + global.jpvoff, "$" + string(trainCost), 1);
+@@ -598,53 +605,53 @@
      }
      for (var i = 1; i >= 0; i--)
      {
@@ -983,11 +1000,6 @@
 +            else if (stable[currPlayer][i].clumsy > 2)
              {
                  cs = scrString("steady");
-             }
--            else if (stable[i].clumsy > 2)
-+            else if (stable[currPlayer][i].clumsy > 2)
-             {
-                 cs = scrString("very_steady");
              }
 --- original/gml_Object_o14_Game_Other_11.gml
 +++ patched/gml_Object_o14_Game_Other_11.gml
@@ -1473,7 +1485,7 @@
      var pPos = subsel;
      if (pressUp)
      {
-@@ -146,98 +148,12 @@
+@@ -146,94 +148,12 @@
              substate = 1;
              scr14_MessageSet(scrString("info_cancel"));
          }
@@ -1499,13 +1511,9 @@
 -            {
 -                clumsyStr = scrString("steady");
 -            }
--            else if (currQ[infoQuibble].clumsy > 2)
--            {
--                clumsyStr = scrString("very_steady");
--            }
              else
              {
--                clumsyStr = "STEADY";
+-                clumsyStr = scrString("very_steady");
 +                pfo_send_command(UnknownEnum.Value_23, int64(subsel), (numPlayers == 2) ? currPlayer : -1);
              }
 -            var speedStr;
@@ -1573,7 +1581,7 @@
      if (!instance_exists(o14_Hand))
      {
          exit;
-@@ -270,4 +186,9 @@
+@@ -266,4 +186,9 @@
      HPort,
      Camera,
      SurfaceID
@@ -1873,7 +1881,7 @@
      else if (numPlayers == 1 || numPlayers == 3 || (numPlayers == 2 && currPlayer == 0))
      {
          scrGetInput(0);
-@@ -84,6 +95,328 @@
+@@ -84,6 +95,324 @@
          event_user(15);
          break;
  }
@@ -2062,13 +2070,9 @@
 +                {
 +                    clumsyStr = scrString("steady");
 +                }
-+                else if (currQ[infoQuibble].clumsy > 2)
-+                {
-+                    clumsyStr = scrString("very_steady");
-+                }
 +                else
 +                {
-+                    clumsyStr = "STEADY";
++                    clumsyStr = scrString("very_steady");
 +                }
 +                var speedStr;
 +                if (infoQuibble == scr14_GetRanking(RANK_FASTEST))
@@ -2202,7 +2206,7 @@
  for (var i = 0; i < 3; i++)
  {
      var numRepeats = 1;
-@@ -124,12 +457,44 @@
+@@ -124,12 +453,44 @@
  }
  for (var i = 0; i < 3; i++)
  {
@@ -2415,8 +2419,8 @@
 +            draw_sprite(s50_GodsExhausted, GOD_PORTRAITS[god], HUD_LEFT + _hudShiftX + 16, 8);
 +            draw_sprite(powerSprite, 0, HUD_LEFT + _hudShiftX + 64, 8);
          }
--        draw_text_centered(HUD_TEXT_CENTER + hudShiftX, 56, string_even(GOD_NAMES[god], 4), 8);
-+        draw_text_centered(HUD_TEXT_CENTER + _hudShiftX, 56, string_even(GOD_NAMES[god], 4), 8);
+-        draw_text((HUD_TEXT_CENTER + hudShiftX) - 32, 56, string_even(GOD_NAMES[god], 4));
++        draw_text((HUD_TEXT_CENTER + _hudShiftX) - 32, 56, string_even(GOD_NAMES[god], 4));
      }
      draw_set_color(c_white);
      draw_text(GRID_LEFT, 200, scrMessageWrite(2));
@@ -2458,7 +2462,7 @@
      else if (!global.attractModeLibrary)
 --- original/gml_Object_o50_Game_KeyPress_49.gml
 +++ patched/gml_Object_o50_Game_KeyPress_49.gml
-@@ -9,7 +9,10 @@
+@@ -6,7 +6,10 @@
      {
          for (var j = 0; j < GRID_Y_NUM; j++)
          {
@@ -2808,8 +2812,8 @@
                  retreatLoc.units[i] += defendRunners[i];
              }
          }
--        if (numPlayers == 1 || !fogOfWar || actionIndex == 2)
-+        if (numPlayers == 1 || !fogOfWar || pfo_is_online() || actionIndex == 2)
+-        if (numPlayers == 1 || !fogOfWar || (actionIndex == 2 && action.type != MIRACLE))
++        if (numPlayers == 1 || !fogOfWar || pfo_is_online() || (actionIndex == 2 && action.type != MIRACLE))
          {
 -            scr50_MessageSlow(scrString("attack_successful"));
 +            scrMessageSet(scrString("attack_successful"));
@@ -2825,8 +2829,8 @@
          {
              defendLoc.units[i] += defendRunners[i];
          }
--        if (numPlayers == 1 || !fogOfWar || actionIndex == 2)
-+        if (numPlayers == 1 || !fogOfWar || pfo_is_online() || actionIndex == 2)
+-        if (numPlayers == 1 || !fogOfWar || (actionIndex == 2 && action.type != MIRACLE))
++        if (numPlayers == 1 || !fogOfWar || pfo_is_online() || (actionIndex == 2 && action.type != MIRACLE))
          {
 -            scr50_MessageSlow(scrString("attack_failed"));
 +            scrMessageSet(scrString("attack_failed"));
@@ -2903,7 +2907,7 @@
  }
 --- original/gml_Object_oGame_Step_0.gml
 +++ patched/gml_Object_oGame_Step_0.gml
-@@ -39,11 +39,11 @@
+@@ -36,11 +36,11 @@
  }
  if (!global.attractModeLibrary)
  {
@@ -2956,7 +2960,7 @@
          draw_set_color(global.palette[17]);
          var _str = scrStringVal("crack_launch_text", "[2");
 @@ -91,6 +94,19 @@
-         draw_text(8, 200, "v" + global.betaVersion);
+         draw_text(8, 200, "v1.7.8.21");
          scrFontDefault();
      }
 +        else
@@ -2968,7 +2972,7 @@
 +            scrDrawTextInput(8, 184, _str[1], 0, 0, false);
 +            scrDrawTextInput(8, 192, "PRESS [1] FOR LOCAL PLAY", 0, 0, false);
 +            scrSetFont(global.fontThinOutline);
-+            draw_text(8, 200, "v" + global.betaVersion);
++            draw_text(8, 200, global.betaVersion);
 +            scrFontDefault();
 +        }
 +    }
@@ -3001,7 +3005,7 @@
  if (state == STATE_INTRO)
  {
      scrLibraryIntro(INTRO_SCENE);
-@@ -959,4 +989,8 @@
+@@ -972,4 +1002,8 @@
  if (state == STATE_PRE_GAMES_BUFFER)
  {
      scrFillScreen(0);
@@ -3030,16 +3034,16 @@
      CROSS_FADE = 2;
      ANIMATE_END = false;
      FRAMES_PER_IMG = 850;
-@@ -204,7 +211,7 @@
-         stateCounter = 800;
-         imgEnd = false;
+@@ -188,7 +195,7 @@
+             imgEnd = true;
+         }
      }
 -    if (fire2pressed)
 +    if (fire1pressed)
      {
          with (oAudioHandler)
          {
-@@ -221,6 +228,18 @@
+@@ -205,6 +212,18 @@
          {
              scrSwitchSub(SUB_CRACK_EXIT_PLAIN);
          }
@@ -3091,7 +3095,7 @@
          {
 --- original/gml_Object_oLibrary_Other_14.gml
 +++ patched/gml_Object_oLibrary_Other_14.gml
-@@ -217,9 +217,9 @@
+@@ -216,9 +216,9 @@
  else if (substate == SUB_DELETING)
  {
      var filename = string_replace(global.SAVE_FILE, "*", string(menuSel + 1));
@@ -3103,7 +3107,7 @@
      }
      for (var i = 0; i < 22; i++)
      {
-@@ -361,12 +361,13 @@
+@@ -360,14 +360,15 @@
  else if (substate == SUB_COPYING)
  {
      var fileFrom = string_replace(global.SAVE_FILE, "*", string(copyFrom + 1));
@@ -3116,11 +3120,14 @@
 -        file_delete(fileTo);
 +        pfo_file_delete(fileTo);
      }
--    file_copy(fileFrom, fileTo);
-+    pfo_file_copy(fileFrom, fileTo);
+-    if (file_exists(fileFrom))
++    if (pfo_file_exists(fileFrom))
+     {
+-        file_copy(fileFrom, fileTo);
++        pfo_file_copy(fileFrom, fileTo);
+     }
      scrOpenFileManual(copyTo + 1);
      var nameOfCopy = string_copy(profileName[copyFrom + 1], 1, global.MAX_PROFILE_NAME_LENGTH - 4);
-     nameOfCopy += " CPY";
 --- original/gml_Object_oLibrary_Other_25.gml
 +++ patched/gml_Object_oLibrary_Other_25.gml
 @@ -16,6 +16,10 @@
@@ -3164,19 +3171,15 @@
  }
  else
  {
-@@ -17,6 +17,12 @@
+@@ -17,3 +17,8 @@
  }
- x = scrViewX() + (__view_get(e__VW.WView, 0) / 2);
- y = scrViewY() + (__view_get(e__VW.HView, 0) / 2);
+ x = camera_get_view_x(view_get_camera(0)) + 192;
+ y = camera_get_view_y(view_get_camera(0)) + 108;
 +
 +enum UnknownEnum
 +{
-+    Value_2 = 2,
-+    Value_3
++    Value_3 = 3
 +}
- 
- enum e__VW
- {
 --- original/gml_Object_oPauseMenu_Create_0.gml
 +++ patched/gml_Object_oPauseMenu_Create_0.gml
 @@ -157,3 +157,13 @@
@@ -3195,9 +3198,9 @@
 +};
 --- original/gml_Object_oPauseMenu_Draw_0.gml
 +++ patched/gml_Object_oPauseMenu_Draw_0.gml
-@@ -36,8 +36,17 @@
+@@ -34,8 +34,17 @@
      scrSetFont(global.fontTall);
-     scrDrawTextCentered(string_even(menuHeader, 3), _xview, _yview + 8, 8, _wview);
+     scrDrawTextCentered(string_even(menuHeader, 3), _xview, _yview + 8, 8, 384);
      scrFontDefault();
 -    if (is_array(itemType))
 +    if (usingLocalInput() && localInputDisabled())
@@ -3214,7 +3217,7 @@
          var _yPos = TOP;
          for (var i = 0; i < array_length(itemType); i++)
          {
-@@ -271,7 +280,14 @@
+@@ -269,7 +278,14 @@
              {
                  draw_text(LEFT_TEXT_X, _yPos, itemName[i]);
                  draw_set_halign(fa_right);
@@ -3229,7 +3232,7 @@
                  draw_set_halign(fa_left);
                  _yPos += 12;
              }
-@@ -294,6 +310,8 @@
+@@ -292,6 +308,8 @@
          }
          scrFontDefault();
      }
@@ -3238,7 +3241,7 @@
      if (state == STATE_ROOT_LIBRARY || state == STATE_ROOT_GAME)
      {
          if (scrInGame())
-@@ -439,6 +457,7 @@
+@@ -432,6 +450,7 @@
              }
          }
      }
@@ -3246,7 +3249,7 @@
      if (state == STATE_MILESTONES)
      {
          var MILES_GAP = 32;
-@@ -496,10 +515,13 @@
+@@ -488,10 +507,13 @@
              _infoY += 8;
          }
      }
@@ -3259,10 +3262,10 @@
 +    }
      if (state == STATE_NAME)
      {
-         scrSetFont(global.fontTall);
-@@ -551,7 +573,10 @@
+         if (global.language == global.LANG_JAPANESE)
+@@ -585,7 +607,10 @@
+             draw_sprite(sMenuHand, 0, ((_xview + tx) - 24) + (charSpaceH * nameSelX), _yview + ty + 1 + (16 * nameSelY));
          }
-         draw_sprite(sMenuHand, 0, ((_xview + tx) - 24) + (charSpaceH * nameSelX), _yview + ty + 1 + (16 * nameSelY));
          scrFontDefault();
 +        if (!localInputDisabled())
 +        {
@@ -3273,7 +3276,7 @@
  if (state == STATE_TERMINAL)
 --- original/gml_Object_oPauseMenu_Other_12.gml
 +++ patched/gml_Object_oPauseMenu_Other_12.gml
-@@ -35,32 +35,33 @@
+@@ -36,32 +36,33 @@
  }
  else if (substate == SUB_NAV)
  {
@@ -3316,7 +3319,7 @@
                  break;
              case OP_UP:
              case OP_DOWN:
-@@ -74,10 +75,19 @@
+@@ -75,10 +76,19 @@
                  scrSwitchSub(SUB_GET_KEY);
                  break;
              case OP_BACK:
@@ -3337,7 +3340,7 @@
      }
  }
  else if (substate == SUB_GET_KEY)
-@@ -203,4 +213,10 @@
+@@ -204,4 +214,10 @@
              scrSwitchSub(SUB_INIT);
          }
      }
@@ -3350,7 +3353,7 @@
  }
 --- original/gml_Object_oPauseMenu_Other_13.gml
 +++ patched/gml_Object_oPauseMenu_Other_13.gml
-@@ -74,6 +74,8 @@
+@@ -75,6 +75,8 @@
  }
  else if (substate == SUB_NAV)
  {
@@ -3359,7 +3362,7 @@
      if (scrGetJoyCount() != padCount)
      {
          scrFixJoyDisconnect();
-@@ -85,21 +87,19 @@
+@@ -86,21 +88,19 @@
      var choice = scrMenuNavigation();
      if (choice == -2)
      {
@@ -3387,7 +3390,7 @@
      if (gamepad_button_check(joySlot, gp_shoulderl) && gamepad_button_check(joySlot, gp_shoulderr))
      {
          resetCounter++;
-@@ -113,16 +113,18 @@
+@@ -114,16 +114,18 @@
          resetCounter = 0;
          scrSfxLibrary(soundSet[currentSoundSet]);
          scrSwitchSub(SUB_RESET);
@@ -3408,7 +3411,7 @@
                  break;
              case OP_SLOT:
                  scrSfxLibrary(soundPrime[currentSoundSet]);
-@@ -146,10 +148,20 @@
+@@ -147,10 +149,20 @@
                  scrSwitchSub(SUB_GET_JOY);
                  break;
              case OP_BACK:
@@ -3430,7 +3433,7 @@
      }
  }
  else if (substate == SUB_GET_JOY)
-@@ -374,4 +386,10 @@
+@@ -375,4 +387,10 @@
      {
          scrSwitchSub(SUB_INIT);
      }
@@ -3516,7 +3519,7 @@
  }
 --- original/gml_Object_oPauseMenu_Other_15.gml
 +++ patched/gml_Object_oPauseMenu_Other_15.gml
-@@ -20,25 +20,23 @@
+@@ -21,25 +21,23 @@
  }
  else if (substate == SUB_NAV)
  {
@@ -3549,7 +3552,7 @@
      {
          switch (menuSel)
          {
-@@ -74,10 +72,19 @@
+@@ -75,10 +73,19 @@
                  }
                  break;
              case OP_BACK:
@@ -3570,7 +3573,7 @@
      }
  }
  else if (substate == SUB_RESET)
-@@ -98,4 +105,10 @@
+@@ -99,4 +106,10 @@
              scrSwitchSub(SUB_INIT);
          }
      }
@@ -3625,11 +3628,11 @@
 +}
 --- original/gml_Object_oSteamController_Create_0.gml
 +++ patched/gml_Object_oSteamController_Create_0.gml
-@@ -8,3 +8,14 @@
+@@ -4,3 +4,14 @@
      exit;
  }
  depth = -10000;
-+global.betaVersion += (" - PFO 50 v" + extension_get_version("PFO"));
++global.betaVersion = "v" + extension_get_option_value("PFO", "gameVersion") + " - PFO 50 v" + extension_get_version("PFO");
 +alertMessageText = "";
 +alertMessageTimer = -1;
 +showFps = false;

@@ -1,6 +1,7 @@
 #load "lib/_UFO50.csx"
 #load "lib/_Utils.csx"
 
+{
 var modName = Path.GetFileName(Directory.GetDirectories(GetPatchesDir())[0]);
 var modPrettyName = modName.Replace("-", " ");
 var modVersion = GetModVersion();
@@ -40,11 +41,15 @@ CopyFile(dllOutputDir, dllDir, extDllName);
 
 var ufo50Version = GetUFO50Version(Data);
 var modPatchesDir = Path.Join(GetPatchesDir(), modName);
-CopyFile(buildDir, modPatchesDir, ufo50Version + ".code.diff");
+var diffFile = ufo50Version + ".code.diff";
+if (File.Exists(Path.Join(buildDir, diffFile)))
+{
+    CopyFile(buildDir, modPatchesDir, ufo50Version + ".code.diff");
+}
 
 var mainDir = Path.Join(convertDir, modName);
 Directory.CreateDirectory(mainDir);
-CopyFile(rootDir, mainDir, "Version.txt");
+CopyFile(rootDir, mainDir, "version.h");
 
 void CopyDir(string srcDir, string dstDir, string name, string[] excludeDirs = null)
 {
@@ -86,3 +91,4 @@ File.WriteAllText(csxFile, $@"#load ""../../{modName}/patches/{modName}/GamePatc
 
 var libDir = Path.Join(mainDir, "patcher", "lib");
 File.Delete(Path.Join(libDir, "busybox.exe"));
+}

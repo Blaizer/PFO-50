@@ -57,16 +57,16 @@ if (pfo_is_online())
 
     if (halign == fa_right)
     {
-        xx = global.SCREEN_WIDTH;
+        xx = real(SCREEN.WIDTH);
     }
     else if (halign == fa_center)
     {
-        xx = global.SCREEN_WIDTH / 2;
+        xx = real(SCREEN.WIDTH) / 2;
     }
 
     if (valign == fa_bottom)
     {
-        yy = global.SCREEN_HEIGHT + 1;
+        yy = real(SCREEN.HEIGHT) + 1;
         ydelta *= -1;
     }
     
@@ -127,4 +127,10 @@ enum InputDelayMode
     ManualSelf,
     AutomaticShared,
     AutomaticFavored,
+}
+
+enum SCREEN
+{
+    WIDTH = 384,
+    HEIGHT = 216,
 }
