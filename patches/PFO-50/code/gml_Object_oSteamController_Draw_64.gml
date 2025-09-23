@@ -12,8 +12,8 @@ if (keyboard_check_pressed(vk_f2))
 if (keyboard_check_pressed(vk_f3))
 {
     showPing = !showPing;
-    showFps = !showFps;
-    //showFrame = !showFrame;
+    showFps = showPing;
+    showFrame = showPing && keyboard_check(vk_shift);
 }
 
 // if (keyboard_check_pressed(vk_f5))
@@ -78,7 +78,7 @@ if (pfo_is_online())
         {
             draw_set_color(global.palette[16]);
         }
-        else if (mode == InputDelayMode.AutomaticFavored && delay == 0)
+        else if (mode == InputDelayMode.Automatic && delay == 0)
         {
             draw_set_color(global.palette[12]);
         }
@@ -125,8 +125,7 @@ enum InputDelayMode
 {
     ManualAll,
     ManualSelf,
-    AutomaticShared,
-    AutomaticFavored,
+    Automatic,
 }
 
 enum SCREEN

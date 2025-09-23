@@ -20,6 +20,17 @@ YYRunnerInterface* g_pYYRunnerInterface;
 
 #define countof(a) (sizeof(a) / sizeof((a)[0]))
 
+template<typename T>
+FORCEINLINE static constexpr T min(T a, T b)
+{
+    return (a < b) ? a : b;
+}
+template<typename T>
+FORCEINLINE static constexpr T max(T a, T b)
+{
+    return (a > b) ? a : b;
+}
+
 static void trace(const char* format, ...)
 {
     va_list args;
@@ -38,16 +49,17 @@ namespace
     constexpr char c_ExtensionVersion[] = MOD_VERSION;
 
     constexpr int64 c_TimeBeforeResendingMessage = 1'000'000 / 60;
+    constexpr int64 c_TimeBeforeResendingMessageWhileNotRecordingSamples = 1'000'000 / 2;
     constexpr int64 c_WaitForInputsDelayTime = 1'000'000 / 60;
 
     constexpr int c_TargetFPS = 60;
-    constexpr int c_MaxInputDelay = 30;
-    constexpr int c_MaxDelaySamples = 60 * 20;
-    constexpr int c_MinSamplesBeforeDelayCalculation = c_MaxDelaySamples;
-    constexpr int c_SamplesToIgnoreAfterChangingDelay = 5 * 20;
+    constexpr int c_MaxInputDelay = 25;
+    constexpr int c_SamplesNeededBeforeRaisingDelay = 60 * 15;
+    constexpr int c_SamplesNeededBeforeLoweringDelay = 60 * 45;
+    constexpr int c_PercentSamplesWithinDelayToMaintainDelay = 92;
     constexpr int c_PercentSamplesBelowDelayToLowerDelay = 99;
-    constexpr int c_PercentSamplesWithinDelayToMaintainDelay = 80;
-    constexpr int c_PingDelayCalculationSafetyMargin = 10;
+    constexpr int c_PingDelayCalculationSafetyMargin = 30;
+    constexpr int c_FavoredModeExtraInputDelay = 2;
 
     YYRunnerInterface g_RunnerInterface;
 
@@ -270,8 +282,7 @@ namespace
     {
         ManualAll,
         ManualSelf,
-        AutomaticShared,
-        AutomaticFavored,
+        Automatic,
 
         COUNT
     };
@@ -299,6 +310,7 @@ namespace
         struct
         {
             int m_InputDelay = 0;
+            int m_AutomaticInputDelay = 0;
             InputFlags_t m_InputBuffer[8] = {};
             InputDelayChangeRequest m_InputDelayChangeRequests[8];
         } m_PlayerData[2];
@@ -316,6 +328,7 @@ namespace
                 auto& playerData = m_PlayerData[playerIndex];
 
                 writer.Write(playerData.m_InputDelay);
+                writer.Write(playerData.m_AutomaticInputDelay);
 
                 for (int i = 0; i < countof(playerData.m_InputBuffer); i++)
                 {
@@ -363,6 +376,85 @@ namespace
         }
     };
 
+    template<int NSampleCount, int NBucketCount>
+    struct Histogram
+    {
+        int m_SampleCount = 0;
+        int m_SampleHead = 0;
+        int m_Samples[NSampleCount] = {};
+        int m_Buckets[NBucketCount] = {};
+
+        void AddSample(int sample)
+        {
+            if (m_SampleCount >= countof(m_Samples))
+            {
+                int oldSample = m_Samples[m_SampleHead];
+                assert(m_Buckets[oldSample] > 0);
+                m_Buckets[oldSample]--;
+            }
+            else
+            {
+                m_SampleCount++;
+            }
+
+            if (sample < 0)
+            {
+                sample = 0;
+            }
+            else if (sample >= countof(m_Buckets))
+            {
+                sample = countof(m_Buckets) - 1;
+            }
+
+            m_Samples[m_SampleHead++] = sample;
+            if (m_SampleHead >= countof(m_Samples))
+            {
+                m_SampleHead = 0;
+            }
+
+            m_Buckets[sample]++;
+        }
+
+        int CalculatePercentile(int percentile)
+        {
+            assert(percentile >= 0 && percentile <= 100);
+            assert(m_SampleCount > 0);
+
+            int target = m_SampleCount * percentile / 100;
+            int cumulative = 0;
+
+            for (int i = 0; i < countof(m_Buckets); i++)
+            {
+                if (m_Buckets[i] > 0)
+                {
+                    cumulative += m_Buckets[i];
+                    if (cumulative >= target)
+                    {
+                        return i;
+                    }
+                }
+            }
+
+            assert(false);
+        }
+
+        void CalculateDistributionAt(int sample, int* belowPercent, int* belowOrEqualPercent)
+        {
+            assert(sample < countof(m_Buckets));
+            assert(m_SampleCount > 0);
+
+            int total = 0;
+            for (int i = 0; i <= sample; i++)
+            {
+                total += m_Buckets[i];
+            }
+            int belowTotal = total - m_Buckets[sample];
+
+            *belowOrEqualPercent = (total * 100 + 50) / m_SampleCount;
+            *belowPercent = (belowTotal * 100 + 50) / m_SampleCount;
+        }
+    };
+
     struct PlayerData
     {
         int64 m_LastSentTime = 0;
@@ -372,17 +464,16 @@ namespace
         int64 m_PreviousFrameLastAcknowledgedMessageNumber = 0;
         int64 m_PreviousFrameSampleRTT = 0;
         int m_InputDelay = 0;
+        int m_AutomaticInputDelay = 0;
         uint32 m_LastSentInputFrame = 0;
         uint32 m_LastInputFrame = 0;
         uint32 m_LastAcknowledgedInputFrame = 0;
-        int m_SampleCount = 0;
-        int m_SampleHead = 0;
         HSteamNetConnection m_ConnectSocket = k_HSteamNetConnection_Invalid;
         InputFlags_t m_InputBuffer[128] = {};
         InputDelayChangeRequest m_InputDelayChangeRequests[countof(m_InputBuffer)];
         MessageSendInfo m_MessageSendData[512];
-        int m_DelaySamples[c_MaxDelaySamples] = {};
-        int m_DelayHistogram[c_MaxInputDelay + 1] = {};
+        Histogram<c_SamplesNeededBeforeRaisingDelay, c_MaxInputDelay + 1> m_RaiseDelayHistogram;
+        Histogram<c_SamplesNeededBeforeLoweringDelay, c_MaxInputDelay + 1> m_LowerDelayHistogram;
         ChecksumBuffer m_ChecksumData[128];
     };
 
@@ -501,7 +592,7 @@ namespace
 
             for (int i = 0; i < countof(message.m_InputDelayChangeRequests); i++)
             {
-                message.m_InputDelayChangeRequests[i].m_ChangeType = static_cast<int8>(EInputDelayMode::AutomaticFavored) + 1;
+                message.m_InputDelayChangeRequests[i].m_ChangeType = static_cast<int8>(EInputDelayMode::Automatic) + 1;
             }
 
             message.Serialize(size);
@@ -527,6 +618,7 @@ namespace
         int m_RequestedInputDelay = 0;
         int m_InputDelayFavoredPlayerIndex = -1;
         int m_RequestedInputDelayFavoredPlayerIndex = -1;
+        bool m_RecordDelaySamples = false;
 
         uint64 m_RNG[1] = {};
 
@@ -613,8 +705,9 @@ namespace
 
         void AddConnection(int playerIndex, HSteamNetConnection hConn)
         {
-            constexpr int lanePriorities[] = { 0, 1 }; // lowest number drains first
-            g_SteamNetworkingSockets->ConfigureConnectionLanes(hConn, countof(lanePriorities), lanePriorities, nullptr);
+            constexpr int lanePriorities[] = { 1, 1 }; // lowest number drains first
+            constexpr uint16 laneWeights[] = { 1, 1 }; // higher number means more relative bandwidth
+            g_SteamNetworkingSockets->ConfigureConnectionLanes(hConn, countof(lanePriorities), lanePriorities, laneWeights);
             m_PlayerData[playerIndex].m_ConnectSocket = hConn;
         }
 
@@ -653,8 +746,6 @@ namespace
             {
                 m_OnlineState = EOnlineState::InGame;
 
-                RequestInputDelayChange(EInputDelayMode::AutomaticShared);
-
                 {
                     RValue result = {};
                     RValue arg;
@@ -681,6 +772,7 @@ namespace
                         auto& checksumPlayerData = checksum.m_PlayerData[playerIndex];
 
                         checksumPlayerData.m_InputDelay = playerData.m_InputDelay;
+                        checksumPlayerData.m_AutomaticInputDelay = playerData.m_AutomaticInputDelay;
 
                         for (int i = 0; i < countof(checksumPlayerData.m_InputBuffer); i++)
                         {
@@ -935,9 +1027,21 @@ namespace
                             auto& playerData = m_PlayerData[playerIndex];
                             if (playerData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
                             {
-                                int64 time = g_SteamNetworkingUtils->GetLocalTimestamp();
+                                // log some networking info to debug startup issues
+                                //if (!m_RecordDelaySamples)
+                                //{
+                                //    SteamNetConnectionRealTimeLaneStatus_t lanes[2];
+                                //    g_SteamNetworkingSockets->GetConnectionRealTimeStatus(playerData.m_ConnectSocket, nullptr, countof(lanes), lanes);
 
-                                if (myPlayerData.m_LastInputFrame > playerData.m_LastSentInputFrame || time >= playerData.m_LastSentTime + c_TimeBeforeResendingMessage)
+                                //    trace("[0].PendingUnreliable: %d, [0].QueueTime: %lld, [1].PendingReliable: %d, [1].SentUnackedReliable: %d, [1].QueueTime: %lld\n",
+                                //        lanes[0].m_cbPendingUnreliable, lanes[0].m_usecQueueTime,
+                                //        lanes[1].m_cbPendingReliable, lanes[1].m_cbSentUnackedReliable, lanes[1].m_usecQueueTime);
+                                //}
+
+                                int64 time = g_SteamNetworkingUtils->GetLocalTimestamp();
+                                int64 timeBeforeResendingMessage = m_RecordDelaySamples ? c_TimeBeforeResendingMessage : c_TimeBeforeResendingMessageWhileNotRecordingSamples;
+
+                                if (myPlayerData.m_LastInputFrame > playerData.m_LastSentInputFrame || time >= playerData.m_LastSentTime + timeBeforeResendingMessage)
                                 {
                                     netMessagePlayers[messageCount] = &playerData;
                                     auto netMessage = netMessages[messageCount++] = g_SteamNetworkingUtils->AllocateMessage(Message::GetMaxSize());
@@ -1005,7 +1109,12 @@ namespace
                         {
                             int64 time = g_SteamNetworkingUtils->GetLocalTimestamp();
                             int64 outResults[countof(netMessages)];
+                            
                             g_SteamNetworkingSockets->SendMessages(messageCount, netMessages, outResults);
+                            for (int i = 0; i < countof(netMessages); i++)
+                            {
+                                netMessages[i] = nullptr;
+                            }
 
                             //trace("Sending inputs for frame: %u\n", myPlayerData.m_LastInputFrame);
 
@@ -1083,60 +1192,52 @@ namespace
                             if (changeRequest.m_InputFrame == m_Frame)
                             {
                                 bestChangeRequest = changeRequest;
+
+                                // we also need to update the automatic input delay for any player that is changing it
+                                if (changeRequest.m_InputDelayMode == EInputDelayMode::Automatic)
+                                {
+                                    playerData.m_AutomaticInputDelay = changeRequest.m_InputDelay;
+                                }
                             }
                         }
 
                         // we need to generate a best change request if we need to switch our favored player index
                         if (bestChangeRequest.m_InputFrame == 0
-                            && (m_InputDelayMode == EInputDelayMode::AutomaticShared || m_InputDelayMode == EInputDelayMode::AutomaticFavored)
+                            && m_InputDelayMode == EInputDelayMode::Automatic
                             && m_InputDelayFavoredPlayerIndex != m_RequestedInputDelayFavoredPlayerIndex)
                         {
                             bestChangeRequest.m_InputDelayMode = m_InputDelayMode;
                             bestChangeRequest.m_InputFrame = m_Frame;
-
-                            int maxDelay = 0;
-                            for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
-                            {
-                                auto& playerData = m_PlayerData[playerIndex];
-                                maxDelay = max(maxDelay, playerData.m_InputDelay);
-                            }
-                            bestChangeRequest.m_InputDelay = maxDelay;
                         }
 
                         m_InputDelayFavoredPlayerIndex = m_RequestedInputDelayFavoredPlayerIndex;
 
                         if (bestChangeRequest.m_InputFrame != 0)
                         {
-                            // if multiple players request the same mode on the same frame, then find the one with the highest delay
+                            // if multiple players request the same mode on the same frame, or if we're in automatic mode, then use the one with the highest delay
                             for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
                             {
                                 auto& playerData = m_PlayerData[playerIndex];
-                                auto& changeRequest = playerData.m_InputDelayChangeRequests[m_Frame & (countof(playerData.m_InputDelayChangeRequests) - 1)];
-                                if (changeRequest.m_InputFrame == m_Frame && changeRequest.m_InputDelayMode == bestChangeRequest.m_InputDelayMode && changeRequest.m_InputDelay > bestChangeRequest.m_InputDelay)
-                                {
-                                    bestChangeRequest.m_InputDelay = changeRequest.m_InputDelay;
-                                }
-                            }
 
-                            // fix the input delay if it's in the wrong shared/favored mode
-                            if (bestChangeRequest.m_InputDelayMode == EInputDelayMode::AutomaticShared || bestChangeRequest.m_InputDelayMode == EInputDelayMode::AutomaticFavored)
-                            {
-                                if (m_InputDelayFavoredPlayerIndex < 0)
+                                if (bestChangeRequest.m_InputDelayMode == EInputDelayMode::Automatic)
                                 {
-                                    if (bestChangeRequest.m_InputDelayMode == EInputDelayMode::AutomaticFavored) bestChangeRequest.m_InputDelay = (bestChangeRequest.m_InputDelay + 1) / 2;
-                                    bestChangeRequest.m_InputDelayMode = EInputDelayMode::AutomaticShared;
+                                    bestChangeRequest.m_InputDelay = max(bestChangeRequest.m_InputDelay, playerData.m_AutomaticInputDelay);
                                 }
                                 else
                                 {
-                                    if (bestChangeRequest.m_InputDelayMode == EInputDelayMode::AutomaticShared) bestChangeRequest.m_InputDelay = bestChangeRequest.m_InputDelay * 2;
-                                    bestChangeRequest.m_InputDelayMode = EInputDelayMode::AutomaticFavored;
+                                    auto& changeRequest = playerData.m_InputDelayChangeRequests[m_Frame & (countof(playerData.m_InputDelayChangeRequests) - 1)];
+                                    if (changeRequest.m_InputFrame == m_Frame && changeRequest.m_InputDelayMode == bestChangeRequest.m_InputDelayMode)
+                                    {
+                                        bestChangeRequest.m_InputDelay = max(bestChangeRequest.m_InputDelay, changeRequest.m_InputDelay);
+                                    }
                                 }
                             }
+
+                            //ReleaseConsoleOutput("Changing Input Delay on frame: %u, mode: %d, delay: %d\n", bestChangeRequest.m_InputFrame, bestChangeRequest.m_InputDelayMode, bestChangeRequest.m_InputDelay);
 
                             m_InputDelayMode = bestChangeRequest.m_InputDelayMode;
 
                             // apply the input delay to the players according to the mode
-                            bool anyPlayerChangedInputDelay = false;
                             for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
                             {
                                 auto& playerData = m_PlayerData[playerIndex];
@@ -1144,6 +1245,10 @@ namespace
                                 int delay;
                                 switch (m_InputDelayMode)
                                 {
+                                case EInputDelayMode::ManualAll:
+                                {
+                                    delay = bestChangeRequest.m_InputDelay;
+                                } break;
                                 case EInputDelayMode::ManualSelf:
                                 {
                                     auto& changeRequest = playerData.m_InputDelayChangeRequests[m_Frame & (countof(playerData.m_InputDelayChangeRequests) - 1)];
@@ -1156,69 +1261,41 @@ namespace
                                         continue;
                                     }
                                 } break;
-                                case EInputDelayMode::ManualAll:
-                                case EInputDelayMode::AutomaticShared:
+                                case EInputDelayMode::Automatic:
                                 {
-                                    delay = bestChangeRequest.m_InputDelay;
-                                } break;
-                                case EInputDelayMode::AutomaticFavored:
-                                {
-                                    if (playerIndex == m_InputDelayFavoredPlayerIndex)
+                                    if (m_InputDelayFavoredPlayerIndex < 0)
+                                    {
+                                        delay = bestChangeRequest.m_InputDelay;
+                                    }
+                                    else if (m_InputDelayFavoredPlayerIndex == playerIndex)
                                     {
                                         delay = 0;
                                     }
                                     else
                                     {
-                                        delay = bestChangeRequest.m_InputDelay;
+                                        delay = bestChangeRequest.m_InputDelay * 2 + c_FavoredModeExtraInputDelay;
                                     }
                                 } break;
                                 default:
                                     assert(false);
                                 }
 
-                                assert(delay >= 0 && delay <= c_MaxInputDelay);
-                                if (delay != playerData.m_InputDelay)
-                                {
-                                    playerData.m_InputDelay = delay;
-                                    anyPlayerChangedInputDelay = true;
-                                }
-                            }
-
-                            // clear our samples if any player changed their input delay
-                            if (anyPlayerChangedInputDelay)
-                            {
-                                for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
-                                {
-                                    auto& playerData = m_PlayerData[playerIndex];
-                                    if (playerData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
-                                    {
-                                        playerData.m_PreviousFrameLastAcknowledgedMessageNumber = playerData.m_LastSentMessageNumber;
-                                        playerData.m_SampleCount = 0;
-                                        playerData.m_SampleHead = 0;
-                                        playerData.m_PreviousFrameSampleRTT = 0;
-                                        memset(playerData.m_DelayHistogram, 0, sizeof(playerData.m_DelayHistogram));
-                                    }
-                                }
+                                assert(delay >= 0 && delay <= c_MaxInputDelay * 2 + c_FavoredModeExtraInputDelay);
+                                playerData.m_InputDelay = delay;
                             }
 
                             // make sure our requested input delay is up to date, so we can always request a change if it's different from this
                             if (m_Frame >= m_RequestedInputDelayFrame)
                             {
+                                auto& myPlayerData = m_PlayerData[m_PlayerIndex];
                                 m_RequestedInputDelayMode = m_InputDelayMode;
-                                m_RequestedInputDelay = m_InputDelayMode == EInputDelayMode::ManualSelf ? m_PlayerData[m_PlayerIndex].m_InputDelay : bestChangeRequest.m_InputDelay;
+                                m_RequestedInputDelay = m_InputDelayMode == EInputDelayMode::Automatic ? myPlayerData.m_AutomaticInputDelay : myPlayerData.m_InputDelay;
                             }
                         }
                     }
 
                     // calculate delay
                     {
-                        int maxDelay = 0;
-                        for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
-                        {
-                            auto& playerData = m_PlayerData[playerIndex];
-                            maxDelay = max(maxDelay, playerData.m_InputDelay);
-                        }
-
                         for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
                         {
                             auto& playerData = m_PlayerData[playerIndex];
@@ -1260,37 +1337,18 @@ namespace
                                     rtt = max(rtt, g_SteamNetworkingUtils->GetLocalTimestamp() - messageInfo.m_MessageSendTime);
                                 }
 
-                                // add the sample if we have one
-                                if (rtt != 0)
+                                // add the sample
+                                if (rtt != 0 && m_RecordDelaySamples)
                                 {
                                     assert(rtt > 0);
-                                    rtt = min(rtt, INT32_MAX);
-
-                                    if (playerData.m_SampleCount >= countof(playerData.m_DelaySamples))
-                                    {
-                                        int oldDelay = playerData.m_DelaySamples[playerData.m_SampleHead];
-                                        assert(playerData.m_DelayHistogram[oldDelay] > 0);
-                                        playerData.m_DelayHistogram[oldDelay]--;
-                                    }
-                                    else
-                                    {
-                                        playerData.m_SampleCount++;
-                                    }
+                                    rtt = min(rtt, static_cast<int64>(INT32_MAX));
 
                                     int delay = static_cast<int>((rtt * c_TargetFPS + 1'000'000 - 1) / 1'000'000);
+                                    delay = (delay + 1) / 2;
                                     assert(delay >= 0);
-                                    if (delay >= countof(playerData.m_DelayHistogram))
-                                    {
-                                        delay = countof(playerData.m_DelayHistogram) - 1;
-                                    }
 
-                                    playerData.m_DelaySamples[playerData.m_SampleHead++] = delay;
-                                    if (playerData.m_SampleHead >= countof(playerData.m_DelaySamples))
-                                    {
-                                        playerData.m_SampleHead = 0;
-                                    }
-
-                                    playerData.m_DelayHistogram[delay]++;
+                                    playerData.m_RaiseDelayHistogram.AddSample(delay);
+                                    playerData.m_LowerDelayHistogram.AddSample(delay);
 
                                     //trace("Added sample: %d, %d\n", static_cast<int>(rtt), delay);
                                 }
@@ -1298,53 +1356,40 @@ namespace
                                 playerData.m_PreviousFrameLastAcknowledgedMessageNumber = playerData.m_LastAcknowledgedMessageNumber;
                                 playerData.m_PreviousFrameSampleRTT = rtt;
 
-                                if (playerData.m_SampleCount >= c_MinSamplesBeforeDelayCalculation)
+                                if (m_RequestedInputDelayMode == EInputDelayMode::Automatic)
                                 {
-                                    // this prints out some useful info while testing, but it only really works for shared mode
+                                    // prints out some useful info while testing
+                                    //if (playerData.m_RaiseDelayHistogram.m_SampleCount >= c_SamplesNeededBeforeRaisingDelay)
                                     //{
-                                    //    int delayUpperCheck = playerData.m_InputDelay * 2;
-                                    //    int delayLowerCheck = (playerData.m_InputDelay - 1) * 2;
-                                    //    assert(delayUpperCheck < countof(playerData.m_DelayHistogram));
+                                    //    int raiseBelowPercent;
+                                    //    int raiseBelowOrEqualPercent;
+                                    //    int lowerBelowPercent;
+                                    //    int lowerBelowOrEqualPercent;
+                                    //    playerData.m_RaiseDelayHistogram.CalculateDistributionAt(m_RequestedInputDelay, &raiseBelowPercent, &raiseBelowOrEqualPercent);
+                                    //    playerData.m_LowerDelayHistogram.CalculateDistributionAt(m_RequestedInputDelay, &lowerBelowPercent, &lowerBelowOrEqualPercent);
+                                    //    int raiseMedianDelay = playerData.m_RaiseDelayHistogram.CalculatePercentile(50);
+                                    //    int lowerMedianDelay = playerData.m_LowerDelayHistogram.CalculatePercentile(50);
 
-                                    //    int upperTotal = 0;
-                                    //    int lowerTotal = 0;
-                                    //    for (int i = 0; i <= delayUpperCheck; i++)
-                                    //    {
-                                    //        upperTotal += playerData.m_DelayHistogram[i];
-                                    //        if (i <= delayLowerCheck)
-                                    //        {
-                                    //            lowerTotal += playerData.m_DelayHistogram[i];
-                                    //        }
-                                    //    }
-
-                                    //    {
-                                    //        int medianDelay = (CalculateDelayPercentile(playerData, 50) + 1) / 2;
-                                    //        int belowOrEqualPercent = (upperTotal * 100 + 50) / playerData.m_SampleCount;
-                                    //        int belowPercent = (lowerTotal * 100 + 50) / playerData.m_SampleCount;
-                                    //        int abovePercent = 100 - belowOrEqualPercent;
-
-                                    //        //trace("Sample median: %d, current:%d, <%d%%, <=%d%%, >%d%%\n", medianDelay, playerData.m_InputDelay, belowPercent, belowOrEqualPercent, abovePercent);
-                                    //    }
+                                    //    trace("Raise median: %d, current:%d, <%d%%, <=%d%%, >%d%% | Lower median: %d, current:%d, <%d%%, <=%d%%, >%d%%\n", raiseMedianDelay, m_RequestedInputDelay, raiseBelowPercent, raiseBelowOrEqualPercent, 100 - raiseBelowOrEqualPercent, lowerMedianDelay, m_RequestedInputDelay, lowerBelowPercent, lowerBelowOrEqualPercent, 100 - lowerBelowOrEqualPercent);
                                     //}
 
-                                    if (m_InputDelayMode == EInputDelayMode::AutomaticShared || m_InputDelayMode == EInputDelayMode::AutomaticFavored)
-                                    {
-                                        int delay = CalculateDelayPercentile(playerData, c_PercentSamplesWithinDelayToMaintainDelay);
-                                        if (m_InputDelayMode == EInputDelayMode::AutomaticShared) delay = (delay + 1) / 2;
+                                    int delay = 0;
 
-                                        if (delay > maxDelay)
+                                    if (playerData.m_RaiseDelayHistogram.m_SampleCount >= c_SamplesNeededBeforeRaisingDelay)
+                                    {
+                                        delay = playerData.m_RaiseDelayHistogram.CalculatePercentile(c_PercentSamplesWithinDelayToMaintainDelay);
+                                        if (delay > m_RequestedInputDelay)
                                         {
                                             RequestInputDelayChange(m_InputDelayMode, delay);
                                         }
-                                        else if (delay < maxDelay)
-                                        {
-                                            delay = CalculateDelayPercentile(playerData, c_PercentSamplesBelowDelayToLowerDelay);
-                                            if (m_InputDelayMode == EInputDelayMode::AutomaticShared) delay = (delay + 1) / 2;
+                                    }
 
-                                            if (delay < maxDelay)
-                                            {
-                                                RequestInputDelayChange(m_InputDelayMode, delay);
-                                            }
+                                    if (delay < m_RequestedInputDelay && playerData.m_LowerDelayHistogram.m_SampleCount >= c_SamplesNeededBeforeLoweringDelay)
+                                    {
+                                        delay = playerData.m_LowerDelayHistogram.CalculatePercentile(c_PercentSamplesBelowDelayToLowerDelay);
+                                        if (delay < m_RequestedInputDelay)
+                                        {
+                                            RequestInputDelayChange(m_InputDelayMode, delay);
                                         }
                                     }
                                 }
@@ -1403,7 +1448,7 @@ namespace
                 Script_Perform(g_gml_random_set_seed, instance, instance, 1, &tmp, &arg);
                 init_real(result, seed);
 
-                ReleaseConsoleOutput("Frame: %u: Randomize: %llx\n", m_Frame, m_RNG[0]);
+                //ReleaseConsoleOutput("Frame: %u: Randomize: %llx\n", m_Frame, m_RNG[0]);
             }
             else
             {
@@ -1479,29 +1524,6 @@ namespace
             }
         }
 
-        int CalculateDelayPercentile(PlayerData& playerData, int percentile)
-        {
-            assert(percentile >= 0 && percentile <= 100);
-            assert(playerData.m_SampleCount > 0);
-
-            int target = playerData.m_SampleCount * percentile / 100;
-            int cumulative = 0;
-
-            for (int i = 0; i < countof(playerData.m_DelayHistogram); i++)
-            {
-                if (playerData.m_DelayHistogram[i] > 0)
-                {
-                    cumulative += playerData.m_DelayHistogram[i];
-                    if (cumulative >= target)
-                    {
-                        return i;
-                    }
-                }
-            }
-
-            assert(false);
-        }
-
         void RequestInputDelayChange(EInputDelayMode mode, int delay = -1)
         {
             auto& myPlayerData = m_PlayerData[m_PlayerIndex];
@@ -1513,21 +1535,18 @@ namespace
             case EInputDelayMode::ManualAll:
             case EInputDelayMode::ManualSelf:
                 break;
-            case EInputDelayMode::AutomaticShared:
-            case EInputDelayMode::AutomaticFavored:
+            case EInputDelayMode::Automatic:
             {
                 if (delay < 0)
                 {
-                    mode = m_InputDelayFavoredPlayerIndex < 0 ? EInputDelayMode::AutomaticShared : EInputDelayMode::AutomaticFavored;
-
                     for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
                     {
                         auto& playerData = m_PlayerData[playerIndex];
                         if (playerData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
                         {
-                            if (playerData.m_SampleCount >= c_MinSamplesBeforeDelayCalculation)
+                            if (playerData.m_RaiseDelayHistogram.m_SampleCount >= c_SamplesNeededBeforeRaisingDelay)
                             {
-                                int newDelay = CalculateDelayPercentile(playerData, c_PercentSamplesWithinDelayToMaintainDelay);
+                                int newDelay = playerData.m_RaiseDelayHistogram.CalculatePercentile(c_PercentSamplesWithinDelayToMaintainDelay);
                                 delay = max(delay, newDelay);
                             }
                         }
@@ -1545,6 +1564,7 @@ namespace
                                 if (status.m_nPing >= 0)
                                 {
                                     int newDelay = ((status.m_nPing + c_PingDelayCalculationSafetyMargin) * c_TargetFPS + 1000 - 1) / 1000;
+                                    newDelay = (newDelay + 1) / 2;
                                     newDelay = min(newDelay, c_MaxInputDelay);
                                     delay = max(delay, newDelay);
                                 }
@@ -1553,26 +1573,8 @@ namespace
 
                         if (delay < 0)
                         {
-                            delay = 10;
+                            delay = 5;
                         }
-                    }
-
-                    if (mode == EInputDelayMode::AutomaticShared)
-                    {
-                        delay = (delay + 1) / 2;
-                    }
-                }
-                else
-                {
-                    if (m_InputDelayFavoredPlayerIndex < 0)
-                    {
-                        if (mode == EInputDelayMode::AutomaticFavored) delay = (delay + 1) / 2;
-                        mode = EInputDelayMode::AutomaticShared;
-                    }
-                    else
-                    {
-                        if (mode == EInputDelayMode::AutomaticShared) delay = delay * 2;
-                        mode = EInputDelayMode::AutomaticFavored;
                     }
                 }
             } break;
@@ -1781,16 +1783,29 @@ namespace
 
             int64 outResult;
             g_SteamNetworkingSockets->SendMessages(1, &netMessage, &outResult);
-            while (outResult == -k_EResultLimitExceeded)
+            netMessage = nullptr;
+
+            if (outResult == -k_EResultLimitExceeded)
             {
-                Timing_Sleep(1'000'000  / 2);
-                trace("Resending file message\n");
+                ReleaseConsoleOutput("SendReliableMessage (size = %d) failed with k_EResultLimitExceeded: Resending message\n", writer.m_Offset);
+                Timing_Sleep(1'000'000 / 2);
                 goto RETRY;
+            }
+            else if (outResult <= 0)
+            {
+                ReleaseConsoleOutput("SendReliableMessage (size = %d) failed with error code '%lld': Disconnecting\n", writer.m_Offset, outResult);
+                m_OnlineState = EOnlineState::Disconnecting;
+            }
+            else
+            {
+                ReleaseConsoleOutput("SendReliableMessage (size = %d) succeeded\n", writer.m_Offset);
             }
         }
 
         void ReceiveReliableMessage(SteamNetworkingMessage_t* netMessage, int playerIndex, CInstance* instance)
         {
+            ReleaseConsoleOutput("ReceiveReliableMessage (size = %d)\n", netMessage->m_cbSize);
+
             ReliableMessage reliableMessage;
             Reader reader(static_cast<uint8*>(netMessage->m_pData), netMessage->m_cbSize);
             reliableMessage.Serialize(reader);
@@ -2321,4 +2336,11 @@ YYEXPORT void pfo_get_ping(RValue& result, CInstance* selfinst, CInstance* other
     }
 
     init_real(result, ping);
+}
+
+YYEXPORT void pfo_set_delay_sample_recording(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 1);
+
+    g_pfo->m_RecordDelaySamples = YYGetBool(arg, 0);
 }

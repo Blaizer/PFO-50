@@ -18,7 +18,12 @@ if (Directory.Exists(convertRootDir))
 Directory.CreateDirectory(convertRootDir);
 Directory.CreateDirectory(convertDir);
 
-File.Copy(Path.Join(rootDir, "README.md"), Path.Join(convertRootDir, "ReadMe.txt"), overwrite: true);
+var readme = Path.Join(rootDir, "README.md");
+if (!File.Exists(readme))
+{
+    readme = Path.Join(rootDir, "README");
+}
+File.Copy(readme, Path.Join(convertRootDir, "README.txt"), overwrite: true);
 
 void CopyFile(string srcDir, string dstDir, string file)
 {

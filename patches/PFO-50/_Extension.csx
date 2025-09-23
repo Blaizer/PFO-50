@@ -97,6 +97,7 @@ void PatchPFO50Extension()
         DefineExtensionFunction("pfo_connect");
         DefineExtensionFunction("pfo_set_seed");
         DefineExtensionFunction("pfo_get_ping");
+        DefineExtensionFunction("pfo_set_delay_sample_recording");
 
         file.InitScript = Data.Strings.MakeString("pfo_init");
         file.CleanupScript = Data.Strings.MakeString("");
