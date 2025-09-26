@@ -56,13 +56,18 @@ if (pfo_is_online())
     global.onlineFavoredPlayer = -1;
 }
 
-if (!pfo_update())
+if (!pfo_update(global.onlineRunUpdate))
 {
     show_message("Error: PFO.dll does not exist or failed to load.\n\nPlease make sure you have copied PFO.dll into the same folder as data.win.");
     game_end();
 }
 
-pfo_update_extra_input();
+if (global.onlineRunUpdate)
+{
+    pfo_update_extra_input();
+}
+
+global.onlineRunUpdate = true;
 
 enum Command
 {

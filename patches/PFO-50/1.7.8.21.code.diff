@@ -3200,14 +3200,8 @@
  }
 --- original/gml_Object_oLibrary_Other_10.gml
 +++ patched/gml_Object_oLibrary_Other_10.gml
-@@ -16,10 +16,17 @@
-     {
-         exit;
+@@ -18,8 +18,11 @@
      }
-+    if (!pfo_all_players_loaded())
-+    {
-+        exit;
-+    }
      with (oAudioHandler)
      {
 +        if (!audio_is_playing(bgmCracktro))
@@ -3218,7 +3212,7 @@
      CROSS_FADE = 2;
      ANIMATE_END = false;
      FRAMES_PER_IMG = 850;
-@@ -188,7 +195,7 @@
+@@ -188,7 +191,7 @@
              imgEnd = true;
          }
      }
@@ -3227,7 +3221,7 @@
      {
          with (oAudioHandler)
          {
-@@ -205,6 +212,18 @@
+@@ -205,6 +208,18 @@
          {
              scrSwitchSub(SUB_CRACK_EXIT_PLAIN);
          }
@@ -3248,7 +3242,7 @@
  else if (substate == SUB_CRACK_EXIT_ANIM)
 --- original/gml_Object_oLibrary_Other_11.gml
 +++ patched/gml_Object_oLibrary_Other_11.gml
-@@ -12,12 +12,22 @@
+@@ -12,10 +12,28 @@
          }
          bgmLxStinger = audio_play_sound(bgm00_stingLX, 100, false);
      }
@@ -3257,22 +3251,27 @@
  }
  else if (substate == SUB_WAIT)
  {
--    if (stateCounter++ > 252)
-+    if (stateCounter > 1 && !allPlayersLoaded)
-     {
-+        allPlayersLoaded = pfo_file_exists(string_replace(global.SAVE_FILE, "*", "1")) >= 0 && pfo_file_exists(string_replace(global.SAVE_FILE, "*", "2")) >= 0 && pfo_file_exists(string_replace(global.SAVE_FILE, "*", "3")) >= 0 && pfo_file_exists(global.ACCOUNT_FILE) >= 0 && pfo_all_players_loaded();
-+        if (allPlayersLoaded)
++    if (stateCounter == 1)
++    {
++        if (!allPlayersLoaded)
 +        {
-+            pfo_request_input_delay_change(UnknownEnum.Value_2);
-+            pfo_set_delay_sample_recording(true);
++            allPlayersLoaded = pfo_file_exists(string_replace(global.SAVE_FILE, "*", "1")) >= 0 && pfo_file_exists(string_replace(global.SAVE_FILE, "*", "2")) >= 0 && pfo_file_exists(string_replace(global.SAVE_FILE, "*", "3")) >= 0 && pfo_file_exists(global.ACCOUNT_FILE) >= 0;
++            if (!allPlayersLoaded)
++            {
++                global.onlineRunUpdate = false;
++                exit;
++            }
 +        }
 +    }
-+    if (stateCounter++ > 252 && allPlayersLoaded)
++    else if (stateCounter == 2)
 +    {
++        pfo_request_input_delay_change(UnknownEnum.Value_2);
++        pfo_set_delay_sample_recording(true);
++    }
+     if (stateCounter++ > 252)
+     {
          scrSwitchSub(SUB_EXIT);
-     }
- }
-@@ -25,4 +35,9 @@
+@@ -25,4 +43,9 @@
  {
      scrTexturegroupChange(-1, global.TEXTUREGROUP[52]);
      scrSwitchState(STATE_INTRO);
@@ -3328,19 +3327,34 @@
      }
      scrOpenFileManual(copyTo + 1);
      var nameOfCopy = string_copy(profileName[copyFrom + 1], 1, global.MAX_PROFILE_NAME_LENGTH - 4);
---- original/gml_Object_oLibrary_Other_25.gml
-+++ patched/gml_Object_oLibrary_Other_25.gml
-@@ -16,6 +16,10 @@
+--- original/gml_Object_oLibrary_Other_15.gml
++++ patched/gml_Object_oLibrary_Other_15.gml
+@@ -130,6 +130,7 @@
+     }
+     if (global.attractModeLibraryTimer++ >= global.AM_LIB_TIME)
      {
++        global.attractModeLibraryTimer = global.AM_LIB_TIME;
+         event_user(15);
          exit;
      }
-+    if (!pfo_all_players_loaded())
-+    {
-+        exit;
-+    }
-     global.attractModeIndex++;
-     if (global.attractModeIndex == ds_list_size(global.attractModePlaylist))
+--- original/gml_Object_oLibrary_Other_25.gml
++++ patched/gml_Object_oLibrary_Other_25.gml
+@@ -8,12 +8,14 @@
+ if (attractModeInitState == 0)
+ {
+     scrTexturegroupChange(-1, global.TEXTUREGROUP[_gameID]);
++    scrPetCleanup();
+     attractModeInitState = 1;
+ }
+-if (attractModeInitState == 1)
++else if (attractModeInitState == 1)
+ {
+     if (texturegroup_get_status(global.TEXTUREGROUP[_gameID]) != 3)
      {
++        global.onlineRunUpdate = false;
+         exit;
+     }
+     global.attractModeIndex++;
 --- original/gml_Object_oLibrary_Step_1.gml
 +++ patched/gml_Object_oLibrary_Step_1.gml
 @@ -29,13 +29,13 @@
@@ -3828,7 +3842,7 @@
 +}
 --- original/gml_Object_oSteamController_Create_0.gml
 +++ patched/gml_Object_oSteamController_Create_0.gml
-@@ -4,3 +4,14 @@
+@@ -4,3 +4,15 @@
      exit;
  }
  depth = -10000;
@@ -3842,6 +3856,7 @@
 +prevGame = 0;
 +global.onlineDefaultLanguage = undefined;
 +global.onlineFavoredPlayer = -1;
++global.onlineRunUpdate = true;
 +pfo_start();
 --- original/gml_Object_oSteamController_Other_3.gml
 +++ patched/gml_Object_oSteamController_Other_3.gml
@@ -3873,17 +3888,19 @@
 -}
 --- original/gml_Object_oTitleScreens_Create_0.gml
 +++ patched/gml_Object_oTitleScreens_Create_0.gml
-@@ -84,6 +84,10 @@
+@@ -78,10 +78,12 @@
+ {
+     if (global.currGameID != 40 && !audio_group_is_loaded(global.AUDIOGROUP_BGM[global.currGameID]))
      {
++        global.onlineRunUpdate = false;
          return false;
      }
-+    if (!pfo_all_players_loaded())
-+    {
-+        return false;
-+    }
+     if (texturegroup_get_status(global.TEXTUREGROUP[global.currGameID]) != 3)
+     {
++        global.onlineRunUpdate = false;
+         return false;
+     }
      return true;
- };
- 
 --- original/gml_Object_oTitleScreens_Step_1.gml
 +++ patched/gml_Object_oTitleScreens_Step_1.gml
 @@ -9,11 +9,11 @@

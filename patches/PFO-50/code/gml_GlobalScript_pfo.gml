@@ -1,7 +1,5 @@
 function pfo_start()
 {
-    global.pfo_playerLoaded = int64(0);
-    global.pfo_allPlayersLoaded = int64(0);
     global.pfo_inputCommand = int64(0);
     global.pfo_inputCommandParam = int64(0);
     global.pfo_inputCommandToSend = int64(0);
@@ -22,45 +20,25 @@ function pfo_add_extra_input(futureFrame)
         var flags = argument[1];
         var c = int64(0);
 
-        c |= global.pfo_playerLoaded & int64((1 << PFO.AllPlayersLoadedBits) - 1);
-        if (LOG.LEVEL >= LOG.VERBOSE) if (global.pfo_playerLoaded != int64(0)) show_debug_message("Writing player loaded to input flags: " + string(global.pfo_playerLoaded & ((int64(1) << PFO.AllPlayersLoadedBits) - 1)) + " on frame " + string(pfo_get_frame()));
-
         if (global.pfo_inputCommandToSend != int64(0))
         {
             if (LOG.LEVEL >= LOG.INFO) show_debug_message("Writing command to input flags: " + string(global.pfo_inputCommandToSend) + " " + string(global.pfo_inputCommandParamToSend) + " with future frame " + string(futureFrame) + " on frame " + string(pfo_get_frame()));
-            c |= (global.pfo_inputCommandToSend      & int64((1 << PFO.InputCommandBits)      - 1)) << PFO.AllPlayersLoadedBits;
-            c |= (global.pfo_inputCommandParamToSend & int64((1 << PFO.InputCommandParamBits) - 1)) << (PFO.AllPlayersLoadedBits + PFO.InputCommandBits);
+            c |= (global.pfo_inputCommandToSend      & int64((1 << PFO.InputCommandBits)      - 1));
+            c |= (global.pfo_inputCommandParamToSend & int64((1 << PFO.InputCommandParamBits) - 1)) << PFO.InputCommandBits;
             global.pfo_inputCommandFutureSendFrame = futureFrame;
         }
 
-        return (flags << PFO.ExtraInputBits) | (c & int64((1 << PFO.ExtraInputBits) - 1));
+        return (flags << PFO.ExtraInputBits) | c;
     }
     else if (argument_count == 3)
     {
-        var flagsA = argument[1];
-        var flagsB = argument[2];
-        return (flagsA & flagsB & int64((1 << PFO.AllPlayersLoadedBits) - 1)) != int64(0)
-            || (flagsB & int64(((1 << PFO.InputCommandBits) - 1) << PFO.AllPlayersLoadedBits)) != int64(0);
+        return (argument[2] & int64((1 << PFO.InputCommandBits) - 1)) != int64(0);
     }
 }
 
 function pfo_remove_extra_input(flags)
 {
     return flags >> PFO.ExtraInputBits;
-}
-
-function pfo_all_players_loaded()
-{
-    var loadType = argument_count > 0 ? argument[0] : int64(0);
-    var ret = true;
-    if (pfo_is_online())
-    {
-        global.pfo_playerLoaded |= int64(1) << loadType;
-        ret = (global.pfo_allPlayersLoaded & (int64(1) << loadType)) != int64(0);
-        if (LOG.LEVEL >= LOG.VERBOSE) show_debug_message("Set player loaded with loadType: " + string(loadType) + " on frame " + string(pfo_get_frame()));
-        if (LOG.LEVEL >= LOG.INFO) if (ret) show_debug_message("Returned all players loaded with loadType: " + string(loadType) + " on frame " + string(pfo_get_frame()));
-    }
-    return ret;
 }
 
 function pfo_update_extra_input()
@@ -76,16 +54,12 @@ function pfo_update_extra_input()
 
     if (pfo_is_online())
     {
-        global.pfo_allPlayersLoaded = int64(-1);
-
         for (var p = real(PFO.MaxPlayers) - 1; p >= 0; p--)
         {
             var c = pfo_get_input(p);
 
-            global.pfo_allPlayersLoaded &= c & int64((1 << PFO.AllPlayersLoadedBits) - 1);
-
-            var command      = (c >> PFO.AllPlayersLoadedBits)                          & int64((1 << int64(PFO.InputCommandBits)) - 1);
-            var commandParam = (c >> (PFO.AllPlayersLoadedBits + PFO.InputCommandBits)) & int64((1 << int64(PFO.InputCommandParamBits)) - 1);
+            var command      = c                           & int64((1 << int64(PFO.InputCommandBits)) - 1);
+            var commandParam = (c >> PFO.InputCommandBits) & int64((1 << int64(PFO.InputCommandParamBits)) - 1);
 
             if (command != int64(0))
             {
@@ -96,11 +70,8 @@ function pfo_update_extra_input()
                 global.pfo_inputCommandParamEach[p] = commandParam;
             }
         }
-
-        if (LOG.LEVEL >= LOG.VERBOSE) if (global.pfo_allPlayersLoaded != int64(0)) show_debug_message("Read all players loaded from input flags: " + string(global.pfo_allPlayersLoaded) + " on frame " + string(pfo_get_frame()));
     }
 
-    global.pfo_playerLoaded = int64(0);
     global.pfo_inputCommandToSend = int64(0);
     global.pfo_inputCommandParamToSend = int64(0);
 }
@@ -180,10 +151,9 @@ function pfo_receive_command(command, param)
 
 enum PFO
 {
-    AllPlayersLoadedBits = 1,
-    InputCommandBits = 7,
+    InputCommandBits = 8,
     InputCommandParamBits = 8,
-    ExtraInputBits = PFO.AllPlayersLoadedBits + PFO.InputCommandBits + PFO.InputCommandParamBits,
+    ExtraInputBits = PFO.InputCommandBits + PFO.InputCommandParamBits,
 
     MaxPlayers = 2
 }
