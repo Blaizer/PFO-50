@@ -6,19 +6,26 @@
 #include "YYRValue.h"
 #define YYEXPORT __declspec(dllexport)
 
+#pragma warning(default: 4365)
+#pragma warning(default: 4388)
+#pragma warning(default: 4800)
+//#pragma warning(default: 4820)
+
 #include "../version.h"
 
 YYRunnerInterface* g_pYYRunnerInterface;
 
-[[noreturn]] FORCEINLINE static void unreachable() { __assume(false); }
+static char g_TempBuffer[8192];
 
-#ifndef NDEBUG
-#define assert(a) (!!(a) || (__debugbreak(), unreachable(), false))
+#if !defined(NDEBUG) || 1
+#define breakpoint() (IsDebuggerPresent() && (__debugbreak(), false))
+#define assert(a) if (!(a)) { [[unlikely]] handle_assert(#a, __FILE__, __FUNCTION__, __LINE__); __debugbreak(); unreachable(); } else { [[likely]]; }
 #else
+#define breakpoint() (false)
 #define assert(a) (__assume(a))
 #endif
 
-#define countof(a) (sizeof(a) / sizeof((a)[0]))
+#define countof(a) static_cast<intptr_t>((sizeof(a) / sizeof((a)[0])))
 
 template<typename T>
 FORCEINLINE static constexpr T min(T a, T b)
@@ -31,16 +38,46 @@ FORCEINLINE static constexpr T max(T a, T b)
     return (a > b) ? a : b;
 }
 
+[[noreturn]] FORCEINLINE static void unreachable() { __assume(false); }
+
 static void trace(const char* format, ...)
 {
     va_list args;
-    char buffer[0x1000];
 
     va_start(args, format);
-    int length = vsprintf_s(buffer, format, args);
+    int length = vsprintf_s(g_TempBuffer, format, args);
     va_end(args);
 
-    OutputDebugStringA(buffer);
+    OutputDebugStringA(g_TempBuffer);
+}
+
+static void handle_assert(const char* assertion, const char* file, const char* function, int line)
+{
+    file = max(file, strrchr(file, '/') + 1);
+    file = max(file, strrchr(file, '\\') + 1);
+
+    constexpr char anonymous[] = "`anonymous-namespace'::";
+    constexpr size_t anonymousLength = countof(anonymous) - 1;
+    if (strncmp(function, anonymous, anonymousLength) == 0)
+    {
+        function += anonymousLength;
+    }
+
+    trace("Assertion failed (%s) at %s %s() line %d\n", assertion, file, function, line);
+
+    if (!IsDebuggerPresent())
+    {
+        sprintf_s(g_TempBuffer, "Assertion failed! (%s)\n\nAt %s %s() line %d", assertion, file, function, line);
+        ShowMessage(g_TempBuffer);
+    }
+}
+
+template<typename T>
+FORCEINLINE static constexpr T narrow_cast(auto a)
+{
+    static_assert(sizeof(T) < sizeof(a));
+    assert(a == static_cast<decltype(a)>(static_cast<T>(a)));
+    return static_cast<T>(a);
 }
 
 namespace
@@ -52,13 +89,16 @@ namespace
     constexpr int64 c_WaitForInputsDelayTime = 1'000'000 / 60;
 
     constexpr int c_TargetFPS = 60;
-    constexpr int c_MaxInputDelay = 25;
+    constexpr int c_MaxInputDelay = 20;
     constexpr int c_SamplesNeededBeforeRaisingDelay = 60 * 15;
     constexpr int c_SamplesNeededBeforeLoweringDelay = 60 * 45;
     constexpr int c_PercentSamplesWithinDelayToMaintainDelay = 92;
     constexpr int c_PercentSamplesBelowDelayToLowerDelay = 99;
     constexpr int c_PingDelayCalculationSafetyMargin = 30;
     constexpr int c_FavoredModeExtraInputDelay = 2;
+    constexpr int c_MessageInputCountBits = 6;
+    constexpr int c_FramesToRunBehindUpperLimit = 70;
+    constexpr int c_FramesToRunBehindLowerLimit = 40;
 
     YYRunnerInterface g_RunnerInterface;
 
@@ -67,14 +107,9 @@ namespace
     ISteamNetworkingSockets* g_SteamNetworkingSockets;
     ISteamNetworkingUtils* g_SteamNetworkingUtils;
 
-    struct PFO* g_pfo;
-
     int g_GmlChecksumBuffer1;
     int g_GmlChecksumBuffer2;
 
-    int g_gml_random_set_seed;
-    int g_gml_random_get_seed;
-    int g_gml_randomize;
     int g_gml_file_exists;
     int g_gml_buffer_load;
     int g_gml_buffer_save;
@@ -100,7 +135,7 @@ namespace
 
     struct SizeGetter
     {
-        int m_Size = 0;
+        size_t m_Size = 0;
 
         template<typename T>
         constexpr void Write(const T& value)
@@ -108,20 +143,23 @@ namespace
             m_Size += sizeof(T);
         }
 
-        constexpr void Write(const void* buffer, int size)
+        constexpr void Write(const void* buffer, size_t size)
         {
             m_Size += size;
         }
+
+        constexpr void SetName(const char* name) {}
+        constexpr void SetName(const char* name, int i, const char* iName) {}
     };
 
     struct Writer
     {
         uint8* m_Buffer;
-        int m_Size;
-        int m_Offset = 0;
+        size_t m_Size;
+        size_t m_Offset = 0;
 
         Writer() = delete;
-        Writer(uint8* buffer, int size) : m_Buffer(buffer), m_Size(size) {}
+        Writer(uint8* buffer, size_t size) : m_Buffer(buffer), m_Size(size) {}
 
         template<typename T>
         void Write(const T& value)
@@ -131,23 +169,25 @@ namespace
             m_Offset += sizeof(T);
         }
 
-        void Write(const void* buffer, int size)
+        void Write(const void* buffer, size_t size)
         {
-            assert(size >= 0);
             assert(m_Offset + size <= m_Size);
             memcpy(m_Buffer + m_Offset, buffer, size);
             m_Offset += size;
         }
+
+        constexpr void SetName(const char* name) {}
+        constexpr void SetName(const char* name, int i, const char* iName) {}
     };
 
     struct Reader
     {
         const uint8* m_Buffer;
-        int m_Size;
-        int m_Offset = 0;
+        size_t m_Size;
+        size_t m_Offset = 0;
 
         Reader() = delete;
-        Reader(const uint8* buffer, int size) : m_Buffer(buffer), m_Size(size) {}
+        Reader(const uint8* buffer, size_t size) : m_Buffer(buffer), m_Size(size) {}
 
         template<typename T>
         void Write(T& value)
@@ -157,12 +197,65 @@ namespace
             m_Offset += sizeof(T);
         }
 
-        void Write(void* buffer, int size)
+        void Write(void* buffer, size_t size)
         {
-            assert(size >= 0);
             assert(m_Offset + size <= m_Size);
             memcpy(buffer, m_Buffer + m_Offset, size);
             m_Offset += size;
+        }
+
+        constexpr void SetName(const char* name) {}
+        constexpr void SetName(const char* name, int i, const char* iName) {}
+    };
+
+    struct StringWriter
+    {
+        char* m_String;
+        size_t m_Size;
+        size_t m_Offset = 0;
+
+        StringWriter() = delete;
+        StringWriter(char* str, size_t count) : m_String(str), m_Size(count) {}
+
+        template<typename T>
+        void Write(const T& value)
+        {
+            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, "%d\n", value);
+        }
+
+        void SetName(const char* name)
+        {
+            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, "  %s: ", name);
+        }
+
+        void SetName(const char* name, int i, const char* iName)
+        {
+            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, "  ");
+            m_Offset += WriteName(m_String + m_Offset, m_Size - m_Offset, name, i, iName);
+            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, ": ");
+        }
+
+        static int WriteName(char* str, size_t count, const char* name, int i, const char* iName)
+        {
+            auto p = name;
+            size_t iNameLength = strlen(iName);
+
+            while (true)
+            {
+                p = strstr(p, "[");
+                if (p == nullptr)
+                {
+                    break;
+                }
+
+                p++;
+                if (strncmp(p, iName, iNameLength) == 0)
+                {
+                    return sprintf_s(str, count, "%.*s%d%s", narrow_cast<uint32>(p - name), name, i, p + iNameLength);
+                }
+            }
+
+            assert(false);
         }
     };
 
@@ -171,10 +264,13 @@ namespace
     {
         const uint8* m_Buffer1;
         const uint8* m_Buffer2;
-        int m_Size;
-        int m_Offset = 0;
+        const char* m_Name = nullptr;
+        const char* m_IteratorName = nullptr;
+        size_t m_Size;
+        size_t m_Offset = 0;
         T m_Diff1;
         T m_Diff2;
+        int m_Iterator = 0;
 
         Differ() = delete;
         Differ(Reader& reader1, Reader& reader2) : m_Buffer1(reader1.m_Buffer), m_Buffer2(reader2.m_Buffer), m_Size(reader1.m_Size)
@@ -189,19 +285,56 @@ namespace
         void Write(const T& value)
         {
             assert(m_Offset + sizeof(T) <= m_Size);
-            assert(memcmp(m_Buffer1 + m_Offset, m_Buffer2 + m_Offset, sizeof(T)) == 0);
+
+            if (memcmp(m_Buffer1 + m_Offset, m_Buffer2 + m_Offset, sizeof(T)) != 0)
+            {
+                char* str = g_TempBuffer;
+                char* end = g_TempBuffer + countof(g_TempBuffer);
+
+                str += sprintf_s(str, end - str, "Desync detected!\n\nDifference in PFO value: ");
+                
+                if (m_IteratorName != nullptr)
+                {
+                    str += StringWriter::WriteName(str, end - str, m_Name, m_Iterator, m_IteratorName);
+                }
+                else
+                {
+                    str += sprintf_s(str, end - str, "%s", m_Name);
+                }
+
+                str += sprintf_s(str, end - str, "\n\nOurs:\n");
+
+                StringWriter nameWriter1(str, static_cast<int>(end - str));
+                m_Diff1.Serialize(nameWriter1);
+                str += nameWriter1.m_Offset;
+
+                str += sprintf_s(str, end - str, "\nTheirs:\n");
+
+                StringWriter nameWriter2(str, static_cast<int>(end - str));
+                m_Diff2.Serialize(nameWriter2);
+                str += nameWriter2.m_Offset;
+
+                ShowMessage(g_TempBuffer);
+
+                breakpoint();
+            }
+
             m_Offset += sizeof(T);
         }
-    };
 
-    constexpr uint32 rand_spcg32(uint64 s[1])
-    {
-        constexpr uint64 m = 0x85bad762cae4b329;
-        constexpr uint64 a = 0xa12e5b2b500f7add;
-        *s = *s * m + a;
-        int shift = 29 - (*s >> 61);
-        return static_cast<uint32>(*s >> shift);
-    }
+        constexpr void SetName(const char* name)
+        {
+            m_Name = name;
+            m_IteratorName = nullptr;
+        }
+
+        constexpr void SetName(const char* name, int i, const char* iName)
+        {
+            m_Name = name;
+            m_Iterator = i;
+            m_IteratorName = iName;
+        }
+    };
 
     constexpr uint32 hash_fnv1a32(const void* data, int size, uint32 hash = 0x811c9dc5)
     {
@@ -279,68 +412,79 @@ namespace
 
     enum class EInputDelayMode
     {
-        ManualAll,
-        ManualSelf,
         Automatic,
+        Manual,
 
         COUNT
     };
 
-    struct InputDelayChangeRequest
+    struct AutomaticInputDelayChange
     {
-        EInputDelayMode m_InputDelayMode = {};
         uint32 m_InputFrame = 0;
         int m_InputDelay = 0;
     };
 
-    struct MessageInputDelayChangeRequest
+    struct MessageAutomaticInputDelayChange
     {
-        int8 m_ChangeType = 0;
-        uint8 m_FrameIndex = 0;
+        uint8 m_InputFrameIndex = 0;
         uint8 m_InputDelay = 0;
     };
 
     struct Checksum
     {
         uint32 m_Frame = 0;
-        uint64 m_RNG[1] = {};
         EInputDelayMode m_InputDelayMode = {};
-        int m_InputDelayFavoredPlayerIndex = -1;
+        int m_InputDelayFavoredClientIndex = 0;
+        int m_MinAutomaticInputDelay = 0;
+        int m_MaxAutomaticInputDelay = 0;
+        int m_PlayerIndexToClientIndexMap[2] = {};
+
         struct
         {
             int m_InputDelay = 0;
             int m_AutomaticInputDelay = 0;
-            InputFlags_t m_InputBuffer[8] = {};
-            InputDelayChangeRequest m_InputDelayChangeRequests[8];
-        } m_PlayerData[2];
+            InputFlags_t m_InputBuffer[2] = {};
+            AutomaticInputDelayChange m_AutomaticInputDelayChanges[countof(m_InputBuffer)];
+        } m_ClientData[2];
 
         template<typename T>
         constexpr void Serialize(T& writer)
         {
-            writer.Write(m_Frame);
-            writer.Write(m_RNG);
-            writer.Write(m_InputDelayMode);
-            writer.Write(m_InputDelayFavoredPlayerIndex);
+            #define WRITE_NAMED(val) writer.SetName(#val); writer.Write(val);
+            #define WRITE_NAMED_INDEX(val, i) writer.SetName(#val, i, #i); writer.Write(val);
 
-            for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
+            WRITE_NAMED(m_Frame);
+            WRITE_NAMED(m_InputDelayMode);
+            WRITE_NAMED(m_InputDelayFavoredClientIndex);
+            WRITE_NAMED(m_MinAutomaticInputDelay);
+            WRITE_NAMED(m_MaxAutomaticInputDelay);
+
+            for (int i = 0; i < countof(m_PlayerIndexToClientIndexMap); i++)
             {
-                auto& playerData = m_PlayerData[playerIndex];
+                WRITE_NAMED_INDEX(m_PlayerIndexToClientIndexMap[i], i);
+            }
 
-                writer.Write(playerData.m_InputDelay);
-                writer.Write(playerData.m_AutomaticInputDelay);
+            for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+            {
+                WRITE_NAMED_INDEX(m_ClientData[clientIndex].m_InputDelay, clientIndex);
+                WRITE_NAMED_INDEX(m_ClientData[clientIndex].m_AutomaticInputDelay, clientIndex);
 
-                for (int i = 0; i < countof(playerData.m_InputBuffer); i++)
+                auto& clientData = m_ClientData[clientIndex];
+
+                for (int i = 0; i < countof(clientData.m_InputBuffer); i++)
                 {
-                    writer.Write(playerData.m_InputBuffer[i]);
+                    WRITE_NAMED_INDEX(clientData.m_InputBuffer[i], i);
                 }
 
-                for (int i = 0; i < countof(playerData.m_InputDelayChangeRequests); i++)
+                for (int i = 0; i < countof(clientData.m_AutomaticInputDelayChanges); i++)
                 {
-                    writer.Write(playerData.m_InputDelayChangeRequests[i].m_InputDelayMode);
-                    writer.Write(playerData.m_InputDelayChangeRequests[i].m_InputFrame);
-                    writer.Write(playerData.m_InputDelayChangeRequests[i].m_InputDelay);
+                    WRITE_NAMED_INDEX(clientData.m_AutomaticInputDelayChanges[i].m_InputFrame, i);
+                    WRITE_NAMED_INDEX(clientData.m_AutomaticInputDelayChanges[i].m_InputDelay, i);
                 }
             }
+
+            #undef WRITE_NAMED
+            #undef WRITE_NAMED_INDEX
         }
 
         static consteval int GetMaxSize()
@@ -360,7 +504,16 @@ namespace
         int m_GmlBufferSize = 0;
         bool m_HasBuffer = false;
         uint8 m_PfoBuffer[Checksum::GetMaxSize()] = {};
-        uint8 m_GmlBuffer[1024] = {};
+        uint8 m_GmlBuffer[64] = {};
+
+        constexpr void Reset()
+        {
+            m_Frame = 0;
+            m_Checksum = 0;
+            m_PfoBufferSize = 0;
+            m_GmlBufferSize = 0;
+            m_HasBuffer = false;
+        }
 
         template<typename T>
         constexpr void Serialize(T& writer)
@@ -373,6 +526,7 @@ namespace
             writer.Write(m_GmlBuffer, m_GmlBufferSize);
         }
     };
+
     ChecksumBuffer g_tempChecksumBuffer;
 
     template<int NSampleCount, int NBucketCount>
@@ -456,25 +610,34 @@ namespace
 
     struct PlayerData
     {
+        int m_PlayerIndex = -1;
+        uint32 m_TailInputFrame = 0;
+        InputFlags_t m_InputBuffer[128] = {};
+    };
+
+    struct ClientData
+    {
         int64 m_LastSentTime = 0;
         int64 m_LastSentMessageNumber = 0;
         int64 m_LastReceivedMessageNumber = 0;
         int64 m_LastAcknowledgedMessageNumber = 0;
         int64 m_PreviousFrameLastAcknowledgedMessageNumber = 0;
         int64 m_PreviousFrameSampleRTT = 0;
-        int m_InputDelay = 0;
-        int m_AutomaticInputDelay = 0;
-        uint32 m_LastSentInputFrame = 0;
+        MessageSendInfo m_MessageSendData[512];
+        HSteamNetConnection m_ConnectSocket = k_HSteamNetConnection_Invalid;
         uint32 m_LastInputFrame = 0;
         uint32 m_LastAcknowledgedInputFrame = 0;
-        uint32 m_LastFullyAcknowledgedInputFrame = 0;
-        HSteamNetConnection m_ConnectSocket = k_HSteamNetConnection_Invalid;
-        InputFlags_t m_InputBuffer[128] = {};
-        InputDelayChangeRequest m_InputDelayChangeRequests[countof(m_InputBuffer)];
-        MessageSendInfo m_MessageSendData[512];
+        uint32 m_LastSentFrame = 0;
+        uint32 m_LastReceivedChecksumFrame = 0;
+        int m_InputDelay = 0;
+        int m_AutomaticInputDelay = 0;
+        PlayerData m_PlayerData;
+        AutomaticInputDelayChange m_AutomaticInputDelayChanges[countof(m_PlayerData.m_InputBuffer)];
         Histogram<c_SamplesNeededBeforeRaisingDelay, c_MaxInputDelay + 1> m_RaiseDelayHistogram;
         Histogram<c_SamplesNeededBeforeLoweringDelay, c_MaxInputDelay + 1> m_LowerDelayHistogram;
-        ChecksumBuffer m_ChecksumData[128] = { { .m_Frame = 1 } };
+        ChecksumBuffer m_ChecksumData[256] = { { .m_Frame = 1 } };
+        bool m_HasReceivedUnacknowledgedInputFrames = false;
+        bool m_IsRunningTooFarBehind;
     };
 
     enum class EFileStatus
@@ -492,7 +655,7 @@ namespace
         const char* m_Filename = nullptr;
         const void* m_Data = nullptr;
         EFileStatus m_Status = EFileStatus::None;
-        int m_OwnerPlayerIndex = 0;
+        int m_OwnerClientIndex = 0;
         int m_Size = 0;
     };
 
@@ -505,13 +668,13 @@ namespace
 
     struct ReliableMessage
     {
-        EReliableMessageType m_Type;
-        char m_Filename[MAX_PATH + 1];
         union
         {
             int m_Size;
             uint32 m_Frame;
         };
+        EReliableMessageType m_Type;
+        char m_Filename[MAX_PATH + 1];
 
         template<typename T>
         constexpr void Serialize(T& writer)
@@ -543,36 +706,34 @@ namespace
     struct Message
     {
         int64 m_LastReceivedMessageNumber = 0;
-        uint32 m_FirstSentFrame = 0;
-        uint8 m_FramesSentCount = 0;
-        int8 m_ChecksumFrameDelta = 0;
+        uint32 m_FirstInputFrame = 0;
         uint32 m_Checksum = 0;
-
-        InputFlags_t m_Inputs[countof(PlayerData::m_InputBuffer)] = {};
-        MessageInputDelayChangeRequest m_InputDelayChangeRequests[countof(m_Inputs)];
+        InputFlags_t m_Inputs[1 << c_MessageInputCountBits] = {};
+        MessageAutomaticInputDelayChange m_AutomaticInputDelayChanges[countof(m_Inputs)];
+        uint8 m_InputFrameCount = 0;
+        int8 m_ChecksumFrameDelta = 0;
 
         template<typename T>
         constexpr void Serialize(T& writer)
         {
             writer.Write(m_LastReceivedMessageNumber);
-            writer.Write(m_FirstSentFrame);
-            writer.Write(m_FramesSentCount);
+            writer.Write(m_FirstInputFrame);
+            writer.Write(m_InputFrameCount);
             writer.Write(m_ChecksumFrameDelta);
             writer.Write(m_Checksum);
 
-            assert(m_FramesSentCount <= countof(m_Inputs));
-            for (int i = 0; i < m_FramesSentCount; i++)
+            assert(m_InputFrameCount <= countof(m_Inputs));
+            for (int i = 0; i < m_InputFrameCount; i++)
             {
                 writer.Write(m_Inputs[i]);
             }
 
-            for (int i = 0; i < countof(m_InputDelayChangeRequests); i++)
+            for (int i = 0; i < countof(m_AutomaticInputDelayChanges); i++)
             {
-                writer.Write(m_InputDelayChangeRequests[i].m_ChangeType);
-                if (m_InputDelayChangeRequests[i].m_ChangeType != 0)
+                writer.Write(m_AutomaticInputDelayChanges[i].m_InputFrameIndex);
+                if (m_AutomaticInputDelayChanges[i].m_InputFrameIndex != 0)
                 {
-                    writer.Write(m_InputDelayChangeRequests[i].m_FrameIndex);
-                    writer.Write(m_InputDelayChangeRequests[i].m_InputDelay);
+                    writer.Write(m_AutomaticInputDelayChanges[i].m_InputDelay);
                 }
                 else
                 {
@@ -588,11 +749,11 @@ namespace
             ChecksumBuffer checksumBuffer;
             checksumBuffer.m_PfoBufferSize = sizeof(checksumBuffer.m_PfoBuffer);
             checksumBuffer.m_GmlBufferSize = sizeof(checksumBuffer.m_GmlBuffer);
-            message.m_FramesSentCount = countof(message.m_Inputs);
+            message.m_InputFrameCount = countof(message.m_Inputs);
 
-            for (int i = 0; i < countof(message.m_InputDelayChangeRequests); i++)
+            for (int i = 0; i < countof(message.m_AutomaticInputDelayChanges); i++)
             {
-                message.m_InputDelayChangeRequests[i].m_ChangeType = static_cast<int8>(EInputDelayMode::Automatic) + 1;
+                message.m_AutomaticInputDelayChanges[i].m_InputFrameIndex = 0xff;
             }
 
             message.Serialize(size);
@@ -600,147 +761,34 @@ namespace
         }
     };
 
+    struct ClientPlayer
+    {
+        ClientData* m_ClientData = nullptr;
+        PlayerData* m_PlayerData = nullptr;
+    };
+
     struct PFO
     {
-        CCallResult<PFO, LobbyCreated_t> m_SteamCallResultLobbyCreated;
-        CCallResult<PFO, LobbyEnter_t> m_SteamCallResultLobbyEntered;
-        CCallResult<PFO, LobbyMatchList_t> m_SteamCallResultLobbyMatchList;
-
+        ClientData m_ClientData[2];
+        int m_PlayerIndexToClientIndexMap[2] = { -1, -1 };
+        FileData m_FileData[32];
+        
         HSteamListenSocket m_ListenSocket = k_HSteamListenSocket_Invalid;
 
         EOnlineState m_OnlineState = EOnlineState::Offline;
         uint32 m_Frame = 0;
-        int m_PlayerIndex = 0;
+        int m_ClientIndex = 0;
+        int m_AssignedClientsCount = 0;
+        int m_PreviousFrameAssignedClientsCount = 0;
 
         uint32 m_LastSentChecksumFrame = 0;
 
-        EInputDelayMode m_InputDelayMode = EInputDelayMode::ManualAll;
-        EInputDelayMode m_RequestedInputDelayMode = m_InputDelayMode;
-        uint32 m_RequestedInputDelayFrame = 0;
-        int m_RequestedInputDelay = 0;
-        int m_InputDelayFavoredPlayerIndex = -1;
-        int m_RequestedInputDelayFavoredPlayerIndex = -1;
-        bool m_RecordDelaySamples = false;
-
-        uint64 m_RNG[1] = {};
-
-        PlayerData m_PlayerData[2];
-        FileData m_FileData[32];
-
-        STEAM_CALLBACK(PFO, OnNetConnectionStatusChanged, SteamNetConnectionStatusChangedCallback_t)
-        {
-            auto hConn = pParam->m_hConn;
-            auto& info = pParam->m_info;
-            auto eOldState = pParam->m_eOldState;
-
-            ReleaseConsoleOutput("Connection status changed conn: %u, state %d -> %d, end: %d %s\n", hConn, eOldState, info.m_eState, info.m_eEndReason, info.m_szEndDebug);
-
-            if (info.m_eState == k_ESteamNetworkingConnectionState_ClosedByPeer || info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally)
-            {
-                if (info.m_eState == k_ESteamNetworkingConnectionState_ClosedByPeer)
-                {
-                    g_SteamNetworkingSockets->CloseConnection(hConn, k_ESteamNetConnectionEnd_App_Min, nullptr, false);
-                }
-                else
-                {
-                    g_SteamNetworkingSockets->CloseConnection(hConn, info.m_eEndReason, info.m_szEndDebug, false);
-                }
-
-                for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
-                {
-                    auto& playerData = m_PlayerData[playerIndex];
-                    if (playerData.m_ConnectSocket == hConn)
-                    {
-                        playerData.m_ConnectSocket = k_HSteamNetConnection_Invalid;
-                    }
-                }
-
-                if (info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally &&
-                    (info.m_eEndReason == k_ESteamNetConnectionEnd_Remote_Timeout || info.m_eEndReason == k_ESteamNetConnectionEnd_Misc_Timeout))
-                {
-                    ReleaseConsoleOutput("Let's try to reconnect!\n");
-                    //m_OnlineState = EOnlineState::Reconnecting;
-                    m_OnlineState = EOnlineState::Disconnecting;
-                }
-                else
-                {
-                    m_OnlineState = EOnlineState::Disconnecting;
-                }
-            }
-
-            if (info.m_hListenSocket != k_HSteamListenSocket_Invalid &&
-                eOldState == k_ESteamNetworkingConnectionState_None &&
-                info.m_eState == k_ESteamNetworkingConnectionState_Connecting)
-            {
-                if (m_OnlineState == EOnlineState::Offline || m_OnlineState == EOnlineState::InGame)
-                {
-                    if (m_PlayerData[1].m_ConnectSocket != k_HSteamNetConnection_Invalid)
-                    {
-                        g_SteamNetworkingSockets->CloseConnection(hConn, k_ESteamNetConnectionEnd_AppException_Generic + 2, "New connection received", false);
-                    }
-
-                    EResult res = g_SteamNetworkingSockets->AcceptConnection(hConn);
-                    if (res == k_EResultOK)
-                    {
-                        AddConnection(1, hConn);
-                    }
-                    else
-                    {
-                        YYError("AcceptConnection returned %d", res);
-                        g_SteamNetworkingSockets->CloseConnection(hConn, k_ESteamNetConnectionEnd_AppException_Generic, "Failed to accept connection", false);
-                    }
-                }
-                else
-                {
-                    g_SteamNetworkingSockets->CloseConnection(hConn, k_ESteamNetConnectionEnd_AppException_Generic + 1, "Game no longer available", false);
-                }
-            }
-
-            if (info.m_eState == k_ESteamNetworkingConnectionState_Connected)
-            {
-                if (m_OnlineState == EOnlineState::Offline)
-                {
-                    m_OnlineState = EOnlineState::StartingGame;
-                }
-            }
-        }
-
-        void AddConnection(int playerIndex, HSteamNetConnection hConn)
-        {
-            constexpr int lanePriorities[] = { 1, 1 }; // lowest number drains first
-            constexpr uint16 laneWeights[] = { 1, 1 }; // higher number means more relative bandwidth
-            g_SteamNetworkingSockets->ConfigureConnectionLanes(hConn, countof(lanePriorities), lanePriorities, laneWeights);
-            m_PlayerData[playerIndex].m_ConnectSocket = hConn;
-        }
-
-        STEAM_CALLBACK(PFO, OnLobbyDataUpdate, LobbyDataUpdate_t)
-        {
-            auto map = CreateDsMap(0, 0);
-            DsMapAddString(map, "event_type", "lobby_data_update");
-            DsMapAddBool(map, "success", pParam->m_bSuccess);
-            DsMapAddInt64(map, "lobby_id", pParam->m_ulSteamIDLobby);
-            DsMapAddInt64(map, "member_id", pParam->m_ulSteamIDMember);
-            CreateAsyncEventWithDSMap(map, 69);
-        }
-
-        STEAM_CALLBACK(PFO, OnLobbyGameCreated, LobbyGameCreated_t)
-        {
-            auto map = CreateDsMap(0, 0);
-            DsMapAddString(map, "event_type", "lobby_game_created");
-            DsMapAddInt64(map, "lobby_id", pParam->m_ulSteamIDLobby);
-            DsMapAddInt64(map, "server_id", pParam->m_ulSteamIDGameServer);
-            DsMapAddDouble(map, "ip", pParam->m_unIP);
-            DsMapAddDouble(map, "port", pParam->m_usPort);
-            CreateAsyncEventWithDSMap(map, 69);
-        }
-
-        void Quit()
-        {
-            if (m_OnlineState >= EOnlineState::InGame)
-            {
-                m_OnlineState = EOnlineState::Quitting;
-            }
-        }
+        EInputDelayMode m_InputDelayMode = {};
+        uint32 m_RequestedAutomaticInputDelayFrame = 0;
+        int m_RequestedAutomaticInputDelay = 0;
+        int m_InputDelayFavoredClientIndex = -1;
+        int m_MinAutomaticInputDelay = 0;
+        int m_MaxAutomaticInputDelay = c_MaxInputDelay;
 
         void Update(CInstance* instance, bool advanceFrame)
         {
@@ -768,8 +816,8 @@ namespace
                     ChecksumBuffer* pChecksumBuffer;
                     if (advanceFrame)
                     {
-                        auto& myPlayerData = m_PlayerData[m_PlayerIndex];
-                        pChecksumBuffer = &myPlayerData.m_ChecksumData[m_Frame & (countof(myPlayerData.m_ChecksumData) - 1)];
+                        auto& myClientData = m_ClientData[m_ClientIndex];
+                        pChecksumBuffer = &myClientData.m_ChecksumData[m_Frame & (countof(myClientData.m_ChecksumData) - 1)];
                     }
                     else
                     {
@@ -777,36 +825,39 @@ namespace
                     }
 
                     auto& checksumBuffer = *pChecksumBuffer;
-                    reset(checksumBuffer);
+                    checksumBuffer.Reset();
                     checksumBuffer.m_Frame = m_Frame;
                     checksumBuffer.m_HasBuffer = true;
 
                     {
                         Checksum checksum;
                         checksum.m_Frame = m_Frame;
-                        copy(checksum.m_RNG, m_RNG);
                         checksum.m_InputDelayMode = m_InputDelayMode;
-                        checksum.m_InputDelayFavoredPlayerIndex = m_InputDelayFavoredPlayerIndex;
+                        checksum.m_InputDelayFavoredClientIndex = m_InputDelayFavoredClientIndex;
+                        checksum.m_MinAutomaticInputDelay = m_MinAutomaticInputDelay;
+                        checksum.m_MaxAutomaticInputDelay = m_MaxAutomaticInputDelay;
+                        copy(checksum.m_PlayerIndexToClientIndexMap, m_PlayerIndexToClientIndexMap);
 
-                        for (int playerIndex = 0; playerIndex < countof(checksum.m_PlayerData); playerIndex++)
+                        for (int clientIndex = 0; clientIndex < countof(checksum.m_ClientData); clientIndex++)
                         {
-                            auto& playerData = m_PlayerData[playerIndex];
-                            auto& checksumPlayerData = checksum.m_PlayerData[playerIndex];
+                            auto& clientData = m_ClientData[clientIndex];
+                            auto& playerData = clientData.m_PlayerData;
+                            auto& checksumPlayerData = checksum.m_ClientData[clientIndex];
 
-                            checksumPlayerData.m_InputDelay = playerData.m_InputDelay;
-                            checksumPlayerData.m_AutomaticInputDelay = playerData.m_AutomaticInputDelay;
+                            checksumPlayerData.m_InputDelay = clientData.m_InputDelay;
+                            checksumPlayerData.m_AutomaticInputDelay = clientData.m_AutomaticInputDelay;
 
                             for (int i = 0; i < countof(checksumPlayerData.m_InputBuffer); i++)
                             {
                                 checksumPlayerData.m_InputBuffer[i] = playerData.m_InputBuffer[(m_Frame - i - 1) & (countof(playerData.m_InputBuffer) - 1)];
                             }
 
-                            for (int i = 0; i < countof(checksumPlayerData.m_InputDelayChangeRequests); i++)
+                            for (int i = 0; i < countof(checksumPlayerData.m_AutomaticInputDelayChanges); i++)
                             {
-                                auto& changeRequest = playerData.m_InputDelayChangeRequests[(m_Frame - i - 1) & (countof(playerData.m_InputDelayChangeRequests) - 1)];
+                                auto& changeRequest = clientData.m_AutomaticInputDelayChanges[(m_Frame - i - 1) & (countof(clientData.m_AutomaticInputDelayChanges) - 1)];
                                 if (changeRequest.m_InputFrame == m_Frame - i - 1)
                                 {
-                                    checksumPlayerData.m_InputDelayChangeRequests[i] = changeRequest;
+                                    checksumPlayerData.m_AutomaticInputDelayChanges[i] = changeRequest;
                                 }
                             }
                         }
@@ -843,84 +894,139 @@ namespace
                     CheckChecksum(checksumBuffer, instance);
                 }
 
+                // handle unasigned players
+                if (advanceFrame)
+                {
+                    auto& myClientData = m_ClientData[m_ClientIndex];
+                    auto& myPlayerData = myClientData.m_PlayerData;
+
+                    for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+                    {
+                        auto& clientData = m_ClientData[clientIndex];
+                        auto& playerData = clientData.m_PlayerData;
+
+                        // if all our inputs have been acknowledged while we were assigned, then we can automatically acknowledge unasigned inputs up to this frame
+                        if (myPlayerData.m_PlayerIndex < 0)
+                        {
+                            if (clientData.m_LastAcknowledgedInputFrame >= myClientData.m_LastInputFrame && clientData.m_LastAcknowledgedInputFrame < m_Frame)
+                            {
+                                clientData.m_LastAcknowledgedInputFrame = m_Frame;
+                                //trace("auto acked frame %u for client %d\n", m_Frame, clientIndex);
+                            }
+                        }
+
+                        if (playerData.m_PlayerIndex < 0)
+                        {
+                            // zero input of any unasigned players
+                            playerData.m_InputBuffer[m_Frame & (countof(playerData.m_InputBuffer) - 1)] = 0;
+                            if (playerData.m_TailInputFrame < m_Frame)
+                            {
+                                assert(playerData.m_TailInputFrame == m_Frame - 1);
+                                playerData.m_TailInputFrame = m_Frame;
+                            }
+                            //trace("zeroed input on frame %u for client %d\n", m_Frame, clientIndex);
+
+                            // invalidate delay changes for unasigned players
+                            auto& delayChange = clientData.m_AutomaticInputDelayChanges[m_Frame & (countof(clientData.m_AutomaticInputDelayChanges) - 1)];
+                            if (delayChange.m_InputFrame == m_Frame)
+                            {
+                                delayChange.m_InputFrame++;
+                                //trace("invalidated delay change on frame %u for client %d\n", m_Frame, clientIndex);
+                            }
+                        }
+                    }
+                }
+
                 // get local player input
                 if (advanceFrame)
                 {
-                    auto& myPlayerData = m_PlayerData[m_PlayerIndex];
-                    uint32 frame = myPlayerData.m_LastInputFrame + 1;
-                    uint32 lastFrame = m_Frame + myPlayerData.m_InputDelay;
-                    InputFlags_t input;
+                    auto& myClientData = m_ClientData[m_ClientIndex];
+                    auto& myPlayerData = myClientData.m_PlayerData;
 
+                    if (myPlayerData.m_PlayerIndex >= 0)
                     {
-                        RValue result = {};
-                        RValue arg;
-                        init_real(arg, frame);
-                        Script_Perform(g_gml_Script_getInputCallback, instance, instance, 1, &result, &arg);
-                        input = static_cast<InputFlags_t>(YYGetInt64(&result, 0));
-                        assert(static_cast<int64>(input) == result.v64);
-                    }
-
-                    // if we have more inputs than we need, only keep the input if it's different than the previous
-                    bool keepInput = true;
-                    if (frame > lastFrame)
-                    {
-                        auto previousInput = myPlayerData.m_InputBuffer[(frame - 1) & (countof(myPlayerData.m_InputBuffer) - 1)];
+                        uint32 frame = myPlayerData.m_TailInputFrame + 1;
+                        uint32 lastFrame = m_Frame + myClientData.m_InputDelay;
+                        InputFlags_t input;
 
                         {
                             RValue result = {};
-                            RValue args[3];
-                            init_real(args[0], frame);
-                            init_int64(args[1], previousInput);
-                            init_int64(args[2], input);
-                            Script_Perform(g_gml_Script_getInputCallback, instance, instance, countof(args), &result, args);
-                            keepInput = YYGetBool(&result, 0);
+                            RValue arg;
+                            init_real(arg, frame);
+                            Script_Perform(g_gml_Script_getInputCallback, instance, instance, 1, &result, &arg);
+                            input = static_cast<InputFlags_t>(YYGetInt64(&result, 0));
+                            assert(static_cast<int64>(input) == result.v64);
                         }
-                    }
 
-                    if (keepInput)
-                    {
-                        while (true)
+                        // if we have more inputs than we need, only keep the input if it's different than the previous
+                        bool keepInput = true;
+                        if (frame > lastFrame)
                         {
-                            assert(frame - m_Frame + 1 < countof(myPlayerData.m_InputBuffer));
-                            myPlayerData.m_InputBuffer[frame & (countof(myPlayerData.m_InputBuffer) - 1)] = input;
-                            myPlayerData.m_LastInputFrame = frame;
-
-                            if (++frame > lastFrame)
-                            {
-                                break;
-                            }
+                            auto previousInput = myPlayerData.m_InputBuffer[(frame - 1) & (countof(myPlayerData.m_InputBuffer) - 1)];
 
                             {
                                 RValue result = {};
-                                RValue args[2];
+                                RValue args[3];
                                 init_real(args[0], frame);
-                                init_int64(args[1], input);
+                                init_int64(args[1], previousInput);
+                                init_int64(args[2], input);
                                 Script_Perform(g_gml_Script_getInputCallback, instance, instance, countof(args), &result, args);
-                                input = static_cast<InputFlags_t>(YYGetInt64(&result, 0));
-                                assert(static_cast<int64>(input) == result.v64);
+                                keepInput = YYGetBool(&result, 0);
                             }
                         }
-                    }
 
-                    assert(myPlayerData.m_LastInputFrame >= m_Frame);
+                        if (keepInput)
+                        {
+                            while (true)
+                            {
+                                assert(frame - m_Frame < countof(myPlayerData.m_InputBuffer));
+                                myPlayerData.m_InputBuffer[frame & (countof(myPlayerData.m_InputBuffer) - 1)] = input;
+                                myPlayerData.m_TailInputFrame = frame;
+
+                                if (++frame > lastFrame)
+                                {
+                                    break;
+                                }
+
+                                {
+                                    RValue result = {};
+                                    RValue args[2];
+                                    init_real(args[0], frame);
+                                    init_int64(args[1], input);
+                                    Script_Perform(g_gml_Script_getInputCallback, instance, instance, countof(args), &result, args);
+                                    input = static_cast<InputFlags_t>(YYGetInt64(&result, 0));
+                                    assert(static_cast<int64>(input) == result.v64);
+                                }
+                            }
+
+                            assert(myClientData.m_LastInputFrame < myPlayerData.m_TailInputFrame);
+                            myClientData.m_LastInputFrame = myPlayerData.m_TailInputFrame;
+                        }
+
+                        assert(myPlayerData.m_TailInputFrame >= m_Frame);
+                    }
                 }
 
+                bool firstTime = true;
                 while (true)
                 {
                     // receive all messages
                     {
-                        SteamNetworkingMessage_t* netMessages[32];
+                        SteamNetworkingMessage_t* netMessages[1000];
 
-                        for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
+                        for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
                         {
-                            auto& playerData = m_PlayerData[playerIndex];
-                            if (playerData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
-                            {
-                                int count = SteamNetworkingSockets()->ReceiveMessagesOnConnection(playerData.m_ConnectSocket, netMessages, countof(netMessages));
+                            auto& clientData = m_ClientData[clientIndex];
+                            auto& playerData = clientData.m_PlayerData;
 
-                                for (int i = 0; i < count; i++)
+                            if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
+                            {
+                                int netMessageCount = g_SteamNetworkingSockets->ReceiveMessagesOnConnection(clientData.m_ConnectSocket, netMessages, countof(netMessages));
+                                //trace("Received %d messages\n", count);
+
+                                for (int netMessageIndex = 0; netMessageIndex < netMessageCount; netMessageIndex++)
                                 {
-                                    auto netMessage = netMessages[i];
+                                    auto netMessage = netMessages[netMessageIndex];
 
                                     switch (netMessage->m_idxLane)
                                     {
@@ -933,12 +1039,13 @@ namespace
                                         Reader reader(static_cast<uint8*>(netMessage->m_pData), netMessage->m_cbSize);
                                         message.Serialize(reader);
 
-                                        if (netMessage->m_nMessageNumber > playerData.m_LastReceivedMessageNumber)
+                                        if (netMessage->m_nMessageNumber > clientData.m_LastReceivedMessageNumber)
                                         {
-                                            playerData.m_LastReceivedMessageNumber = netMessage->m_nMessageNumber;
+                                            clientData.m_LastReceivedMessageNumber = netMessage->m_nMessageNumber;
+                                            clientData.m_HasReceivedUnacknowledgedInputFrames = message.m_InputFrameCount != 0;
                                         }
 
-                                        auto& acknowledgedMessage = playerData.m_MessageSendData[message.m_LastReceivedMessageNumber & (countof(playerData.m_MessageSendData) - 1)];
+                                        auto& acknowledgedMessage = clientData.m_MessageSendData[message.m_LastReceivedMessageNumber & (countof(clientData.m_MessageSendData) - 1)];
                                         if (acknowledgedMessage.m_MessageNumber == message.m_LastReceivedMessageNumber)
                                         {
                                             if (acknowledgedMessage.m_MessageAcknowledgeTime == 0)
@@ -946,74 +1053,84 @@ namespace
                                                 acknowledgedMessage.m_MessageAcknowledgeTime = netMessage->m_usecTimeReceived;
                                             }
 
-                                            if (message.m_LastReceivedMessageNumber > playerData.m_LastAcknowledgedMessageNumber)
+                                            if (message.m_LastReceivedMessageNumber > clientData.m_LastAcknowledgedMessageNumber)
                                             {
-                                                playerData.m_LastAcknowledgedMessageNumber = message.m_LastReceivedMessageNumber;
-                                                playerData.m_LastAcknowledgedInputFrame = acknowledgedMessage.m_InputFrame;
+                                                clientData.m_LastAcknowledgedMessageNumber = message.m_LastReceivedMessageNumber;
+
+                                                if (acknowledgedMessage.m_InputFrame > clientData.m_LastAcknowledgedInputFrame)
+                                                {
+                                                    clientData.m_LastAcknowledgedInputFrame = acknowledgedMessage.m_InputFrame;
+                                                }
                                             }
                                         }
 
-                                        uint32 checksumFrame = message.m_FirstSentFrame + message.m_ChecksumFrameDelta;
-                                        assert(message.m_ChecksumFrameDelta >= 0 || checksumFrame < message.m_FirstSentFrame); // detect unsigned overflow
-                                        auto& checksumBuffer = playerData.m_ChecksumData[checksumFrame & (countof(playerData.m_ChecksumData) - 1)];
+                                        netMessage->Release();
+                                        netMessage = nullptr;
 
-                                        if (checksumBuffer.m_Frame != checksumFrame)
+                                        uint32 checksumFrame = message.m_FirstInputFrame + message.m_ChecksumFrameDelta;
+                                        assert(message.m_ChecksumFrameDelta >= 0 || checksumFrame < message.m_FirstInputFrame); // detect unsigned overflow
+                                        auto& checksumBuffer = clientData.m_ChecksumData[checksumFrame & (countof(clientData.m_ChecksumData) - 1)];
+
+                                        if (checksumBuffer.m_Frame < checksumFrame)
                                         {
-                                            reset(checksumBuffer);
+                                            if (checksumFrame > clientData.m_LastReceivedChecksumFrame)
+                                            {
+                                                clientData.m_LastReceivedChecksumFrame = checksumFrame;
+                                            }
+
+                                            checksumBuffer.Reset();
                                             checksumBuffer.m_Frame = checksumFrame;
                                             checksumBuffer.m_Checksum = message.m_Checksum;
 
                                             CheckChecksum(checksumBuffer, instance);
                                         }
 
-                                        netMessage->Release();
-
-                                        assert(message.m_FramesSentCount <= countof(message.m_Inputs));
-
-                                        if (message.m_FirstSentFrame > 0)
+                                        assert(message.m_InputFrameCount <= countof(message.m_Inputs));
+                                        if (message.m_InputFrameCount > 0)
                                         {
-                                            uint32 lastFullyAcknowlegedFrame = message.m_FirstSentFrame - 1;
-                                            if (lastFullyAcknowlegedFrame > playerData.m_LastFullyAcknowledgedInputFrame)
+                                            uint32 lastFrame = message.m_FirstInputFrame + message.m_InputFrameCount - 1;
+                                            if (lastFrame > playerData.m_TailInputFrame)
                                             {
-                                                playerData.m_LastFullyAcknowledgedInputFrame = lastFullyAcknowlegedFrame;
-                                                //trace("fully acked frame: %u\n", playerData.m_LastFullyAcknowledgedInputFrame);
-                                            }
-                                        }
+                                                uint32 firstFrame = playerData.m_TailInputFrame + 1;
+                                                int firstMessageIndex = firstFrame - message.m_FirstInputFrame;
 
-                                        if (message.m_FramesSentCount > 0)
-                                        {
-                                            uint32 lastFrame = message.m_FirstSentFrame + message.m_FramesSentCount - 1;
-                                            if (lastFrame > playerData.m_LastInputFrame)
-                                            {
-                                                uint32 firstFrame = playerData.m_LastInputFrame + 1;
+                                                // skipping over inputs is possible if they remove themselves as a player before we do, this is fine and we will fill these in with zero as we get to them
+                                                if (firstMessageIndex < 0)
+                                                {
+                                                    firstFrame = message.m_FirstInputFrame;
+                                                    firstMessageIndex = 0;
+                                                }
 
-                                                int firstMessageIndex = firstFrame - message.m_FirstSentFrame;
                                                 int count = lastFrame - firstFrame + 1;
 
-                                                assert(firstMessageIndex >= 0 && firstMessageIndex <= message.m_FramesSentCount);
-                                                assert(count > 0 && count <= message.m_FramesSentCount);
+                                                assert(firstMessageIndex >= 0 && firstMessageIndex < message.m_InputFrameCount);
+                                                assert(count > 0 && count <= message.m_InputFrameCount);
+                                                assert(lastFrame - m_Frame < countof(playerData.m_InputBuffer));
 
                                                 for (int i = 0; i < count; i++)
                                                 {
                                                     playerData.m_InputBuffer[(i + firstFrame) & (countof(playerData.m_InputBuffer) - 1)] = message.m_Inputs[i + firstMessageIndex];
                                                 }
+                                                playerData.m_TailInputFrame = lastFrame;
 
-                                                for (int i = 0; i < countof(message.m_InputDelayChangeRequests); i++)
+                                                assert(clientData.m_LastInputFrame < playerData.m_TailInputFrame);
+                                                clientData.m_LastInputFrame = lastFrame;
+
+                                                for (int i = 0; i < countof(message.m_AutomaticInputDelayChanges); i++)
                                                 {
-                                                    auto& messageChangeRequest = message.m_InputDelayChangeRequests[i];
-                                                    if (messageChangeRequest.m_ChangeType != 0)
+                                                    auto& messageDelayChange = message.m_AutomaticInputDelayChanges[i];
+                                                    if (messageDelayChange.m_InputFrameIndex != 0)
                                                     {
-                                                        assert(messageChangeRequest.m_ChangeType > 0 && messageChangeRequest.m_ChangeType <= static_cast<int8>(EInputDelayMode::COUNT));
-                                                        assert(messageChangeRequest.m_FrameIndex < message.m_FramesSentCount);
-                                                        assert(messageChangeRequest.m_InputDelay <= c_MaxInputDelay);
+                                                        int messageInputFrameIndex = messageDelayChange.m_InputFrameIndex & ((1 << c_MessageInputCountBits) - 1);
+                                                        assert(messageInputFrameIndex < message.m_InputFrameCount);
+                                                        assert(messageDelayChange.m_InputDelay <= c_MaxInputDelay);
 
-                                                        if (messageChangeRequest.m_FrameIndex >= firstMessageIndex)
+                                                        if (messageInputFrameIndex >= firstMessageIndex)
                                                         {
-                                                            uint32 frame = messageChangeRequest.m_FrameIndex + message.m_FirstSentFrame;
-                                                            auto& changeRequest = playerData.m_InputDelayChangeRequests[frame & (countof(playerData.m_InputDelayChangeRequests) - 1)];
-                                                            changeRequest.m_InputDelayMode = static_cast<EInputDelayMode>(messageChangeRequest.m_ChangeType - 1);
-                                                            changeRequest.m_InputFrame = frame;
-                                                            changeRequest.m_InputDelay = messageChangeRequest.m_InputDelay;
+                                                            uint32 frame = messageInputFrameIndex + message.m_FirstInputFrame;
+                                                            auto& delayChange = clientData.m_AutomaticInputDelayChanges[frame & (countof(clientData.m_AutomaticInputDelayChanges) - 1)];
+                                                            delayChange.m_InputFrame = frame;
+                                                            delayChange.m_InputDelay = messageDelayChange.m_InputDelay;
                                                         }
                                                     }
                                                     else
@@ -1022,19 +1139,17 @@ namespace
                                                     }
                                                 }
 
-                                                playerData.m_LastInputFrame = lastFrame;
-
                                                 //trace("Received frame: %u\n", lastFrame);
                                             }
                                             else
                                             {
-                                                //trace("Received frame: %u, but it wasn't newer than last received frame: %u\n", lastFrame, playerData.m_LastInputFrame);
+                                                //trace("Received frame: %u, but it wasn't newer than last received frame: %u\n", lastFrame, playerData.m_TailInputFrame);
                                             }
                                         }
                                     } break;
                                     case 1:
                                     {
-                                        ReceiveReliableMessage(netMessage, playerIndex, instance);
+                                        ReceiveReliableMessage(netMessage, clientIndex, instance);
                                     } break;
                                     }
                                 }
@@ -1042,95 +1157,120 @@ namespace
                         }
                     }
 
+                    bool canMoveToNextFrame = true;
+
                     // send all messages
                     {
                         int messageCount = 0;
-                        SteamNetworkingMessage_t* netMessages[countof(m_PlayerData) - 1];
-                        PlayerData* netMessagePlayers[countof(netMessages)];
+                        SteamNetworkingMessage_t* netMessages[countof(m_ClientData) - 1];
+                        ClientData* netMessageToClientDataMap[countof(netMessages)];
 
-                        auto& myPlayerData = m_PlayerData[m_PlayerIndex];
+                        auto& myClientData = m_ClientData[m_ClientIndex];
+                        auto& myPlayerData = myClientData.m_PlayerData;
 
-                        for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
+                        for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
                         {
-                            auto& playerData = m_PlayerData[playerIndex];
-                            if (playerData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
+                            auto& clientData = m_ClientData[clientIndex];
+
+                            if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
                             {
                                 // log some networking info to debug startup issues
-                                //if (!m_RecordDelaySamples)
+                                //if (m_AssignedClientsCount <= 0)
                                 //{
                                 //    SteamNetConnectionRealTimeLaneStatus_t lanes[2];
-                                //    g_SteamNetworkingSockets->GetConnectionRealTimeStatus(playerData.m_ConnectSocket, nullptr, countof(lanes), lanes);
+                                //    g_SteamNetworkingSockets->GetConnectionRealTimeStatus(clientData.m_ConnectSocket, nullptr, countof(lanes), lanes);
 
                                 //    trace("[0].PendingUnreliable: %d, [0].QueueTime: %lld, [1].PendingReliable: %d, [1].SentUnackedReliable: %d, [1].QueueTime: %lld\n",
                                 //        lanes[0].m_cbPendingUnreliable, lanes[0].m_usecQueueTime,
                                 //        lanes[1].m_cbPendingReliable, lanes[1].m_cbSentUnackedReliable, lanes[1].m_usecQueueTime);
                                 //}
 
-                                int64 time = g_SteamNetworkingUtils->GetLocalTimestamp();
-                                if (myPlayerData.m_LastInputFrame > playerData.m_LastSentInputFrame || time >= playerData.m_LastSentTime + c_TimeBeforeResendingMessage)
+                                // we can't have the client run too far behind, or the inputs we're sending them will roll off the end of the input buffer
+                                int countSinceChecksumFrame = myClientData.m_LastInputFrame - clientData.m_LastReceivedChecksumFrame;
+                                if (countSinceChecksumFrame > c_FramesToRunBehindUpperLimit)
                                 {
-                                    uint32 first = playerData.m_LastAcknowledgedInputFrame + 1;
-                                    int count = myPlayerData.m_LastInputFrame - playerData.m_LastAcknowledgedInputFrame;
-                                    assert(count >= 0);
-                                    
-                                    // if we have no frames to send them, and they had no frames to send us, and we're not recording samples, there's no need to send a message
-                                    if (m_RecordDelaySamples || count > 0 || playerData.m_LastInputFrame > playerData.m_LastFullyAcknowledgedInputFrame)
+                                    clientData.m_IsRunningTooFarBehind = true;
+                                    canMoveToNextFrame = false;
+                                }
+                                else if (clientData.m_IsRunningTooFarBehind && countSinceChecksumFrame > c_FramesToRunBehindLowerLimit)
+                                {
+                                    canMoveToNextFrame = false;
+                                }
+                                else
+                                {
+                                    clientData.m_IsRunningTooFarBehind = false;
+                                }
+
+                                Message message;
+                                int count = max(0, static_cast<int>(myClientData.m_LastInputFrame - clientData.m_LastAcknowledgedInputFrame));
+                                if (count > countof(message.m_Inputs))
+                                {
+                                    count = countof(message.m_Inputs);
+
+                                    //trace("Failed to send all inputs for frame: %u\n", myClientData.m_LastInputFrame);
+                                    canMoveToNextFrame = false;
+                                }
+
+                                int64 time = g_SteamNetworkingUtils->GetLocalTimestamp();
+
+                                if ( // if we are sending a new frame, or we are allowed to resend it
+                                    (m_Frame > clientData.m_LastSentFrame || time >= clientData.m_LastSentTime + c_TimeBeforeResendingMessage)
+                                    && // ... and if we have no frames to send them, and they had no frames to send us, and we're not recording samples, there's no need to send a message
+                                    (m_AssignedClientsCount > 0 || count > 0 || clientData.m_HasReceivedUnacknowledgedInputFrames))
+                                {
+                                    netMessageToClientDataMap[messageCount] = &clientData;
+                                    auto netMessage = netMessages[messageCount++] = g_SteamNetworkingUtils->AllocateMessage(Message::GetMaxSize());
+                                    netMessage->m_conn = clientData.m_ConnectSocket;
+                                    netMessage->m_nFlags = k_nSteamNetworkingSend_UnreliableNoDelay;
+
+                                    uint32 first = clientData.m_LastAcknowledgedInputFrame + 1;
+                                    message.m_LastReceivedMessageNumber = clientData.m_LastReceivedMessageNumber;
+                                    message.m_FirstInputFrame = first;
+
+                                    assert(count <= countof(message.m_Inputs));
+                                    message.m_InputFrameCount = static_cast<uint8>(count);
+
+                                    auto& checksumBuffer = myClientData.m_ChecksumData[m_Frame & (countof(myClientData.m_ChecksumData) - 1)];
+                                    assert(checksumBuffer.m_Frame == m_Frame);
+                                    int checksumFrameDelta = m_Frame - first;
+                                    assert(checksumFrameDelta >= INT8_MIN && checksumFrameDelta <= INT8_MAX);
+                                    message.m_ChecksumFrameDelta = static_cast<int8>(checksumFrameDelta);
+                                    message.m_Checksum = checksumBuffer.m_Checksum;
+
                                     {
-                                        netMessagePlayers[messageCount] = &playerData;
-                                        auto netMessage = netMessages[messageCount++] = g_SteamNetworkingUtils->AllocateMessage(Message::GetMaxSize());
-                                        netMessage->m_conn = playerData.m_ConnectSocket;
-                                        netMessage->m_nFlags = k_nSteamNetworkingSend_UnreliableNoDelay;
-
-                                        Message message;
-
-                                        if (count > countof(message.m_Inputs))
-                                        {
-                                            count = countof(message.m_Inputs);
-
-                                            trace("Failed to send all inputs for frame: %u\n", myPlayerData.m_LastInputFrame);
-                                        }
-
-                                        message.m_LastReceivedMessageNumber = playerData.m_LastReceivedMessageNumber;
-                                        message.m_FirstSentFrame = first;
-
-                                        assert(count <= countof(message.m_Inputs));
-                                        message.m_FramesSentCount = static_cast<uint8>(count);
-
-                                        auto& checksumBuffer = myPlayerData.m_ChecksumData[m_Frame & (countof(myPlayerData.m_ChecksumData) - 1)];
-                                        assert(checksumBuffer.m_Frame == m_Frame);
-                                        int checksumFrameDelta = m_Frame - first;
-                                        assert(checksumFrameDelta >= INT8_MIN && checksumFrameDelta <= INT8_MAX);
-                                        message.m_ChecksumFrameDelta = static_cast<int8>(checksumFrameDelta);
-                                        message.m_Checksum = checksumBuffer.m_Checksum;
-
-                                        int changeRequestIndex = 0;
+                                        int delayChangeIndex = 0;
                                         for (int i = 0; i < count; i++)
                                         {
                                             uint32 frame = i + first;
+
+                                            assert(frame <= myPlayerData.m_TailInputFrame);
                                             message.m_Inputs[i] = myPlayerData.m_InputBuffer[frame & (countof(myPlayerData.m_InputBuffer) - 1)];
 
-                                            auto& changeRequest = myPlayerData.m_InputDelayChangeRequests[frame & (countof(myPlayerData.m_InputDelayChangeRequests) - 1)];
-                                            if (changeRequest.m_InputFrame == frame)
+                                            auto& delayChange = myClientData.m_AutomaticInputDelayChanges[frame & (countof(myClientData.m_AutomaticInputDelayChanges) - 1)];
+                                            if (delayChange.m_InputFrame == frame)
                                             {
-                                                auto& messageChangeRequest = message.m_InputDelayChangeRequests[changeRequestIndex++];
-                                                messageChangeRequest.m_ChangeType = static_cast<int8>(changeRequest.m_InputDelayMode) + 1;
-                                                messageChangeRequest.m_FrameIndex = static_cast<uint8>(i);
-                                                messageChangeRequest.m_InputDelay = static_cast<uint8>(changeRequest.m_InputDelay);
+                                                auto& messageDelayChange = message.m_AutomaticInputDelayChanges[delayChangeIndex++];
+                                                messageDelayChange.m_InputFrameIndex = static_cast<uint8>(i | (1 << c_MessageInputCountBits));
+                                                messageDelayChange.m_InputDelay = static_cast<uint8>(delayChange.m_InputDelay);
                                             }
                                         }
-
-                                        Writer writer(static_cast<uint8*>(netMessage->m_pData), netMessage->m_cbSize);
-                                        message.Serialize(writer);
-                                        netMessage->m_cbSize = writer.m_Offset;
-
-                                        if (myPlayerData.m_LastInputFrame <= playerData.m_LastSentInputFrame)
-                                        {
-                                            //trace("Resending inputs for frame: %u\n", myPlayerData.m_LastInputFrame);
-                                        }
-
-                                        playerData.m_LastSentInputFrame = myPlayerData.m_LastInputFrame;
-                                        playerData.m_LastSentTime = time;
                                     }
+
+                                    Writer writer(static_cast<uint8*>(netMessage->m_pData), netMessage->m_cbSize);
+                                    message.Serialize(writer);
+                                    netMessage->m_cbSize = writer.m_Offset;
+
+                                    //if (m_Frame <= clientData.m_LastSentFrame)
+                                    //{
+                                    //    trace("Resending %d inputs for frame: %u\n", count, myClientData.m_LastInputFrame);
+                                    //}
+                                    //else
+                                    //{
+                                    //    trace("Sending %d inputs for frame: %u\n", count, myClientData.m_LastInputFrame);
+                                    //}
+
+                                    clientData.m_LastSentFrame = m_Frame;
+                                    clientData.m_LastSentTime = time;
                                 }
                             }
                         }
@@ -1146,20 +1286,18 @@ namespace
                                 netMessages[i] = nullptr;
                             }
 
-                            //trace("Sending inputs for frame: %u\n", myPlayerData.m_LastInputFrame);
-
                             for (int i = 0; i < messageCount; i++)
                             {
                                 int64 messageNumber = outResults[i];
                                 if (messageNumber > 0)
                                 {
-                                    auto& playerData = *netMessagePlayers[i];
-                                    playerData.m_LastSentMessageNumber = messageNumber;
-                                    playerData.m_MessageSendData[messageNumber & (countof(playerData.m_MessageSendData) - 1)] =
+                                    auto& clientData = *netMessageToClientDataMap[i];
+                                    clientData.m_LastSentMessageNumber = messageNumber;
+                                    clientData.m_MessageSendData[messageNumber & (countof(clientData.m_MessageSendData) - 1)] =
                                     {
                                         .m_MessageNumber = messageNumber,
                                         .m_MessageSendTime = time,
-                                        .m_InputFrame = myPlayerData.m_LastInputFrame,
+                                        .m_InputFrame = myClientData.m_LastInputFrame,
                                         .m_Frame = m_Frame,
                                     };
                                 }
@@ -1167,39 +1305,47 @@ namespace
                         }
                     }
 
-                    bool hasAllInput = true;
-                    for (int i = 0; i < countof(m_PlayerData); i++)
+                    for (int i = 0; i < countof(m_ClientData); i++)
                     {
-                        if (m_PlayerData[i].m_LastInputFrame < m_Frame)
+                        if (m_ClientData[i].m_PlayerData.m_TailInputFrame < m_Frame)
                         {
-                            hasAllInput = false;
+                            canMoveToNextFrame = false;
                             break;
                         }
                     }
 
-                    if (!advanceFrame || hasAllInput)
+                    if (!advanceFrame || canMoveToNextFrame)
                     {
                         break;
                     }
 
-                    Timing_Sleep(c_WaitForInputsDelayTime);
-                    //trace("SLOWING DOWN!\n");
-
-                    MSG msg;
-                    while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE))
+                    if (firstTime)
                     {
-                        TranslateMessage(&msg);
-                        DispatchMessageW(&msg);
-
-                        if (msg.message == WM_QUIT || msg.message == WM_CLOSE)
-                        {
-                            PostMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
-                            m_OnlineState = EOnlineState::Quitting;
-                            break;
-                        }
+                        firstTime = false;
+                        Timing_Sleep(1'000 * 4);
+                        //trace("Doing little wait\n");
                     }
+                    else
+                    {
+                        Timing_Sleep(c_WaitForInputsDelayTime);
+                        //trace("SLOWING DOWN!\n");
 
-                    SteamAPI_RunCallbacks();
+                        MSG msg;
+                        while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE))
+                        {
+                            TranslateMessage(&msg);
+                            DispatchMessageW(&msg);
+
+                            if (msg.message == WM_QUIT || msg.message == WM_CLOSE)
+                            {
+                                PostMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
+                                m_OnlineState = EOnlineState::Quitting;
+                                break;
+                            }
+                        }
+
+                        SteamAPI_RunCallbacks();
+                    }
 
                     if (m_OnlineState != EOnlineState::InGame)
                     {
@@ -1210,138 +1356,51 @@ namespace
 
                 if (m_OnlineState == EOnlineState::InGame)
                 {
-                    // process input delay change requests for this frame
+                    // update automatic input delay
                     if (advanceFrame)
                     {
-                        InputDelayChangeRequest bestChangeRequest;
-
-                        // the "best" change request is just the one from the lowest index player
-                        for (int playerIndex = countof(m_PlayerData) - 1; playerIndex >= 0; playerIndex--)
+                        // process automatic input delay changes for this frame
+                        for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
                         {
-                            auto& playerData = m_PlayerData[playerIndex];
-                            auto& changeRequest = playerData.m_InputDelayChangeRequests[m_Frame & (countof(playerData.m_InputDelayChangeRequests) - 1)];
-                            if (changeRequest.m_InputFrame == m_Frame)
+                            auto& clientData = m_ClientData[clientIndex];
+                            auto& delayChange = clientData.m_AutomaticInputDelayChanges[m_Frame & (countof(clientData.m_AutomaticInputDelayChanges) - 1)];
+                            if (delayChange.m_InputFrame == m_Frame)
                             {
-                                bestChangeRequest = changeRequest;
-
-                                // we also need to update the automatic input delay for any player that is changing it
-                                if (changeRequest.m_InputDelayMode == EInputDelayMode::Automatic)
-                                {
-                                    playerData.m_AutomaticInputDelay = changeRequest.m_InputDelay;
-                                }
+                                clientData.m_AutomaticInputDelay = delayChange.m_InputDelay;
+                                //trace("Set Automatic Input Delay for client %d on frame %u, delay: %d\n", clientIndex, m_Frame, clientData.m_AutomaticInputDelay);
                             }
                         }
 
-                        // we need to generate a best change request if we need to switch our favored player index
-                        if (bestChangeRequest.m_InputFrame == 0
-                            && m_InputDelayMode == EInputDelayMode::Automatic
-                            && m_InputDelayFavoredPlayerIndex != m_RequestedInputDelayFavoredPlayerIndex)
+                        // make sure our requested input delay is up to date, so we can always request a change if it's different from this
+                        if (m_Frame >= m_RequestedAutomaticInputDelayFrame)
                         {
-                            bestChangeRequest.m_InputDelayMode = m_InputDelayMode;
-                            bestChangeRequest.m_InputFrame = m_Frame;
+                            auto& myClientData = m_ClientData[m_ClientIndex];
+                            m_RequestedAutomaticInputDelay = myClientData.m_AutomaticInputDelay;
                         }
 
-                        m_InputDelayFavoredPlayerIndex = m_RequestedInputDelayFavoredPlayerIndex;
-
-                        if (bestChangeRequest.m_InputFrame != 0)
-                        {
-                            // if multiple players request the same mode on the same frame, or if we're in automatic mode, then use the one with the highest delay
-                            for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
-                            {
-                                auto& playerData = m_PlayerData[playerIndex];
-
-                                if (bestChangeRequest.m_InputDelayMode == EInputDelayMode::Automatic)
-                                {
-                                    bestChangeRequest.m_InputDelay = max(bestChangeRequest.m_InputDelay, playerData.m_AutomaticInputDelay);
-                                }
-                                else
-                                {
-                                    auto& changeRequest = playerData.m_InputDelayChangeRequests[m_Frame & (countof(playerData.m_InputDelayChangeRequests) - 1)];
-                                    if (changeRequest.m_InputFrame == m_Frame && changeRequest.m_InputDelayMode == bestChangeRequest.m_InputDelayMode)
-                                    {
-                                        bestChangeRequest.m_InputDelay = max(bestChangeRequest.m_InputDelay, changeRequest.m_InputDelay);
-                                    }
-                                }
-                            }
-
-                            //ReleaseConsoleOutput("Changing Input Delay on frame: %u, mode: %d, delay: %d\n", bestChangeRequest.m_InputFrame, bestChangeRequest.m_InputDelayMode, bestChangeRequest.m_InputDelay);
-
-                            m_InputDelayMode = bestChangeRequest.m_InputDelayMode;
-
-                            // apply the input delay to the players according to the mode
-                            for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
-                            {
-                                auto& playerData = m_PlayerData[playerIndex];
-
-                                int delay;
-                                switch (m_InputDelayMode)
-                                {
-                                case EInputDelayMode::ManualAll:
-                                {
-                                    delay = bestChangeRequest.m_InputDelay;
-                                } break;
-                                case EInputDelayMode::ManualSelf:
-                                {
-                                    auto& changeRequest = playerData.m_InputDelayChangeRequests[m_Frame & (countof(playerData.m_InputDelayChangeRequests) - 1)];
-                                    if (changeRequest.m_InputFrame == m_Frame && changeRequest.m_InputDelayMode == m_InputDelayMode)
-                                    {
-                                        delay = changeRequest.m_InputDelay;
-                                    }
-                                    else
-                                    {
-                                        continue;
-                                    }
-                                } break;
-                                case EInputDelayMode::Automatic:
-                                {
-                                    if (m_InputDelayFavoredPlayerIndex < 0)
-                                    {
-                                        delay = bestChangeRequest.m_InputDelay;
-                                    }
-                                    else if (m_InputDelayFavoredPlayerIndex == playerIndex)
-                                    {
-                                        delay = 0;
-                                    }
-                                    else
-                                    {
-                                        delay = bestChangeRequest.m_InputDelay * 2 + c_FavoredModeExtraInputDelay;
-                                    }
-                                } break;
-                                default:
-                                    assert(false);
-                                }
-
-                                assert(delay >= 0 && delay <= c_MaxInputDelay * 2 + c_FavoredModeExtraInputDelay);
-                                playerData.m_InputDelay = delay;
-                            }
-
-                            // make sure our requested input delay is up to date, so we can always request a change if it's different from this
-                            if (m_Frame >= m_RequestedInputDelayFrame)
-                            {
-                                auto& myPlayerData = m_PlayerData[m_PlayerIndex];
-                                m_RequestedInputDelayMode = m_InputDelayMode;
-                                m_RequestedInputDelay = m_InputDelayMode == EInputDelayMode::Automatic ? myPlayerData.m_AutomaticInputDelay : myPlayerData.m_InputDelay;
-                            }
-                        }
+                        UpdateInputDelay();
                     }
 
-                    // calculate delay
+                    // calculate new automatic input delay
                     if (advanceFrame)
                     {
-                        for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
+                        int newDelay = 0;
+                        bool hasDelay = false;
+
+                        for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
                         {
-                            auto& playerData = m_PlayerData[playerIndex];
-                            if (playerData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
+                            auto& clientData = m_ClientData[clientIndex];
+                            if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
                             {
                                 int64 rtt = 0;
 
                                 // for all acked messages since last frame, get the max time since one was acknowledged
-                                int64 first = playerData.m_PreviousFrameLastAcknowledgedMessageNumber;
-                                int64 last = playerData.m_LastAcknowledgedMessageNumber;
+                                int64 first = clientData.m_PreviousFrameLastAcknowledgedMessageNumber;
+                                int64 last = clientData.m_LastAcknowledgedMessageNumber;
                                 int64 acknowledgeTime = 0;
                                 for (int64 i = last; i > first; i--)
                                 {
-                                    auto& messageInfo = playerData.m_MessageSendData[i & (countof(playerData.m_MessageSendData) - 1)];
+                                    auto& messageInfo = clientData.m_MessageSendData[i & (countof(clientData.m_MessageSendData) - 1)];
                                     if (messageInfo.m_MessageNumber == i)
                                     {
                                         // if the message hasn't been acked, we just use the ack time of the one after it that got acked
@@ -1358,19 +1417,19 @@ namespace
                                 // no acks since last frame, so just use last sample rtt
                                 if (rtt == 0)
                                 {
-                                    rtt = playerData.m_PreviousFrameSampleRTT;
+                                    rtt = clientData.m_PreviousFrameSampleRTT;
                                 }
 
                                 // use the current time since the first non-acked message if that's greater
-                                int64 firstNonAcked = playerData.m_LastAcknowledgedMessageNumber + 1;
-                                auto& messageInfo = playerData.m_MessageSendData[firstNonAcked & (countof(playerData.m_MessageSendData) - 1)];
+                                int64 firstNonAcked = clientData.m_LastAcknowledgedMessageNumber + 1;
+                                auto& messageInfo = clientData.m_MessageSendData[firstNonAcked & (countof(clientData.m_MessageSendData) - 1)];
                                 if (messageInfo.m_MessageNumber == firstNonAcked)
                                 {
                                     rtt = max(rtt, g_SteamNetworkingUtils->GetLocalTimestamp() - messageInfo.m_MessageSendTime);
                                 }
 
                                 // add the sample
-                                if (rtt != 0 && m_RecordDelaySamples)
+                                if (rtt != 0 && m_AssignedClientsCount > 0 && m_PreviousFrameAssignedClientsCount)
                                 {
                                     assert(rtt > 0);
                                     rtt = min(rtt, static_cast<int64>(INT32_MAX));
@@ -1379,53 +1438,59 @@ namespace
                                     delay = (delay + 1) / 2;
                                     assert(delay >= 0);
 
-                                    playerData.m_RaiseDelayHistogram.AddSample(delay);
-                                    playerData.m_LowerDelayHistogram.AddSample(delay);
+                                    clientData.m_RaiseDelayHistogram.AddSample(delay);
+                                    clientData.m_LowerDelayHistogram.AddSample(delay);
 
                                     //trace("Added sample: %d, %d\n", static_cast<int>(rtt), delay);
                                 }
 
-                                playerData.m_PreviousFrameLastAcknowledgedMessageNumber = playerData.m_LastAcknowledgedMessageNumber;
-                                playerData.m_PreviousFrameSampleRTT = rtt;
+                                m_PreviousFrameAssignedClientsCount = m_AssignedClientsCount;
+                                clientData.m_PreviousFrameLastAcknowledgedMessageNumber = clientData.m_LastAcknowledgedMessageNumber;
+                                clientData.m_PreviousFrameSampleRTT = rtt;
 
-                                if (m_RequestedInputDelayMode == EInputDelayMode::Automatic)
+                                if (clientData.m_PlayerData.m_PlayerIndex >= 0)
                                 {
                                     // prints out some useful info while testing
-                                    //if (playerData.m_RaiseDelayHistogram.m_SampleCount >= c_SamplesNeededBeforeRaisingDelay)
+                                    //if (clientData.m_RaiseDelayHistogram.m_SampleCount >= c_SamplesNeededBeforeRaisingDelay)
                                     //{
                                     //    int raiseBelowPercent;
                                     //    int raiseBelowOrEqualPercent;
                                     //    int lowerBelowPercent;
                                     //    int lowerBelowOrEqualPercent;
-                                    //    playerData.m_RaiseDelayHistogram.CalculateDistributionAt(m_RequestedInputDelay, &raiseBelowPercent, &raiseBelowOrEqualPercent);
-                                    //    playerData.m_LowerDelayHistogram.CalculateDistributionAt(m_RequestedInputDelay, &lowerBelowPercent, &lowerBelowOrEqualPercent);
-                                    //    int raiseMedianDelay = playerData.m_RaiseDelayHistogram.CalculatePercentile(50);
-                                    //    int lowerMedianDelay = playerData.m_LowerDelayHistogram.CalculatePercentile(50);
+                                    //    clientData.m_RaiseDelayHistogram.CalculateDistributionAt(m_RequestedAutomaticInputDelay, &raiseBelowPercent, &raiseBelowOrEqualPercent);
+                                    //    clientData.m_LowerDelayHistogram.CalculateDistributionAt(m_RequestedAutomaticInputDelay, &lowerBelowPercent, &lowerBelowOrEqualPercent);
+                                    //    int raiseMedianDelay = clientData.m_RaiseDelayHistogram.CalculatePercentile(50);
+                                    //    int lowerMedianDelay = clientData.m_LowerDelayHistogram.CalculatePercentile(50);
 
-                                    //    trace("Raise median: %d, current:%d, <%d%%, <=%d%%, >%d%% | Lower median: %d, current:%d, <%d%%, <=%d%%, >%d%%\n", raiseMedianDelay, m_RequestedInputDelay, raiseBelowPercent, raiseBelowOrEqualPercent, 100 - raiseBelowOrEqualPercent, lowerMedianDelay, m_RequestedInputDelay, lowerBelowPercent, lowerBelowOrEqualPercent, 100 - lowerBelowOrEqualPercent);
+                                    //    trace("Raise median: %d, current:%d, <%d%%, <=%d%%, >%d%% | Lower median: %d, current:%d, <%d%%, <=%d%%, >%d%%\n", raiseMedianDelay, m_RequestedAutomaticInputDelay, raiseBelowPercent, raiseBelowOrEqualPercent, 100 - raiseBelowOrEqualPercent, lowerMedianDelay, m_RequestedAutomaticInputDelay, lowerBelowPercent, lowerBelowOrEqualPercent, 100 - lowerBelowOrEqualPercent);
                                     //}
 
-                                    int delay = 0;
-
-                                    if (playerData.m_RaiseDelayHistogram.m_SampleCount >= c_SamplesNeededBeforeRaisingDelay)
+                                    if (clientData.m_RaiseDelayHistogram.m_SampleCount >= c_SamplesNeededBeforeRaisingDelay)
                                     {
-                                        delay = playerData.m_RaiseDelayHistogram.CalculatePercentile(c_PercentSamplesWithinDelayToMaintainDelay);
-                                        if (delay > m_RequestedInputDelay)
+                                        int raiseDelay = clientData.m_RaiseDelayHistogram.CalculatePercentile(c_PercentSamplesWithinDelayToMaintainDelay);
+                                        if (raiseDelay >= m_RequestedAutomaticInputDelay)
                                         {
-                                            RequestInputDelayChange(m_InputDelayMode, delay);
+                                            newDelay = max(newDelay, raiseDelay);
+                                            hasDelay = true;
                                         }
                                     }
 
-                                    if (delay < m_RequestedInputDelay && playerData.m_LowerDelayHistogram.m_SampleCount >= c_SamplesNeededBeforeLoweringDelay)
+                                    if (newDelay < m_RequestedAutomaticInputDelay && clientData.m_LowerDelayHistogram.m_SampleCount >= c_SamplesNeededBeforeLoweringDelay)
                                     {
-                                        delay = playerData.m_LowerDelayHistogram.CalculatePercentile(c_PercentSamplesBelowDelayToLowerDelay);
-                                        if (delay < m_RequestedInputDelay)
+                                        int lowerDelay = clientData.m_LowerDelayHistogram.CalculatePercentile(c_PercentSamplesBelowDelayToLowerDelay);
+                                        if (lowerDelay <= m_RequestedAutomaticInputDelay)
                                         {
-                                            RequestInputDelayChange(m_InputDelayMode, delay);
+                                            newDelay = max(newDelay, lowerDelay);
+                                            hasDelay = true;
                                         }
                                     }
                                 }
                             }
+                        }
+
+                        if (hasDelay)
+                        {
+                            RequestAutomaticInputDelayChange(newDelay);
                         }
                     }
                 }
@@ -1451,15 +1516,16 @@ namespace
             }
         }
 
-        InputFlags_t GetInput(CInstance* instance, int playerIndex)
+        InputFlags_t PlayerGetInput(CInstance* instance, int playerIndex)
         {
             InputFlags_t in = 0;
 
-            if (m_OnlineState == EOnlineState::InGame)
+            assert(playerIndex >= 0 && playerIndex < countof(m_PlayerIndexToClientIndexMap));
+            int clientIndex = m_PlayerIndexToClientIndexMap[playerIndex];
+            if (clientIndex >= 0)
             {
-                assert(playerIndex >= 0 && playerIndex < countof(m_PlayerData));
-                auto& playerData = m_PlayerData[playerIndex];
-                assert(playerData.m_LastInputFrame >= m_Frame);
+                auto& playerData = m_ClientData[clientIndex].m_PlayerData;
+                assert(playerData.m_TailInputFrame >= m_Frame);
                 in = playerData.m_InputBuffer[m_Frame & (countof(playerData.m_InputBuffer) - 1)];
 
                 //ReleaseConsoleOutput("Frame %u: Input for player %d = [ %x ]\n", m_Frame, playerIndex, in);
@@ -1468,78 +1534,47 @@ namespace
             return in;
         }
 
-        void Randomize(RValue& result, CInstance* instance)
-        {
-            if (m_OnlineState >= EOnlineState::InGame)
-            {
-                uint32 seed = rand_spcg32(m_RNG);
-
-                RValue tmp = {};
-                RValue arg;
-                init_real(arg, seed);
-                Script_Perform(g_gml_random_set_seed, instance, instance, 1, &tmp, &arg);
-                init_real(result, seed);
-
-                //ReleaseConsoleOutput("Frame: %u: Randomize: %llx\n", m_Frame, m_RNG[0]);
-            }
-            else
-            {
-                Script_Perform(g_gml_randomize, instance, instance, 0, &result, nullptr);
-                assert(KIND_RValue(&result) == VALUE_REAL);
-            }
-        }
-
         void CheckChecksum(ChecksumBuffer& a, CInstance* instance)
         {
-            for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
+            for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
             {
-                auto& playerData = m_PlayerData[playerIndex];
-                auto& b = playerData.m_ChecksumData[a.m_Frame & (countof(playerData.m_ChecksumData) - 1)];
+                auto& clientData = m_ClientData[clientIndex];
+                auto& b = clientData.m_ChecksumData[a.m_Frame & (countof(clientData.m_ChecksumData) - 1)];
 
                 if (a.m_Frame == b.m_Frame && a.m_Checksum != b.m_Checksum)
                 {
                     if (a.m_Frame > m_LastSentChecksumFrame)
                     {
                         // send checksum message
-                        ReliableMessage reliableMessage;
-                        reliableMessage.m_Type = EReliableMessageType::ChecksumBuffer;
-                        reliableMessage.m_Frame = a.m_Frame;
-                        SendReliableMessage(reliableMessage, instance, nullptr, &a);
-                        m_LastSentChecksumFrame = a.m_Frame;
+                        auto& myClientData = m_ClientData[m_ClientIndex];
+                        auto& mine = myClientData.m_ChecksumData[a.m_Frame & (countof(clientData.m_ChecksumData) - 1)];
+
+                        if (mine.m_Frame == a.m_Frame)
+                        {
+                            ReliableMessage reliableMessage;
+                            reliableMessage.m_Type = EReliableMessageType::ChecksumBuffer;
+                            reliableMessage.m_Frame = mine.m_Frame;
+                            SendReliableMessage(reliableMessage, instance, nullptr, &mine);
+                            m_LastSentChecksumFrame = mine.m_Frame;
+                        }
                     }
 
-                    if (b.m_HasBuffer)
+                    if (a.m_HasBuffer && b.m_HasBuffer)
                     {
-                        // compare pfo checksum
-                        if (a.m_PfoBufferSize != b.m_PfoBufferSize || memcmp(a.m_PfoBuffer, b.m_PfoBuffer, a.m_PfoBufferSize) != 0)
-                        {
-                            Reader readerA(a.m_PfoBuffer, a.m_PfoBufferSize);
-                            Reader readerB(b.m_PfoBuffer, b.m_PfoBufferSize);
+                        auto& myClientData = m_ClientData[m_ClientIndex];
+                        auto startPtr = myClientData.m_ChecksumData;
+                        auto endPtr = startPtr + countof(myClientData.m_ChecksumData);
 
-                            Differ<Checksum> differ(readerA, readerB);
-                            differ.m_Diff1.Serialize(differ);
+                        if (&b >= startPtr && &b < endPtr)
+                        {
+                            DiffChecksums(b, a, instance);
                         }
-
-                        // compare gml checksum
-                        if (a.m_GmlBufferSize != b.m_GmlBufferSize || memcmp(a.m_GmlBuffer, b.m_GmlBuffer, a.m_GmlBufferSize) != 0)
+                        else
                         {
-                            BufferWriteContent(g_GmlChecksumBuffer1, 0, a.m_GmlBuffer, a.m_GmlBufferSize);
-                            BufferWriteContent(g_GmlChecksumBuffer2, 0, b.m_GmlBuffer, b.m_GmlBufferSize);
-
-                            buffer_seek(instance, g_GmlChecksumBuffer1, 0, 0);
-                            buffer_seek(instance, g_GmlChecksumBuffer2, 0, 0);
-
-                            {
-                                RValue result = {};
-                                RValue arg[2];
-                                init_buffer(arg[0], g_GmlChecksumBuffer1);
-                                init_buffer(arg[1], g_GmlChecksumBuffer2);
-                                Script_Perform(g_gml_Script_getChecksumCallback, instance, instance, countof(arg), &result, arg);
-                            }
+                            DiffChecksums(a, b, instance);
                         }
 
                         // we quit when a checksum failure happens, could change this in the future
-                        SteamAPI_RunCallbacks();
                         PostMessageW(NULL, WM_QUIT, 0, 0);
                         m_OnlineState = EOnlineState::Quitting;
                     }
@@ -1547,48 +1582,262 @@ namespace
             }
         }
 
-        void RequestInputDelayChange(EInputDelayMode mode, int delay = -1)
+        void DiffChecksums(ChecksumBuffer& a, ChecksumBuffer& b, CInstance* instance)
         {
-            auto& myPlayerData = m_PlayerData[m_PlayerIndex];
-            uint32 inputFrame = myPlayerData.m_LastInputFrame + 1;
-            auto& changeRequest = myPlayerData.m_InputDelayChangeRequests[inputFrame & (countof(myPlayerData.m_InputDelayChangeRequests) - 1)];
+            // compare pfo checksum
+            if (a.m_PfoBufferSize != b.m_PfoBufferSize || memcmp(a.m_PfoBuffer, b.m_PfoBuffer, a.m_PfoBufferSize) != 0)
+            {
+                Reader readerA(a.m_PfoBuffer, a.m_PfoBufferSize);
+                Reader readerB(b.m_PfoBuffer, b.m_PfoBufferSize);
 
-            switch (mode)
+                Differ<Checksum> differ(readerA, readerB);
+                differ.m_Diff1.Serialize(differ);
+            }
+
+            // compare gml checksum
+            if (a.m_GmlBufferSize != b.m_GmlBufferSize || memcmp(a.m_GmlBuffer, b.m_GmlBuffer, a.m_GmlBufferSize) != 0)
             {
-            case EInputDelayMode::ManualAll:
-            case EInputDelayMode::ManualSelf:
-                break;
-            case EInputDelayMode::Automatic:
-            {
-                if (delay < 0)
+                BufferWriteContent(g_GmlChecksumBuffer1, 0, a.m_GmlBuffer, a.m_GmlBufferSize);
+                BufferWriteContent(g_GmlChecksumBuffer2, 0, b.m_GmlBuffer, b.m_GmlBufferSize);
+
+                buffer_seek(instance, g_GmlChecksumBuffer1, 0, 0);
+                buffer_seek(instance, g_GmlChecksumBuffer2, 0, 0);
+
                 {
-                    for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
+                    RValue result = {};
+                    RValue arg[2];
+                    init_buffer(arg[0], g_GmlChecksumBuffer1);
+                    init_buffer(arg[1], g_GmlChecksumBuffer2);
+                    Script_Perform(g_gml_Script_getChecksumCallback, instance, instance, countof(arg), &result, arg);
+                }
+            }
+        }
+
+        void OnNetConnectionStatusChanged(SteamNetConnectionStatusChangedCallback_t* pParam)
+        {
+            auto hConn = pParam->m_hConn;
+            auto& info = pParam->m_info;
+            auto eOldState = pParam->m_eOldState;
+
+            ReleaseConsoleOutput("Connection status changed conn: %u, state %d -> %d, end: %d %s\n", hConn, eOldState, info.m_eState, info.m_eEndReason, info.m_szEndDebug);
+
+            if (info.m_eState == k_ESteamNetworkingConnectionState_ClosedByPeer || info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally)
+            {
+                if (info.m_eState == k_ESteamNetworkingConnectionState_ClosedByPeer)
+                {
+                    g_SteamNetworkingSockets->CloseConnection(hConn, k_ESteamNetConnectionEnd_App_Min, nullptr, false);
+                }
+                else
+                {
+                    g_SteamNetworkingSockets->CloseConnection(hConn, info.m_eEndReason, info.m_szEndDebug, false);
+                }
+
+                for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+                {
+                    auto& clientData = m_ClientData[clientIndex];
+                    if (clientData.m_ConnectSocket == hConn)
                     {
-                        auto& playerData = m_PlayerData[playerIndex];
-                        if (playerData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
-                        {
-                            if (playerData.m_RaiseDelayHistogram.m_SampleCount >= c_SamplesNeededBeforeRaisingDelay)
-                            {
-                                int newDelay = playerData.m_RaiseDelayHistogram.CalculatePercentile(c_PercentSamplesWithinDelayToMaintainDelay);
-                                delay = max(delay, newDelay);
-                            }
-                        }
+                        clientData.m_ConnectSocket = k_HSteamNetConnection_Invalid;
+                    }
+                }
+
+                if (info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally &&
+                    (info.m_eEndReason == k_ESteamNetConnectionEnd_Remote_Timeout || info.m_eEndReason == k_ESteamNetConnectionEnd_Misc_Timeout))
+                {
+                    ReleaseConsoleOutput("Let's try to reconnect!\n");
+                    //m_OnlineState = EOnlineState::Reconnecting;
+                    m_OnlineState = EOnlineState::Disconnecting;
+                }
+                else
+                {
+                    m_OnlineState = EOnlineState::Disconnecting;
+                }
+            }
+
+            if (info.m_hListenSocket != k_HSteamListenSocket_Invalid &&
+                eOldState == k_ESteamNetworkingConnectionState_None &&
+                info.m_eState == k_ESteamNetworkingConnectionState_Connecting)
+            {
+                if (m_OnlineState == EOnlineState::Offline || m_OnlineState == EOnlineState::InGame)
+                {
+                    if (m_ClientData[1].m_ConnectSocket != k_HSteamNetConnection_Invalid)
+                    {
+                        g_SteamNetworkingSockets->CloseConnection(hConn, k_ESteamNetConnectionEnd_AppException_Generic + 2, "New connection received", false);
                     }
 
+                    EResult res = g_SteamNetworkingSockets->AcceptConnection(hConn);
+                    if (res == k_EResultOK)
+                    {
+                        AddConnection(1, hConn);
+                    }
+                    else
+                    {
+                        YYError("AcceptConnection returned %d", res);
+                        g_SteamNetworkingSockets->CloseConnection(hConn, k_ESteamNetConnectionEnd_AppException_Generic, "Failed to accept connection", false);
+                    }
+                }
+                else
+                {
+                    g_SteamNetworkingSockets->CloseConnection(hConn, k_ESteamNetConnectionEnd_AppException_Generic + 1, "Game no longer available", false);
+                }
+            }
+
+            if (info.m_eState == k_ESteamNetworkingConnectionState_Connected)
+            {
+                if (m_OnlineState == EOnlineState::Offline)
+                {
+                    m_OnlineState = EOnlineState::StartingGame;
+                }
+            }
+        }
+
+        void AddConnection(int playerIndex, HSteamNetConnection hConn)
+        {
+            constexpr int lanePriorities[] = { 1, 1 }; // lowest number drains first
+            constexpr uint16 laneWeights[] = { 1, 1 }; // higher number means more relative bandwidth
+            g_SteamNetworkingSockets->ConfigureConnectionLanes(hConn, countof(lanePriorities), lanePriorities, laneWeights);
+            m_ClientData[playerIndex].m_ConnectSocket = hConn;
+        }
+
+        void Quit()
+        {
+            if (m_OnlineState >= EOnlineState::InGame)
+            {
+                m_OnlineState = EOnlineState::Quitting;
+            }
+        }
+
+        void SetPlayers(int (&map)[countof(m_PlayerIndexToClientIndexMap)])
+        {
+            int anyAssignedClient = -1;
+            int oldClientToPlayerIndexMap[countof(m_ClientData)];
+
+            for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+            {
+                auto& playerData = m_ClientData[clientIndex].m_PlayerData;
+                oldClientToPlayerIndexMap[clientIndex] = playerData.m_PlayerIndex;
+                playerData.m_PlayerIndex = -1;
+            }
+
+            for (int playerIndex = countof(map) - 1; playerIndex >= 0; playerIndex--)
+            {
+                int clientIndex = map[playerIndex];
+                assert(clientIndex >= -1 && clientIndex < static_cast<int>(countof(m_ClientData)));
+                m_PlayerIndexToClientIndexMap[playerIndex] = clientIndex;
+                if (clientIndex >= 0)
+                {
+                    anyAssignedClient = clientIndex;
+                    auto& playerData = m_ClientData[clientIndex].m_PlayerData;
+                    playerData.m_PlayerIndex = playerIndex;
+                }
+            }
+
+            bool changedPlayerAssignment = false;
+            m_AssignedClientsCount = 0;
+            for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+            {
+                auto& clientData = m_ClientData[clientIndex];
+                auto& playerData = clientData.m_PlayerData;
+
+                if (playerData.m_PlayerIndex >= 0)
+                {
+                    m_AssignedClientsCount++;
+                }
+
+                if ((playerData.m_PlayerIndex >= 0) != (oldClientToPlayerIndexMap[clientIndex] >= 0))
+                {
+                    changedPlayerAssignment = true;
+                }
+
+                // if a player becomes newly assigned, it needs to start sending again from the tail of its input
+                if (playerData.m_PlayerIndex >= 0 && oldClientToPlayerIndexMap[clientIndex] < 0)
+                {
+                    assert(clientData.m_LastInputFrame <= playerData.m_TailInputFrame);
+                    clientData.m_LastInputFrame = playerData.m_TailInputFrame;
+                }
+            }
+
+            // make sure the favored client index is always valid
+            if (m_AssignedClientsCount <= 1)
+            {
+                m_InputDelayFavoredClientIndex = anyAssignedClient;
+            }
+            else if (m_InputDelayFavoredClientIndex >= 0 && m_ClientData[m_InputDelayFavoredClientIndex].m_PlayerData.m_PlayerIndex < 0)
+            {
+                m_InputDelayFavoredClientIndex = -1;
+            }
+
+            ReleaseConsoleOutput("We set the players [ %d, %d ] on frame: %u\n", map[0], map[1], m_Frame);
+
+            if (changedPlayerAssignment)
+            {
+                UpdateInputDelay();
+                RequestAutomaticInputDelayChange();
+            }
+        }
+
+        void UpdateInputDelay()
+        {
+            if (m_InputDelayMode == EInputDelayMode::Automatic)
+            {
+                // get the highest automatic input delay of all assigned players
+                int automaticInputDelay = 0;
+                if (m_AssignedClientsCount > 1)
+                {
+                    for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+                    {
+                        auto& clientData = m_ClientData[clientIndex];
+                        if (clientData.m_PlayerData.m_PlayerIndex >= 0)
+                        {
+                            automaticInputDelay = max(automaticInputDelay, clientData.m_AutomaticInputDelay);
+                        }
+                    }
+                }
+
+                automaticInputDelay = min(automaticInputDelay, m_MaxAutomaticInputDelay);
+                automaticInputDelay = max(automaticInputDelay, m_MinAutomaticInputDelay);
+
+                // set input delay based on the current favored player
+                for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+                {
+                    int delay = 0;
+                    if (m_InputDelayFavoredClientIndex < 0)
+                    {
+                        delay = automaticInputDelay;
+                    }
+                    else if (m_InputDelayFavoredClientIndex == clientIndex)
+                    {
+                        delay = 0;
+                    }
+                    else
+                    {
+                        delay = automaticInputDelay * 2 + c_FavoredModeExtraInputDelay;
+                    }
+                    assert(delay >= 0 && delay <= c_MaxInputDelay * 2 + c_FavoredModeExtraInputDelay);
+
+                    auto& clientData = m_ClientData[clientIndex];
+                    clientData.m_InputDelay = delay;
+                }
+            }
+        }
+
+        void RequestAutomaticInputDelayChange(int delay = -1)
+        {
+            if (m_InputDelayMode == EInputDelayMode::Automatic && m_AssignedClientsCount > 1)
+            {
+                auto& myClientData = m_ClientData[m_ClientIndex];
+                if (myClientData.m_PlayerData.m_PlayerIndex >= 0)
+                {
                     if (delay < 0)
                     {
-                        for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
+                        for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
                         {
-                            auto& playerData = m_PlayerData[playerIndex];
-                            if (playerData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
+                            auto& clientData = m_ClientData[clientIndex];
+                            if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid && clientData.m_PlayerData.m_PlayerIndex >= 0)
                             {
-                                SteamNetConnectionRealTimeStatus_t status;
-                                g_SteamNetworkingSockets->GetConnectionRealTimeStatus(playerData.m_ConnectSocket, &status, 0, nullptr);
-                                if (status.m_nPing >= 0)
+                                if (clientData.m_RaiseDelayHistogram.m_SampleCount >= c_SamplesNeededBeforeRaisingDelay)
                                 {
-                                    int newDelay = ((status.m_nPing + c_PingDelayCalculationSafetyMargin) * c_TargetFPS + 1000 - 1) / 1000;
-                                    newDelay = (newDelay + 1) / 2;
-                                    newDelay = min(newDelay, c_MaxInputDelay);
+                                    int newDelay = clientData.m_RaiseDelayHistogram.CalculatePercentile(c_PercentSamplesWithinDelayToMaintainDelay);
                                     delay = max(delay, newDelay);
                                 }
                             }
@@ -1596,28 +1845,47 @@ namespace
 
                         if (delay < 0)
                         {
-                            delay = 5;
+                            for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+                            {
+                                auto& clientData = m_ClientData[clientIndex];
+                                if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid && clientData.m_PlayerData.m_PlayerIndex >= 0)
+                                {
+                                    SteamNetConnectionRealTimeStatus_t status;
+                                    g_SteamNetworkingSockets->GetConnectionRealTimeStatus(clientData.m_ConnectSocket, &status, 0, nullptr);
+                                    if (status.m_nPing >= 0)
+                                    {
+                                        int newDelay = ((status.m_nPing + c_PingDelayCalculationSafetyMargin) * c_TargetFPS + 1000 - 1) / 1000;
+                                        newDelay = (newDelay + 1) / 2;
+                                        newDelay = min(newDelay, c_MaxInputDelay);
+                                        delay = max(delay, newDelay);
+                                    }
+                                }
+                            }
+
+                            if (delay < 0)
+                            {
+                                delay = 5;
+                            }
                         }
                     }
+
+                    assert(delay >= 0 && delay <= c_MaxInputDelay);
+
+                    if (delay != m_RequestedAutomaticInputDelay)
+                    {
+                        uint32 inputFrame = myClientData.m_LastInputFrame + 1;
+                        auto& changeRequest = myClientData.m_AutomaticInputDelayChanges[inputFrame & (countof(myClientData.m_AutomaticInputDelayChanges) - 1)];
+
+                        m_RequestedAutomaticInputDelayFrame = changeRequest.m_InputFrame = inputFrame;
+                        m_RequestedAutomaticInputDelay = changeRequest.m_InputDelay = delay;
+
+                        //trace("Requested Automatic Input Delay Change on frame: %u, delay: %d\n", inputFrame, delay);
+                    }
                 }
-            } break;
-            default:
-                assert(false);
-            }
-
-            assert(delay >= 0 && delay <= c_MaxInputDelay);
-
-            if (mode != m_RequestedInputDelayMode || delay != m_RequestedInputDelay)
-            {
-                m_RequestedInputDelayFrame = changeRequest.m_InputFrame = inputFrame;
-                m_RequestedInputDelayMode = changeRequest.m_InputDelayMode = mode;
-                m_RequestedInputDelay = changeRequest.m_InputDelay = delay;
-
-                ReleaseConsoleOutput("Requested Input Delay Change on frame: %u, mode: %d, delay: %d\n", inputFrame, mode, delay);
             }
         }
 
-        FileData* FindFileData(const char* filename, int playerIndex = -1)
+        FileData* FindFileData(const char* filename, int clientIndex = -1)
         {
             assert(filename != nullptr);
 
@@ -1641,7 +1909,7 @@ namespace
                 }
             }
 
-            if (playerIndex >= 0)
+            if (clientIndex >= 0)
             {
                 if (ret == nullptr)
                 {
@@ -1649,18 +1917,18 @@ namespace
                     ret = firstEmpty;
                     ret->m_Filename = YYStrDup(filename);
 
-                    ret->m_OwnerPlayerIndex = playerIndex;
+                    ret->m_OwnerClientIndex = clientIndex;
                 }
                 else if (ret->m_Status == EFileStatus::None)
                 {
-                    ret->m_OwnerPlayerIndex = playerIndex;
+                    ret->m_OwnerClientIndex = clientIndex;
                 }
                 else
                 {
-                    assert(ret->m_OwnerPlayerIndex == playerIndex);
+                    assert(ret->m_OwnerClientIndex == clientIndex);
                 }
             }
-            else if (playerIndex == -1)
+            else if (clientIndex == -1)
             {
                 assert(ret != nullptr);
                 if (ret->m_Status == EFileStatus::None)
@@ -1672,16 +1940,16 @@ namespace
             return ret;
         }
 
-        void FileExists(RValue& result, CInstance* instance, RValue* arg, int playerIndex)
+        void FileExists(RValue& result, CInstance* instance, RValue* arg, int clientIndex)
         {
-            assert(playerIndex >= 0 && playerIndex < countof(m_PlayerData));
+            assert(clientIndex >= 0 && clientIndex < countof(m_ClientData));
 
             auto filename = YYGetString(arg, 0);
-            auto fileData = FindFileData(filename, playerIndex);
+            auto fileData = FindFileData(filename, clientIndex);
 
             if (m_OnlineState >= EOnlineState::InGame)
             {
-                if (playerIndex == m_PlayerIndex)
+                if (clientIndex == m_ClientIndex)
                 {
                     Script_Perform(g_gml_file_exists, instance, instance, 1, &result, arg);
                     assert(KIND_RValue(&result) == VALUE_REAL);
@@ -1792,11 +2060,11 @@ namespace
                 checksumBuffer->Serialize(writer);
             }
 
-            for (int playerIndex = 0; playerIndex < countof(m_PlayerData); playerIndex++)
+            for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
             {
-                if (playerIndex != m_PlayerIndex)
+                if (m_ClientData[clientIndex].m_ConnectSocket != k_HSteamNetConnection_Invalid)
                 {
-                    netMessage->m_conn = m_PlayerData[playerIndex].m_ConnectSocket;
+                    netMessage->m_conn = m_ClientData[clientIndex].m_ConnectSocket;
                 }
             }
 
@@ -1825,7 +2093,7 @@ namespace
             }
         }
 
-        void ReceiveReliableMessage(SteamNetworkingMessage_t* netMessage, int playerIndex, CInstance* instance)
+        void ReceiveReliableMessage(SteamNetworkingMessage_t* netMessage, int clientIndex, CInstance* instance)
         {
             ReleaseConsoleOutput("ReceiveReliableMessage (size = %d)\n", netMessage->m_cbSize);
 
@@ -1835,7 +2103,7 @@ namespace
 
             if (reliableMessage.m_Type == EReliableMessageType::File || reliableMessage.m_Type == EReliableMessageType::FileDoesNotExist)
             {
-                auto fileData = FindFileData(reliableMessage.m_Filename, playerIndex);
+                auto fileData = FindFileData(reliableMessage.m_Filename, clientIndex);
 
                 assert(fileData->m_Status == EFileStatus::None || fileData->m_Status == EFileStatus::UnownedUnknown);
                 assert(fileData->m_Data == nullptr);
@@ -1859,17 +2127,14 @@ namespace
             }
             else if (reliableMessage.m_Type == EReliableMessageType::ChecksumBuffer)
             {
-                auto& playerData = m_PlayerData[playerIndex];
-                auto& checksumBuffer = playerData.m_ChecksumData[reliableMessage.m_Frame & (countof(playerData.m_ChecksumData) - 1)];
-                if (checksumBuffer.m_Frame != reliableMessage.m_Frame)
-                {
-                    reset(checksumBuffer);
-                }
+                auto& clientData = m_ClientData[clientIndex];
+                auto& checksumBuffer = clientData.m_ChecksumData[reliableMessage.m_Frame & (countof(clientData.m_ChecksumData) - 1)];
 
+                checksumBuffer.Reset();
                 checksumBuffer.Serialize(reader);
                 assert(checksumBuffer.m_Frame == reliableMessage.m_Frame);
-
                 checksumBuffer.m_HasBuffer = true;
+
                 CheckChecksum(checksumBuffer, instance);
             }
 
@@ -2043,6 +2308,8 @@ namespace
             }
         }
     };
+
+    PFO g_pfo;
 }
 
 YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions, size_t _functions_size)
@@ -2073,9 +2340,6 @@ YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions,
             return ret;
         };
 
-    g_gml_random_set_seed = get_builtin_function("random_set_seed");
-    g_gml_random_get_seed = get_builtin_function("random_get_seed");
-    g_gml_randomize = get_builtin_function("randomize");
     g_gml_file_exists = get_builtin_function("file_exists");
     g_gml_buffer_load = get_builtin_function("buffer_load");
     g_gml_buffer_save = get_builtin_function("buffer_save");
@@ -2089,13 +2353,42 @@ YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions,
     g_SteamNetworkingSockets = SteamNetworkingSockets();
     g_SteamNetworkingUtils = SteamNetworkingUtils();
 
-    g_pfo = new PFO();
-
     g_GmlChecksumBuffer1 = CreateBuffer(sizeof(ChecksumBuffer::m_GmlBuffer), eBuffer_Format_Fixed, 1);
     g_GmlChecksumBuffer2 = CreateBuffer(sizeof(ChecksumBuffer::m_GmlBuffer), eBuffer_Format_Fixed, 1);
 
     g_SteamNetworkingUtils->InitRelayNetworkAccess();
     g_SteamNetworkingSockets->InitAuthentication();
+    g_SteamNetworkingUtils->SetGlobalConfigValueInt32(k_ESteamNetworkingConfig_TimeoutConnected, 60 * 1000);
+
+    struct SteamCallbacks
+    {
+        STEAM_CALLBACK(SteamCallbacks, OnNetConnectionStatusChanged, SteamNetConnectionStatusChangedCallback_t)
+        {
+            g_pfo.OnNetConnectionStatusChanged(pParam);
+        }
+
+        STEAM_CALLBACK(SteamCallbacks, OnLobbyDataUpdate, LobbyDataUpdate_t)
+        {
+            auto map = CreateDsMap(0, 0);
+            DsMapAddString(map, "event_type", "lobby_data_update");
+            DsMapAddDouble(map, "success", pParam->m_bSuccess);
+            DsMapAddInt64(map, "lobby_id", static_cast<int64>(pParam->m_ulSteamIDLobby));
+            DsMapAddInt64(map, "member_id", static_cast<int64>(pParam->m_ulSteamIDMember));
+            CreateAsyncEventWithDSMap(map, 69);
+        }
+
+        STEAM_CALLBACK(SteamCallbacks, OnLobbyGameCreated, LobbyGameCreated_t)
+        {
+            auto map = CreateDsMap(0, 0);
+            DsMapAddString(map, "event_type", "lobby_game_created");
+            DsMapAddInt64(map, "lobby_id", static_cast<int64>(pParam->m_ulSteamIDLobby));
+            DsMapAddInt64(map, "server_id", static_cast<int64>(pParam->m_ulSteamIDGameServer));
+            DsMapAddDouble(map, "ip", pParam->m_unIP);
+            DsMapAddDouble(map, "port", pParam->m_usPort);
+            CreateAsyncEventWithDSMap(map, 69);
+        }
+    };
+    new SteamCallbacks();
 
     DebugConsoleOutput("PFO 50 YYExtensionInitialise CONFIGURED\n");
 }
@@ -2106,74 +2399,148 @@ YYEXPORT void pfo_update(RValue& result, CInstance* selfinst, CInstance* otherin
 
     bool advanceFrame = argc > 0 ? YYGetBool(arg, 0) : true;
 
-    g_pfo->Update(selfinst, advanceFrame);
+    g_pfo.Update(selfinst, advanceFrame);
     init_bool(result, true);
 }
 
-YYEXPORT void pfo_get_input(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+YYEXPORT void pfo_player_get_input(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 1);
 
     int playerIndex = YYGetInt32(arg, 0);
-    init_int64(result, g_pfo->GetInput(selfinst, playerIndex));
+    init_int64(result, g_pfo.PlayerGetInput(selfinst, playerIndex));
 }
 
 YYEXPORT void pfo_is_online(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
-    init_bool(result, g_pfo->m_OnlineState >= EOnlineState::InGame);
+    init_bool(result, g_pfo.m_OnlineState >= EOnlineState::InGame);
 }
 
-YYEXPORT void pfo_get_input_delay(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+YYEXPORT void pfo_client_get_input_delay(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc <= 1);
 
-    auto playerIndex = argc > 0 ? YYGetInt32(arg, 0) : g_pfo->m_PlayerIndex;
-    assert(playerIndex >= 0 && playerIndex < countof(g_pfo->m_PlayerData));
+    int clientIndex = argc > 0 ? YYGetInt32(arg, 0) : g_pfo.m_ClientIndex;
+    assert(clientIndex >= 0 && clientIndex < countof(g_pfo.m_ClientData));
 
-    init_real(result, g_pfo->m_PlayerData[playerIndex].m_InputDelay);
+    init_real(result, g_pfo.m_ClientData[clientIndex].m_InputDelay);
+}
+
+YYEXPORT void pfo_client_set_input_delay(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc > 0 && argc <= 2);
+
+    int delay = YYGetInt32(arg, 0);
+    assert(delay >= 0 && delay <= c_MaxInputDelay * 2 + c_FavoredModeExtraInputDelay);
+
+    int clientIndex = argc > 1 ? YYGetInt32(arg, 1) : g_pfo.m_ClientIndex;
+    assert(clientIndex >= 0 && clientIndex < countof(g_pfo.m_ClientData));
+
+    if (g_pfo.m_InputDelayMode != EInputDelayMode::Automatic)
+    {
+        g_pfo.m_ClientData[clientIndex].m_InputDelay = delay;
+    }
 }
 
 YYEXPORT void pfo_get_input_delay_mode(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
-    init_real(result, static_cast<int>(g_pfo->m_InputDelayMode));
+    init_int64(result, static_cast<int64>(g_pfo.m_InputDelayMode));
 }
 
-YYEXPORT void pfo_request_input_delay_change(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
-{
-    assert(argc >= 1 && argc <= 2);
-
-    auto mode = YYGetInt64(arg, 0);
-    auto delay = argc > 1 ? YYGetInt32(arg, 1) : -1;
-
-    g_pfo->RequestInputDelayChange(static_cast<EInputDelayMode>(mode), delay);
-}
-
-YYEXPORT void pfo_set_input_delay_favored_player_index(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+YYEXPORT void pfo_set_input_delay_mode(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 1);
 
-    int playerIndex = static_cast<int>(YYGetInt32(arg, 0));
-    assert(playerIndex >= -1 && playerIndex < static_cast<int>(countof(g_pfo->m_PlayerData)));
+    auto mode = YYGetInt64(arg, 0);
+    assert(mode >= 0 && mode < static_cast<int64>(EInputDelayMode::COUNT));
 
-    g_pfo->m_RequestedInputDelayFavoredPlayerIndex = playerIndex;
+    auto newInputDelayMode = static_cast<EInputDelayMode>(mode);
+    if (g_pfo.m_InputDelayMode != newInputDelayMode)
+    {
+        g_pfo.m_InputDelayMode = newInputDelayMode;
+        g_pfo.UpdateInputDelay();
+        g_pfo.RequestAutomaticInputDelayChange();
+    }
 }
 
-YYEXPORT void pfo_randomize(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+YYEXPORT void pfo_get_input_delay_favored_client_index(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
-    g_pfo->Randomize(result, selfinst);
+    init_real(result, g_pfo.m_InputDelayFavoredClientIndex);
+}
+
+YYEXPORT void pfo_set_input_delay_favored_client_index(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 1);
+
+    int clientIndex = YYGetInt32(arg, 0);
+    assert(clientIndex >= -1 && clientIndex < static_cast<int>(countof(g_pfo.m_ClientData)));
+
+    if (g_pfo.m_AssignedClientsCount > 1 && g_pfo.m_ClientData[clientIndex].m_PlayerData.m_PlayerIndex >= 0 && g_pfo.m_InputDelayFavoredClientIndex != clientIndex)
+    {
+        g_pfo.m_InputDelayFavoredClientIndex = clientIndex;
+        g_pfo.UpdateInputDelay();
+    }
+}
+
+YYEXPORT void pfo_get_min_automatic_input_delay(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 0);
+
+    init_real(result, g_pfo.m_MinAutomaticInputDelay);
+}
+
+YYEXPORT void pfo_set_min_automatic_input_delay(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 1);
+
+    int delay = YYGetInt32(arg, 0);
+    delay = min(delay, c_MaxInputDelay);
+    delay = max(delay, 0);
+
+    if (g_pfo.m_MinAutomaticInputDelay != delay)
+    {
+        g_pfo.m_MinAutomaticInputDelay = delay;
+        g_pfo.UpdateInputDelay();
+    }
+
+    init_real(result, g_pfo.m_MinAutomaticInputDelay);
+}
+
+YYEXPORT void pfo_get_max_automatic_input_delay(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 0);
+
+    init_real(result, g_pfo.m_MaxAutomaticInputDelay);
+}
+
+YYEXPORT void pfo_set_max_automatic_input_delay(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 1);
+
+    int delay = static_cast<int>(YYGetInt32(arg, 0));
+    delay = min(delay, c_MaxInputDelay);
+    delay = max(delay, 0);
+
+    if (g_pfo.m_MaxAutomaticInputDelay != delay)
+    {
+        g_pfo.m_MaxAutomaticInputDelay = delay;
+        g_pfo.UpdateInputDelay();
+    }
+
+    init_real(result, g_pfo.m_MaxAutomaticInputDelay);
 }
 
 YYEXPORT void pfo_get_frame(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
-    init_real(result, g_pfo->m_Frame);
+    init_real(result, g_pfo.m_Frame);
 }
 
 YYEXPORT void pfo_init(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2203,34 +2570,81 @@ YYEXPORT void pfo_init(RValue& result, CInstance* selfinst, CInstance* otherinst
     init_bool(result, 1);
 }
 
-YYEXPORT void pfo_get_online_player_index(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+YYEXPORT void pfo_set_players(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 1);
+
+    int map[countof(g_pfo.m_PlayerIndexToClientIndexMap)];
+
+    assert(KIND_RValue(&arg[0]) == VALUE_ARRAY);
+    int count = YYArrayGetLength(&arg[0]);
+    assert(count >= 0 && count <= countof(map));
+
+    for (int i = 0; i < countof(map); i++)
+    {
+        if (i < count)
+        {
+            RValue val = {};
+            GET_RValue(&val, &arg[0], nullptr, i);
+            map[i] = YYGetInt32(&val, 0);
+        }
+        else
+        {
+            map[i] = -1;
+        }
+    }
+
+    g_pfo.SetPlayers(map);
+}
+
+YYEXPORT void pfo_get_client_index(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
-    if (g_pfo->m_OnlineState >= EOnlineState::InGame)
-    {
-        init_real(result, g_pfo->m_PlayerIndex);
-    }
-    else
-    {
-        init_real(result, -1);
-    }
+    init_real(result, g_pfo.m_ClientIndex);
+}
+
+YYEXPORT void pfo_client_get_player_index(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 0 || argc == 1);
+
+    int clientIndex = argc > 0 ? YYGetInt32(arg, 0) : g_pfo.m_ClientIndex;
+    assert(clientIndex >= 0 && clientIndex < countof(g_pfo.m_ClientData));
+
+    init_real(result, g_pfo.m_ClientData[clientIndex].m_PlayerData.m_PlayerIndex);
+}
+
+YYEXPORT void pfo_player_get_client_index(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 1);
+
+    int playerIndex = YYGetInt32(arg, 0);
+    assert(playerIndex >= 0 && playerIndex < countof(g_pfo.m_PlayerIndexToClientIndexMap));
+
+    init_real(result, g_pfo.m_PlayerIndexToClientIndexMap[playerIndex]);
+}
+
+YYEXPORT void pfo_get_assigned_clients_count(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 0);
+
+    init_real(result, g_pfo.m_PreviousFrameAssignedClientsCount); // TODO: this is a temporary hack
 }
 
 YYEXPORT void pfo_file_exists(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc > 0 && argc <= 2);
 
-    int playerIndex = argc > 1 ? YYGetInt32(arg, 1) : 0;
+    int clientIndex = argc > 1 ? YYGetInt32(arg, 1) : 0;
 
-    g_pfo->FileExists(result, selfinst, arg, playerIndex);
+    g_pfo.FileExists(result, selfinst, arg, clientIndex);
 }
 
 YYEXPORT void pfo_buffer_load(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 1);
 
-    g_pfo->BufferLoad(result, selfinst, arg);
+    g_pfo.BufferLoad(result, selfinst, arg);
 }
 
 YYEXPORT void pfo_buffer_save(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2239,35 +2653,35 @@ YYEXPORT void pfo_buffer_save(RValue& result, CInstance* selfinst, CInstance* ot
     assert(KIND_RValue(&arg[0]) == VALUE_REF);
     assert(GET_REF_TYPE(arg[0].v64) == REFID_BUFFER);
 
-    g_pfo->BufferSave(result, selfinst, arg);
+    g_pfo.BufferSave(result, selfinst, arg);
 }
 
 YYEXPORT void pfo_file_delete(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 1);
 
-    g_pfo->FileDelete(result, selfinst, arg);
+    g_pfo.FileDelete(result, selfinst, arg);
 }
 
 YYEXPORT void pfo_file_copy(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 2);
 
-    g_pfo->FileCopy(result, selfinst, arg);
+    g_pfo.FileCopy(result, selfinst, arg);
 }
 
 YYEXPORT void pfo_file_status(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 1);
 
-    g_pfo->FileStatus(result, YYGetString(arg, 0));
+    g_pfo.FileStatus(result, YYGetString(arg, 0));
 }
 
 YYEXPORT void pfo_quit(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
-    g_pfo->Quit();
+    g_pfo.Quit();
 }
 
 YYEXPORT void pfo_steam_lobby_get_member_data(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2306,27 +2720,30 @@ YYEXPORT void pfo_create_listen_socket(RValue& result, CInstance* selfinst, CIns
 {
     assert(argc == 0);
 
-    if (g_pfo->m_ListenSocket != k_HSteamListenSocket_Invalid)
+    g_pfo.m_ClientIndex = 0;
+
+    if (g_pfo.m_ListenSocket != k_HSteamListenSocket_Invalid)
     {
-        g_SteamNetworkingSockets->CloseListenSocket(g_pfo->m_ListenSocket);
-        g_pfo->m_ListenSocket = k_HSteamListenSocket_Invalid;
+        g_SteamNetworkingSockets->CloseListenSocket(g_pfo.m_ListenSocket);
+        g_pfo.m_ListenSocket = k_HSteamListenSocket_Invalid;
     }
 
-    g_pfo->m_ListenSocket = g_SteamNetworkingSockets->CreateListenSocketP2P(0, 0, nullptr);
-    if (g_pfo->m_ListenSocket == k_HSteamListenSocket_Invalid) YYError("Listen socket invalid");
+    g_pfo.m_ListenSocket = g_SteamNetworkingSockets->CreateListenSocketP2P(0, 0, nullptr);
+    if (g_pfo.m_ListenSocket == k_HSteamListenSocket_Invalid) YYError("Listen socket invalid");
 }
 
 YYEXPORT void pfo_connect(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 1);
     SteamNetworkingIdentity identity;
-    identity.SetSteamID64(YYGetInt64(arg, 0));
+    identity.SetSteamID64(static_cast<uint64>(YYGetInt64(arg, 0)));
 
-    g_pfo->m_PlayerIndex = 1;
+    g_pfo.m_ClientIndex = 1;
+
     auto hConn = g_SteamNetworkingSockets->ConnectP2P(identity, 0, 0, nullptr);
     if (hConn != k_HSteamNetConnection_Invalid)
     {
-        g_pfo->AddConnection(0, hConn);
+        g_pfo.AddConnection(0, hConn);
     }
     else
     {
@@ -2334,38 +2751,22 @@ YYEXPORT void pfo_connect(RValue& result, CInstance* selfinst, CInstance* otheri
     }
 }
 
-YYEXPORT void pfo_set_seed(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
-{
-    assert(argc == 1);
-    auto seed = YYGetInt64(arg, 0);
-
-    g_pfo->m_RNG[0] = seed;
-    ReleaseConsoleOutput("Set random seed: %llx\n", seed);
-}
-
-YYEXPORT void pfo_get_ping(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+YYEXPORT void pfo_client_get_ping(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
     int ping = -2;
-    for (int i = 0; i < countof(g_pfo->m_PlayerData); i++)
+    for (int i = 0; i < countof(g_pfo.m_ClientData); i++)
     {
-        auto& playerData = g_pfo->m_PlayerData[i];
-        if (playerData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
+        auto& clientData = g_pfo.m_ClientData[i];
+        if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
         {
             SteamNetConnectionRealTimeStatus_t status;
-            g_SteamNetworkingSockets->GetConnectionRealTimeStatus(playerData.m_ConnectSocket, &status, 0, nullptr);
+            g_SteamNetworkingSockets->GetConnectionRealTimeStatus(clientData.m_ConnectSocket, &status, 0, nullptr);
             ping = status.m_nPing;
             break;
         }
     }
 
     init_real(result, ping);
-}
-
-YYEXPORT void pfo_set_delay_sample_recording(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
-{
-    assert(argc == 1);
-
-    g_pfo->m_RecordDelaySamples = YYGetBool(arg, 0);
 }

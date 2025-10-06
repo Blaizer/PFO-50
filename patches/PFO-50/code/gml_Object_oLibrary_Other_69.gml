@@ -34,7 +34,13 @@ function scrUpdateLobbyUsers(lobbyId)
             randomize();
             var seed = int64(irandom(0xffffffff)) | (int64(irandom(0xffffffff)) << int64(32));
             
-            pfo_set_seed(seed);
+            global.onlineRandomizeSeed = seed;
+            global.onlineClientNames = array_create(2, "NOSTRING");
+            for (var i = 0; i < ds_list_size(lobbyUsers); i++)
+            {
+                global.onlineClientNames[i] = ds_list_find_value(lobbyUsers, i).personaName;
+            }
+
             pfo_steam_lobby_set_game_server(steam_lobby_get_lobby_id(), 0, global.defaultLanguage, seed);
         }
     }
@@ -109,8 +115,14 @@ else if (eventType == "lobby_game_created")
         if (!lobbyStartingGame && lobbyId == steam_lobby_get_lobby_id())
         {
         	lobbyStartingGame = true;
-        	pfo_set_seed(seed);
+        	global.onlineRandomizeSeed = seed;
             global.onlineDefaultLanguage = [ defaultLanguage, global.defaultLanguage ];
+            global.onlineClientNames = array_create(2, "NOSTRING");
+            for (var i = 0; i < ds_list_size(lobbyUsers); i++)
+            {
+                global.onlineClientNames[i] = ds_list_find_value(lobbyUsers, i).personaName;
+            }
+
             pfo_connect(ownerSteamId);
         }
     }

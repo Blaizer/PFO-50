@@ -17,6 +17,7 @@ function scrOnlineStateChangedCallback(state)
     {
         steam_lobby_leave();
         pfo_start();
+        pfo_set_randomize_seed(global.onlineRandomizeSeed);
         scrRandomize(0);
         scrInitAttractModePlaylist();
         global.attractModeIndex = 0;
@@ -36,11 +37,11 @@ function scrOnlineStateChangedCallback(state)
     }
     else if (state == PFO_OnlineState.Disconnecting)
     {
-        var otherPlayer = pfo_get_online_player_index() == 1 ? 1 : 2;
+        var otherPlayer = pfo_client_get_player_index() == 1 ? 1 : 2;
         alertMessageText = "PLAYER " + string(otherPlayer) + " DISCONNECTED";
         alertMessageTimer = current_time + 5000;
         saveFileOwned = !is_int64(pfo_file_status(global.ACCOUNT_FILE));
-        previousOnlinePlayerIndex = pfo_get_online_player_index();
+        previousOnlinePlayerIndex = pfo_client_get_player_index();
         
         if (!saveFileOwned)
         {
@@ -85,6 +86,7 @@ function scrOnlineStateChangedCallback(state)
             scrUnpause();
 
             // we need to return to the title screen to make sure we don't keep using the current save file
+            global.attractModeLibraryTimer = 0;
             if (room == rmLibrary)
             {
                 with (oLibrary)

@@ -70,28 +70,36 @@ if (pfo_is_online())
         ydelta *= -1;
     }
     
-    if (showDelay)
+    if (showDelay && pfo_get_assigned_clients_count() > 0)
     {
-        var delay = pfo_get_input_delay();
-        var mode = pfo_get_input_delay_mode();
-        if (mode == InputDelayMode.ManualAll || mode == InputDelayMode.ManualSelf)
+        if (pfo_client_get_player_index() >= 0)
         {
-            draw_set_color(global.palette[16]);
+            var mode = pfo_get_input_delay_mode();
+
+            if (mode == InputDelayMode.Manual)
+            {
+                draw_set_color(global.palette[16]);
+            }
+            else if (mode == InputDelayMode.Automatic && pfo_get_input_delay_favored_client_index() == pfo_get_client_index())
+            {
+                draw_set_color(global.palette[12]);
+            }
+
+            draw_text(xx, yy, "Delay: " + string(pfo_client_get_input_delay()) + "f");
+            yy += ydelta;
+
+            draw_set_color(c_white);
         }
-        else if (mode == InputDelayMode.Automatic && delay == 0)
+        else
         {
-            draw_set_color(global.palette[12]);
+            draw_text(xx, yy, "Spectating");
+            yy += ydelta;
         }
-
-        draw_text(xx, yy, "Delay: " + string(delay) + "f");
-        yy += ydelta;
-
-        draw_set_color(c_white);
     }
     
     if (showPing)
     {
-        draw_text(xx, yy, "Ping: " + string(pfo_get_ping()));
+        draw_text(xx, yy, "Ping: " + string(pfo_client_get_ping()));
         yy += ydelta;
     }
     
@@ -123,9 +131,8 @@ surface_reset_target();
 
 enum InputDelayMode
 {
-    ManualAll,
-    ManualSelf,
     Automatic,
+    Manual,
 }
 
 enum SCREEN

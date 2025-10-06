@@ -56,7 +56,7 @@ function pfo_update_extra_input()
     {
         for (var p = real(PFO.MaxPlayers) - 1; p >= 0; p--)
         {
-            var c = pfo_get_input(p);
+            var c = pfo_player_get_input(p);
 
             var command      = c                           & int64((1 << int64(PFO.InputCommandBits)) - 1);
             var commandParam = (c >> PFO.InputCommandBits) & int64((1 << int64(PFO.InputCommandParamBits)) - 1);
@@ -147,6 +147,26 @@ function pfo_receive_command(command, param)
     }
 
     return ret;
+}
+
+function pfo_randomize()
+{
+    if (pfo_is_online())
+    {
+        global.pfo_randomizeState = (global.pfo_randomizeState * int64(0xd1342543de82ef95)) + int64(0x9e3779b97f4a7c15);
+        random_set_seed((global.pfo_randomizeState >> int64(32)) & int64(0xffffffff));
+
+        if (LOG.LEVEL >= LOG.VERBOSE) show_debug_message("Frame " + string(pfo_get_frame()) + ": Randomize: " + string(global.pfo_randomizeState));
+    }
+    else
+    {
+        randomize();
+    }
+}
+
+function pfo_set_randomize_seed(seed)
+{
+    global.pfo_randomizeState = int64(seed);
 }
 
 enum PFO

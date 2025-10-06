@@ -7,7 +7,7 @@ var modPrettyName = modName.Replace("-", " ");
 var modVersion = GetModVersion();
 
 var rootDir = GetRootDir();
-var convertRootDir = Path.Join(GetBuildDir(), $"{modPrettyName} v{modVersion} GMLoader");
+var convertRootDir = Path.Join(GetBuildDir(), $"{modPrettyName} v{modVersion}");
 var convertDir = Path.Join(convertRootDir, modPrettyName);
 
 if (Directory.Exists(convertRootDir))

@@ -39,9 +39,10 @@ function scrSerializeChecksum(writer)
 {
     var read = writer.isReader;
 
-    writer.Write(buffer_u32, read ? "random_seed"    : random_get_seed());
-    writer.Write(buffer_s32, read ? "room"           : room);
-    writer.Write(buffer_s32, read ? "instance_count" : instance_count - instance_number(oOkay) - instance_number(oSaveIcon));
+    writer.Write(buffer_u64, read ? "randomize_state" : global.pfo_randomizeState);
+    writer.Write(buffer_u32, read ? "random_seed"     : random_get_seed());
+    writer.Write(buffer_s32, read ? "room"            : room);
+    writer.Write(buffer_s32, read ? "instance_count"  : instance_count - instance_number(oOkay) - instance_number(oSaveIcon));
 
     writer.Write(buffer_s8,  read ? "curr_file"    : global.currFile);
     writer.Write(buffer_s8,  read ? "curr_game"    : global.currGame);
@@ -74,7 +75,7 @@ function scrGetChecksumCallback()
 
         if (array_length(differ.differences) > 0)
         {
-            show_message("Difference in GML Checksum values: " + string(differ.differences) + "\n\nOurs:  " + string(differ.diff1) + "\n\nTheirs: " + string(differ.diff2));
+            show_message("Desync detected!\n\nDifference in GML values: " + string(differ.differences) + "\n\nOurs: " + string(differ.diff1) + "\n\nTheirs: " + string(differ.diff2));
         }
     }
 }

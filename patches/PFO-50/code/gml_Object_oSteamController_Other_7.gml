@@ -16,44 +16,10 @@ else
 
 if (pfo_is_online())
 {
-    for (var i = 0; i < 10; i++)
-    {
-        if (keyboard_check_pressed(ord("0") + i))
-        {
-            if (keyboard_check(vk_shift))
-            {
-                pfo_request_input_delay_change(PFO_InputDelayMode.ManualSelf, int64(i));
-            }
-            else
-            {
-                pfo_request_input_delay_change(PFO_InputDelayMode.ManualAll, int64(i));
-            }
-        }
-    }
-
-    if (keyboard_check_pressed(vk_backspace))
-    {
-        pfo_request_input_delay_change(PFO_InputDelayMode.AutomaticShared);
-        pfo_send_command(Command.SetFavoredPlayer, int64(15));
-    }
-
-    if (keyboard_check_pressed(189))
-    {
-        pfo_send_command(Command.SetFavoredPlayer, int64(pfo_get_online_player_index()));
-    }
-    else if (keyboard_check_pressed(187))
-    {
-        pfo_send_command(Command.SetFavoredPlayer, int64(pfo_get_online_player_index() == 1 ? 0 : 1));
-    }
-
-    // var arg = [];
-    // if (pfo_receive_command(Command.SetFavoredPlayer, arg))
-    // {
-    //     pfo_set_input_delay_favored_player_index(arg[0] == int64(15) ? -1 : arg[0]);
-    // }
-
-    pfo_set_input_delay_favored_player_index(global.onlineFavoredPlayer);
+    var playerIndex = global.onlineFavoredPlayer;
     global.onlineFavoredPlayer = -1;
+
+    pfo_set_input_delay_favored_client_index(playerIndex >= 0 ? pfo_player_get_client_index(playerIndex) : -1);
 }
 
 if (!pfo_update(global.onlineRunUpdate))
@@ -71,12 +37,10 @@ global.onlineRunUpdate = true;
 
 enum Command
 {
-    None     = 0,
-    
-    Back     = 1,
-    Unpause  = 2,
-
-    SetFavoredPlayer = 3,
+    None    = 0,
+    Back    = 1,
+    Unpause = 2,
+    Reset   = 3,
 }
 
 enum PFO_InputDelayMode

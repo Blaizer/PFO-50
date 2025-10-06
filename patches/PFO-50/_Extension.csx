@@ -73,16 +73,25 @@ void PatchPFO50Extension()
         }
 
         DefineExtensionFunction("pfo_update");
-        DefineExtensionFunction("pfo_get_input");
+        DefineExtensionFunction("pfo_player_get_input");
         DefineExtensionFunction("pfo_is_online");
-        DefineExtensionFunction("pfo_get_input_delay");
+        DefineExtensionFunction("pfo_client_get_input_delay");
+        DefineExtensionFunction("pfo_client_set_input_delay");
         DefineExtensionFunction("pfo_get_input_delay_mode");
-        DefineExtensionFunction("pfo_request_input_delay_change");
-        DefineExtensionFunction("pfo_set_input_delay_favored_player_index");
-        DefineExtensionFunction("pfo_randomize");
+        DefineExtensionFunction("pfo_set_input_delay_mode");
+        DefineExtensionFunction("pfo_get_input_delay_favored_client_index");
+        DefineExtensionFunction("pfo_set_input_delay_favored_client_index");
+        DefineExtensionFunction("pfo_get_min_automatic_input_delay");
+        DefineExtensionFunction("pfo_set_min_automatic_input_delay");
+        DefineExtensionFunction("pfo_get_max_automatic_input_delay");
+        DefineExtensionFunction("pfo_set_max_automatic_input_delay");
         DefineExtensionFunction("pfo_get_frame");
         DefineExtensionFunction("pfo_init");
-        DefineExtensionFunction("pfo_get_online_player_index");
+        DefineExtensionFunction("pfo_set_players");
+        DefineExtensionFunction("pfo_get_client_index");
+        DefineExtensionFunction("pfo_client_get_player_index");
+        DefineExtensionFunction("pfo_player_get_client_index");
+        DefineExtensionFunction("pfo_get_assigned_clients_count");
         DefineExtensionFunction("pfo_file_exists");
         DefineExtensionFunction("pfo_buffer_load");
         DefineExtensionFunction("pfo_buffer_save");
@@ -95,9 +104,7 @@ void PatchPFO50Extension()
         DefineExtensionFunction("pfo_steam_lobby_set_game_server");
         DefineExtensionFunction("pfo_create_listen_socket");
         DefineExtensionFunction("pfo_connect");
-        DefineExtensionFunction("pfo_set_seed");
-        DefineExtensionFunction("pfo_get_ping");
-        DefineExtensionFunction("pfo_set_delay_sample_recording");
+        DefineExtensionFunction("pfo_client_get_ping");
 
         file.InitScript = Data.Strings.MakeString("pfo_init");
         file.CleanupScript = Data.Strings.MakeString("");

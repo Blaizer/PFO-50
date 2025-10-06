@@ -1,4 +1,4 @@
-PFO 50 v0.3.6
+PFO 50 v0.4.0
 =============
 
 PFO 50 (Play Forever Online 50) is a mod for UFO 50 that adds online
@@ -21,9 +21,6 @@ You can uninstall PFO 50 by doing the first step again, or by clicking the
 
 Controls
 --------
-[0-9] (Number keys) - Sets a manual input delay for both players
-[Shift] + [0-9] - Sets a manual input delay for just yourself
-[Backspace] - Switch back to automatic input delay calculation
 [F2/F3] - Show/hide some networking and performance information
 
 Input Delay
