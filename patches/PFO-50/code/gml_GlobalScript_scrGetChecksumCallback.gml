@@ -44,20 +44,24 @@ function scrSerializeChecksum(writer)
     writer.Write(buffer_s32, read ? "room"            : room);
     writer.Write(buffer_s32, read ? "instance_count"  : instance_count - instance_number(oOkay) - instance_number(oSaveIcon));
 
-    writer.Write(buffer_s8,  read ? "curr_file"    : global.currFile);
-    writer.Write(buffer_s8,  read ? "curr_game"    : global.currGame);
-    writer.Write(buffer_s8,  read ? "num_players"  : global.numPlayers);
-    writer.Write(buffer_u8,  read ? "paused"       : global.paused);
-    writer.Write(buffer_u8,  read ? "attract_mode" : global.attractMode);
-    writer.Write(buffer_u64, read ? "rng_state_1"  : global.rng_state_1);
-    writer.Write(buffer_u64, read ? "rng_state_2"  : global.rng_state_2);
+    writer.Write(buffer_s8,  read ? "curr_game_id"  : global.currGameID);
+    writer.Write(buffer_s8,  read ? "curr_file"     : global.currFile);
+    writer.Write(buffer_s8,  read ? "num_players"   : global.numPlayers);
+    writer.Write(buffer_s8,  read ? "paused"        : global.paused);
+    writer.Write(buffer_s8,  read ? "attract_mode"  : global.attractMode);
+    writer.Write(buffer_s8,  read ? "playback_mode" : global.playbackMode);
+    writer.Write(buffer_s8,  read ? "half_time"     : global.halfTime);
+    writer.Write(buffer_u64, read ? "rng_state_1"   : global.rng_state_1);
+    writer.Write(buffer_u64, read ? "rng_state_2"   : global.rng_state_2);
 
-    var hasGameData = writer.Write(buffer_u8, read ? "has_game_data" : instance_exists(o14_Game));
+    writer.Write(buffer_s16, read ? "attract_mode_library_timer" : global.attractModeLibraryTimer);
+
+    var hasGameData = writer.Write(buffer_s8, read ? "has_game_data" : instance_exists(o14_Game));
     if (hasGameData)
     {
-        writer.Write(buffer_f64, read ? "game_14_cash_0" : o14_Game.cash[0]);
-        writer.Write(buffer_f64, read ? "game_14_cash_1" : o14_Game.cash[1]);
-        writer.Write(buffer_f64, read ? "game_14_cash_2" : o14_Game.cash[2]);
+        writer.Write(buffer_f64, read ? "g14_cash_0" : o14_Game.cash[0]);
+        writer.Write(buffer_f64, read ? "g14_cash_1" : o14_Game.cash[1]);
+        writer.Write(buffer_f64, read ? "g14_cash_2" : o14_Game.cash[2]);
     }
 }
 

@@ -2,6 +2,7 @@ SUB_ONLINE_INIT = 0;
 SUB_ONLINE_MAIN = 1;
 SUB_ONLINE_INIT_LOBBY = 2;
 SUB_ONLINE_LOBBY = 3;
+SUB_ONLINE_CONNECT = 4;
 
 if (substate == SUB_ONLINE_INIT)
 {
@@ -91,7 +92,7 @@ if (substate == SUB_ONLINE_MAIN)
     }
     else if (action == 2 || fire1pressed)
     {
-        scrSwitchState(STATE_CRACKTRO);
+        scrSwitchState(STATE_PROFILE);
     }
 }
 
@@ -138,6 +139,33 @@ if (substate == SUB_ONLINE_LOBBY)
         steam_lobby_leave();
         scrSwitchSub(SUB_ONLINE_INIT);
     }
+}
+
+if (substate == SUB_ONLINE_CONNECT)
+{
+    if (stateCounter == 1)
+    {
+        var allFilesShared = pfo_file_exists(global.ACCOUNT_FILE) >= 0
+            && pfo_file_exists(string_replace(global.SAVE_FILE, "*", "1")) >= 0 
+            && pfo_file_exists(string_replace(global.SAVE_FILE, "*", "2")) >= 0 
+            && pfo_file_exists(string_replace(global.SAVE_FILE, "*", "3")) >= 0;
+
+        if (!allFilesShared)
+        {
+            global.onlineRunUpdate = false;
+            exit;
+        }
+    }
+    else if (stateCounter == 2)
+    {
+        pfo_set_players([0, 1]);
+    }
+    else if (stateCounter == 3)
+    {
+        scrSwitchState(STATE_PROFILE);
+    }
+
+    stateCounter++;
 }
 
 function draw_text_bg_centered_2(arg0, arg1, arg2, arg3, arg4, arg5, arg6)
@@ -240,7 +268,7 @@ function scrLibraryOnlineStateDraw()
         selY = 88;
         scrDrawOnlineMenuSelection("CREATE LOBBY", true);
         scrDrawOnlineMenuSelection("JOIN LOBBY " + joinLobbyText, lobbyListCount > 0);
-        scrDrawOnlineMenuSelection("BACK TO MAIN MENU", true);
+        scrDrawOnlineMenuSelection("BACK TO PROFILE SELECT", true);
 
         draw_set_color(global.palette[11]);
         scrDrawTextInput(192, 160, "[2] CONFIRM       [1] BACK", 0, 0, 2);
@@ -261,6 +289,10 @@ function scrLibraryOnlineStateDraw()
 
         draw_set_color(global.palette[11]);
         scrDrawTextInput(192, 168, "[2] CONFIRM       [1] BACK", 0, 0, 2);
+    }
+    else if (substate == SUB_ONLINE_CONNECT)
+    {
+        draw_text_bg_centered_2(192, 100, "CONNECTING ...", global.palette[11], 8, 8, false);
     }
 }
 

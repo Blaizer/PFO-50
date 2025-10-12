@@ -16,11 +16,16 @@ function scrOnlineStateChangedCallback(state)
     if (state == PFO_OnlineState.Online)
     {
         steam_lobby_leave();
+        pfo_reset();
         pfo_start();
         pfo_set_randomize_seed(global.onlineRandomizeSeed);
         scrRandomize(0);
-        scrInitAttractModePlaylist();
+
+        global.attractMode = false;
+        global.attractModeLibrary = false;
+        global.attractModeLibraryTimer = 0;
         global.attractModeIndex = 0;
+        scrInitAttractModePlaylist();
 
         if (is_array(global.onlineDefaultLanguage))
         {
@@ -29,16 +34,22 @@ function scrOnlineStateChangedCallback(state)
         global.profileLanguage = global.defaultLanguage;
         scrUpdateLanguage(global.defaultLanguage);
 
-        with (oLibrary)
-        {
-            scrSwitchState(STATE_LASER_X);
-            event_perform(ev_step, ev_step_begin);
-        }
+        global.halfTime = 0;
+
+        global.SKIP_INTRO = 2;
+        global.roomPrev = rmInit;
+        room_restart();
     }
     else if (state == PFO_OnlineState.Disconnecting)
     {
-        var otherPlayer = pfo_client_get_player_index() == 1 ? 1 : 2;
-        alertMessageText = "PLAYER " + string(otherPlayer) + " DISCONNECTED";
+        var otherClientIndex = !pfo_get_client_index();
+        var clientName = global.EXTERNAL_TEXT_ERROR;
+        if (!is_undefined(global.onlineClientNames) && array_length(global.onlineClientNames) > otherClientIndex)
+        {
+            clientName = global.onlineClientNames[otherClientIndex];
+        }
+
+        alertMessageText = clientName + " Disconnected";
         alertMessageTimer = current_time + 5000;
         saveFileOwned = !is_int64(pfo_file_status(global.ACCOUNT_FILE));
         previousOnlinePlayerIndex = pfo_client_get_player_index();

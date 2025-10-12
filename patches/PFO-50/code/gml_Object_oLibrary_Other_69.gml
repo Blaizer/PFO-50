@@ -35,7 +35,7 @@ function scrUpdateLobbyUsers(lobbyId)
             var seed = int64(irandom(0xffffffff)) | (int64(irandom(0xffffffff)) << int64(32));
             
             global.onlineRandomizeSeed = seed;
-            global.onlineClientNames = array_create(2, "NOSTRING");
+            global.onlineClientNames = array_create(2, global.EXTERNAL_TEXT_ERROR);
             for (var i = 0; i < ds_list_size(lobbyUsers); i++)
             {
                 global.onlineClientNames[i] = ds_list_find_value(lobbyUsers, i).personaName;
@@ -117,7 +117,7 @@ else if (eventType == "lobby_game_created")
         	lobbyStartingGame = true;
         	global.onlineRandomizeSeed = seed;
             global.onlineDefaultLanguage = [ defaultLanguage, global.defaultLanguage ];
-            global.onlineClientNames = array_create(2, "NOSTRING");
+            global.onlineClientNames = array_create(2, global.EXTERNAL_TEXT_ERROR);
             for (var i = 0; i < ds_list_size(lobbyUsers); i++)
             {
                 global.onlineClientNames[i] = ds_list_find_value(lobbyUsers, i).personaName;

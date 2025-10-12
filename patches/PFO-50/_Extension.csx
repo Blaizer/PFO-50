@@ -105,6 +105,10 @@ void PatchPFO50Extension()
         DefineExtensionFunction("pfo_create_listen_socket");
         DefineExtensionFunction("pfo_connect");
         DefineExtensionFunction("pfo_client_get_ping");
+        DefineExtensionFunction("pfo_reset");
+        DefineExtensionFunction("pfo_current_time");
+        DefineExtensionFunction("pfo_game_get_speed");
+        DefineExtensionFunction("pfo_game_set_speed");
 
         file.InitScript = Data.Strings.MakeString("pfo_init");
         file.CleanupScript = Data.Strings.MakeString("");

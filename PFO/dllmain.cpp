@@ -19,13 +19,14 @@ static char g_TempBuffer[8192];
 
 #if !defined(NDEBUG) || 1
 #define breakpoint() (IsDebuggerPresent() && (__debugbreak(), false))
-#define assert(a) if (!(a)) { [[unlikely]] handle_assert(#a, __FILE__, __FUNCTION__, __LINE__); __debugbreak(); unreachable(); } else { [[likely]]; }
+#define assert(a) do { if (!(a)) [[unlikely]] { handle_assert(#a, __FILE__, __FUNCTION__, __LINE__); __debugbreak(); __assume(false); } } while (0)
 #else
 #define breakpoint() (false)
-#define assert(a) (__assume(a))
+#define assert(a) do { __assume(a); } while (0)
 #endif
 
-#define countof(a) static_cast<intptr_t>((sizeof(a) / sizeof((a)[0])))
+#define countof(a) static_cast<intptr_t>(sizeof(a) / sizeof((a)[0]))
+#define ssizeof(a) static_cast<intptr_t>(sizeof(a))
 
 template<typename T>
 FORCEINLINE static constexpr T min(T a, T b)
@@ -37,8 +38,6 @@ FORCEINLINE static constexpr T max(T a, T b)
 {
     return (a > b) ? a : b;
 }
-
-[[noreturn]] FORCEINLINE static void unreachable() { __assume(false); }
 
 static void trace(const char* format, ...)
 {
@@ -68,15 +67,40 @@ static void handle_assert(const char* assertion, const char* file, const char* f
     if (!IsDebuggerPresent())
     {
         sprintf_s(g_TempBuffer, "Assertion failed! (%s)\n\nAt %s %s() line %d", assertion, file, function, line);
-        ShowMessage(g_TempBuffer);
+        YYError("%s", g_TempBuffer);
     }
 }
 
-template<typename T>
-FORCEINLINE static constexpr T narrow_cast(auto a)
+template<typename T, typename A>
+FORCEINLINE static constexpr T narrow_cast(A a)
 {
-    static_assert(sizeof(T) < sizeof(a));
-    assert(a == static_cast<decltype(a)>(static_cast<T>(a)));
+    if constexpr (sizeof(T) < sizeof(A))
+    {
+        assert(static_cast<A>(static_cast<T>(a)) == a);
+    }
+    else if constexpr (std::is_signed<A>::value != std::is_signed<T>::value && (std::is_signed<A>::value || sizeof(T) == sizeof(A)))
+    {
+        if constexpr (std::is_signed<A>::value)
+        {
+            assert(a >= 0);
+        }
+        else
+        {
+            assert(static_cast<T>(a) >= 0);
+        }
+    }
+
+    return static_cast<T>(a);
+}
+
+template<typename T, typename A>
+FORCEINLINE static constexpr T bitwise_cast(A a)
+{
+    if constexpr (sizeof(T) < sizeof(A))
+    {
+        assert(static_cast<A>(static_cast<T>(a)) == a);
+    }
+
     return static_cast<T>(a);
 }
 
@@ -91,7 +115,7 @@ namespace
     constexpr int c_TargetFPS = 60;
     constexpr int c_MaxInputDelay = 20;
     constexpr int c_SamplesNeededBeforeRaisingDelay = 60 * 15;
-    constexpr int c_SamplesNeededBeforeLoweringDelay = 60 * 45;
+    constexpr int c_SamplesNeededBeforeLoweringDelay = 60 * 40;
     constexpr int c_PercentSamplesWithinDelayToMaintainDelay = 92;
     constexpr int c_PercentSamplesBelowDelayToLowerDelay = 99;
     constexpr int c_PingDelayCalculationSafetyMargin = 30;
@@ -117,6 +141,8 @@ namespace
     int g_gml_file_delete;
     int g_gml_buffer_seek;
     int g_gml_file_copy;
+    int g_gml_game_set_speed;
+
     int g_gml_Script_onlineStateChangedCallback;
     int g_gml_Script_getInputCallback;
     int g_gml_Script_getChecksumCallback;
@@ -220,7 +246,17 @@ namespace
         template<typename T>
         void Write(const T& value)
         {
-            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, "%d\n", value);
+            const char* fmt;
+            if constexpr (std::is_same<T, double>::value)
+            {
+                fmt = "%f\n";
+            }
+            else
+            {
+                fmt = "%d\n";
+            }
+
+            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, fmt, value);
         }
 
         void SetName(const char* name)
@@ -289,30 +325,31 @@ namespace
             if (memcmp(m_Buffer1 + m_Offset, m_Buffer2 + m_Offset, sizeof(T)) != 0)
             {
                 char* str = g_TempBuffer;
-                char* end = g_TempBuffer + countof(g_TempBuffer);
+                size_t offset = 0;
+                constexpr size_t size = countof(g_TempBuffer);
 
-                str += sprintf_s(str, end - str, "Desync detected!\n\nDifference in PFO value: ");
+                offset += sprintf_s(str + offset, size - offset, "Desync detected!\n\nDifference in PFO value: ");
                 
                 if (m_IteratorName != nullptr)
                 {
-                    str += StringWriter::WriteName(str, end - str, m_Name, m_Iterator, m_IteratorName);
+                    offset += StringWriter::WriteName(str + offset, size - offset, m_Name, m_Iterator, m_IteratorName);
                 }
                 else
                 {
-                    str += sprintf_s(str, end - str, "%s", m_Name);
+                    offset += sprintf_s(str + offset, size - offset, "%s", m_Name);
                 }
 
-                str += sprintf_s(str, end - str, "\n\nOurs:\n");
+                offset += sprintf_s(str + offset, size - offset, "\n\nOurs:\n");
 
-                StringWriter nameWriter1(str, static_cast<int>(end - str));
+                StringWriter nameWriter1(str + offset, size - offset);
                 m_Diff1.Serialize(nameWriter1);
-                str += nameWriter1.m_Offset;
+                offset += nameWriter1.m_Offset;
 
-                str += sprintf_s(str, end - str, "\nTheirs:\n");
+                offset += sprintf_s(str + offset, size - offset, "\nTheirs:\n");
 
-                StringWriter nameWriter2(str, static_cast<int>(end - str));
+                StringWriter nameWriter2(str + offset, size - offset);
                 m_Diff2.Serialize(nameWriter2);
-                str += nameWriter2.m_Offset;
+                offset += nameWriter2.m_Offset;
 
                 ShowMessage(g_TempBuffer);
 
@@ -424,12 +461,6 @@ namespace
         int m_InputDelay = 0;
     };
 
-    struct MessageAutomaticInputDelayChange
-    {
-        uint8 m_InputFrameIndex = 0;
-        uint8 m_InputDelay = 0;
-    };
-
     struct Checksum
     {
         uint32 m_Frame = 0;
@@ -438,6 +469,8 @@ namespace
         int m_MinAutomaticInputDelay = 0;
         int m_MaxAutomaticInputDelay = 0;
         int m_PlayerIndexToClientIndexMap[2] = {};
+        double m_BaseCurrentTime = 0.0;
+        double m_CachedCurrentTime = 0.0;
 
         struct
         {
@@ -458,6 +491,8 @@ namespace
             WRITE_NAMED(m_InputDelayFavoredClientIndex);
             WRITE_NAMED(m_MinAutomaticInputDelay);
             WRITE_NAMED(m_MaxAutomaticInputDelay);
+            WRITE_NAMED(m_BaseCurrentTime);
+            WRITE_NAMED(m_CachedCurrentTime);
 
             for (int i = 0; i < countof(m_PlayerIndexToClientIndexMap); i++)
             {
@@ -645,7 +680,6 @@ namespace
         None,
         Owned,
         UnownedUnknown,
-        UnownedLoading,
         UnownedDoesNotExist,
         UnownedExists,
     };
@@ -705,13 +739,19 @@ namespace
 
     struct Message
     {
-        int64 m_LastReceivedMessageNumber = 0;
-        uint32 m_FirstInputFrame = 0;
-        uint32 m_Checksum = 0;
-        InputFlags_t m_Inputs[1 << c_MessageInputCountBits] = {};
-        MessageAutomaticInputDelayChange m_AutomaticInputDelayChanges[countof(m_Inputs)];
-        uint8 m_InputFrameCount = 0;
-        int8 m_ChecksumFrameDelta = 0;
+        int64 m_LastReceivedMessageNumber;
+        uint32 m_FirstInputFrame;
+        uint32 m_Checksum;
+
+        InputFlags_t m_Inputs[1 << c_MessageInputCountBits];
+        struct
+        {
+            uint8 m_InputFrameIndex;
+            uint8 m_InputDelay;
+        } m_AutomaticInputDelayChanges[countof(m_Inputs)];
+
+        uint8 m_InputFrameCount;
+        int8 m_ChecksumFrameDelta;
 
         template<typename T>
         constexpr void Serialize(T& writer)
@@ -761,22 +801,22 @@ namespace
         }
     };
 
-    struct ClientPlayer
-    {
-        ClientData* m_ClientData = nullptr;
-        PlayerData* m_PlayerData = nullptr;
-    };
-
     struct PFO
     {
         ClientData m_ClientData[2];
         int m_PlayerIndexToClientIndexMap[2] = { -1, -1 };
         FileData m_FileData[32];
         
+        double m_BaseCurrentTime = 0.0;
+        double m_CachedCurrentTime = 0.0;
+        double m_GameSpeedMsPerFrame = 0.0;
+        double m_GameSpeedFramesPerSecond = 0.0;
+
         HSteamListenSocket m_ListenSocket = k_HSteamListenSocket_Invalid;
 
-        EOnlineState m_OnlineState = EOnlineState::Offline;
+        EOnlineState m_OnlineState = {};
         uint32 m_Frame = 0;
+        uint32 m_FramesElapsedAtCurrentGameSpeed = 0;
         int m_ClientIndex = 0;
         int m_AssignedClientsCount = 0;
         int m_PreviousFrameAssignedClientsCount = 0;
@@ -804,13 +844,16 @@ namespace
                 }
             }
 
+            if (m_OnlineState != EOnlineState::InGame || advanceFrame)
+            {
+                m_Frame++;
+
+                m_FramesElapsedAtCurrentGameSpeed++;
+                CacheCurrentTime();
+            }
+
             if (m_OnlineState == EOnlineState::InGame)
             {
-                if (advanceFrame)
-                {
-                    m_Frame++;
-                }
-
                 // write checksum
                 {
                     ChecksumBuffer* pChecksumBuffer;
@@ -837,6 +880,8 @@ namespace
                         checksum.m_MinAutomaticInputDelay = m_MinAutomaticInputDelay;
                         checksum.m_MaxAutomaticInputDelay = m_MaxAutomaticInputDelay;
                         copy(checksum.m_PlayerIndexToClientIndexMap, m_PlayerIndexToClientIndexMap);
+                        checksum.m_BaseCurrentTime = m_BaseCurrentTime;
+                        checksum.m_CachedCurrentTime = m_CachedCurrentTime;
 
                         for (int clientIndex = 0; clientIndex < countof(checksum.m_ClientData); clientIndex++)
                         {
@@ -881,7 +926,7 @@ namespace
                         }
 
                         int dataSize = BufferTELL(ibuffer);
-                        assert(dataSize <= sizeof(checksumBuffer.m_GmlBuffer));
+                        assert(dataSize <= ssizeof(checksumBuffer.m_GmlBuffer));
                         uint8* data = BufferGet(ibuffer);
 
                         checksumBuffer.m_GmlBufferSize = dataSize;
@@ -954,15 +999,14 @@ namespace
                             RValue arg;
                             init_real(arg, frame);
                             Script_Perform(g_gml_Script_getInputCallback, instance, instance, 1, &result, &arg);
-                            input = static_cast<InputFlags_t>(YYGetInt64(&result, 0));
-                            assert(static_cast<int64>(input) == result.v64);
+                            input = bitwise_cast<InputFlags_t>(YYGetInt64(&result, 0));
                         }
 
                         // if we have more inputs than we need, only keep the input if it's different than the previous
                         bool keepInput = true;
                         if (frame > lastFrame)
                         {
-                            auto previousInput = myPlayerData.m_InputBuffer[(frame - 1) & (countof(myPlayerData.m_InputBuffer) - 1)];
+                            InputFlags_t previousInput = myPlayerData.m_InputBuffer[(frame - 1) & (countof(myPlayerData.m_InputBuffer) - 1)];
 
                             {
                                 RValue result = {};
@@ -994,8 +1038,7 @@ namespace
                                     init_real(args[0], frame);
                                     init_int64(args[1], input);
                                     Script_Perform(g_gml_Script_getInputCallback, instance, instance, countof(args), &result, args);
-                                    input = static_cast<InputFlags_t>(YYGetInt64(&result, 0));
-                                    assert(static_cast<int64>(input) == result.v64);
+                                    input = bitwise_cast<InputFlags_t>(YYGetInt64(&result, 0));
                                 }
                             }
 
@@ -1092,7 +1135,7 @@ namespace
                                             if (lastFrame > playerData.m_TailInputFrame)
                                             {
                                                 uint32 firstFrame = playerData.m_TailInputFrame + 1;
-                                                int firstMessageIndex = firstFrame - message.m_FirstInputFrame;
+                                                int firstMessageIndex = static_cast<int>(firstFrame - message.m_FirstInputFrame);
 
                                                 // skipping over inputs is possible if they remove themselves as a player before we do, this is fine and we will fill these in with zero as we get to them
                                                 if (firstMessageIndex < 0)
@@ -1101,7 +1144,7 @@ namespace
                                                     firstMessageIndex = 0;
                                                 }
 
-                                                int count = lastFrame - firstFrame + 1;
+                                                int count = static_cast<int>(lastFrame - firstFrame + 1);
 
                                                 assert(firstMessageIndex >= 0 && firstMessageIndex < message.m_InputFrameCount);
                                                 assert(count > 0 && count <= message.m_InputFrameCount);
@@ -1186,7 +1229,7 @@ namespace
                                 //}
 
                                 // we can't have the client run too far behind, or the inputs we're sending them will roll off the end of the input buffer
-                                int countSinceChecksumFrame = myClientData.m_LastInputFrame - clientData.m_LastReceivedChecksumFrame;
+                                int countSinceChecksumFrame = static_cast<int>(myClientData.m_LastInputFrame - clientData.m_LastReceivedChecksumFrame);
                                 if (countSinceChecksumFrame > c_FramesToRunBehindUpperLimit)
                                 {
                                     clientData.m_IsRunningTooFarBehind = true;
@@ -1232,9 +1275,8 @@ namespace
 
                                     auto& checksumBuffer = myClientData.m_ChecksumData[m_Frame & (countof(myClientData.m_ChecksumData) - 1)];
                                     assert(checksumBuffer.m_Frame == m_Frame);
-                                    int checksumFrameDelta = m_Frame - first;
-                                    assert(checksumFrameDelta >= INT8_MIN && checksumFrameDelta <= INT8_MAX);
-                                    message.m_ChecksumFrameDelta = static_cast<int8>(checksumFrameDelta);
+                                    int checksumFrameDelta = static_cast<int>(m_Frame - first);
+                                    message.m_ChecksumFrameDelta = narrow_cast<int8>(checksumFrameDelta);
                                     message.m_Checksum = checksumBuffer.m_Checksum;
 
                                     {
@@ -1253,6 +1295,11 @@ namespace
                                                 messageDelayChange.m_InputFrameIndex = static_cast<uint8>(i | (1 << c_MessageInputCountBits));
                                                 messageDelayChange.m_InputDelay = static_cast<uint8>(delayChange.m_InputDelay);
                                             }
+                                        }
+
+                                        if (delayChangeIndex < countof(message.m_AutomaticInputDelayChanges))
+                                        {
+                                            message.m_AutomaticInputDelayChanges[delayChangeIndex].m_InputFrameIndex = 0;
                                         }
                                     }
 
@@ -1436,7 +1483,6 @@ namespace
 
                                     int delay = static_cast<int>((rtt * c_TargetFPS + 1'000'000 - 1) / 1'000'000);
                                     delay = (delay + 1) / 2;
-                                    assert(delay >= 0);
 
                                     clientData.m_RaiseDelayHistogram.AddSample(delay);
                                     clientData.m_LowerDelayHistogram.AddSample(delay);
@@ -1506,6 +1552,20 @@ namespace
                 }
 
                 m_OnlineState = EOnlineState::Offline;
+
+                for (int i = 0; i < countof(m_FileData); i++)
+                {
+                    auto& fileData = m_FileData[i];
+                    if (fileData.m_Filename != nullptr)
+                    {
+                        YYFree(fileData.m_Filename);
+                    }
+                    if (fileData.m_Data != nullptr)
+                    {
+                        YYFree(fileData.m_Data);
+                    }
+                    reset(fileData);
+                }
 
                 {
                     RValue result = {};
@@ -1722,7 +1782,7 @@ namespace
             for (int playerIndex = countof(map) - 1; playerIndex >= 0; playerIndex--)
             {
                 int clientIndex = map[playerIndex];
-                assert(clientIndex >= -1 && clientIndex < static_cast<int>(countof(m_ClientData)));
+                assert(clientIndex >= -1 && clientIndex < countof(m_ClientData));
                 m_PlayerIndexToClientIndexMap[playerIndex] = clientIndex;
                 if (clientIndex >= 0)
                 {
@@ -1963,7 +2023,7 @@ namespace
                         {
                             ReliableMessage reliableMessage;
                             reliableMessage.m_Type = exists ? EReliableMessageType::File : EReliableMessageType::FileDoesNotExist;
-                            strncpy_s(reliableMessage.m_Filename, filename, countof(reliableMessage.m_Filename) - 1);
+                            strcpy_s(reliableMessage.m_Filename, filename);
                             SendReliableMessage(reliableMessage, instance, arg);
                         }
                     }
@@ -1981,10 +2041,6 @@ namespace
                         fileData->m_Status = EFileStatus::UnownedUnknown;
                     } [[fallthrough]];
                     case EFileStatus::UnownedUnknown:
-                    {
-                        init_int64(result, -2);
-                    } break;
-                    case EFileStatus::UnownedLoading:
                     {
                         init_int64(result, -1);
                     } break;
@@ -2036,7 +2092,7 @@ namespace
 
                 void* data = nullptr;
                 int dataSize = 0;
-                auto success = BufferGetContent(result.v32, &data, &dataSize);
+                bool success = BufferGetContent(result.v32, &data, &dataSize);
                 assert(success);
                 assert(data != nullptr);
                 assert(dataSize >= 0);
@@ -2160,7 +2216,7 @@ namespace
             case EFileStatus::UnownedExists:
             {
                 assert(fileData->m_Data != nullptr);
-                auto bufferIndex = CreateBuffer(fileData->m_Size, eBuffer_Format_Fixed, 1);
+                int bufferIndex = CreateBuffer(fileData->m_Size, eBuffer_Format_Fixed, 1);
                 assert(bufferIndex >= 0);
                 BufferWriteContent(bufferIndex, 0, fileData->m_Data, fileData->m_Size);
                 init_buffer(result, bufferIndex);
@@ -2196,7 +2252,7 @@ namespace
 
                 void* data = nullptr;
                 int dataSize = 0;
-                auto success = BufferGetContent(arg[0].v32, &data, &dataSize);
+                bool success = BufferGetContent(arg[0].v32, &data, &dataSize);
                 assert(success);
                 assert(data != nullptr);
                 assert(dataSize >= 0);
@@ -2204,6 +2260,11 @@ namespace
                 fileData->m_Status = EFileStatus::UnownedExists;
                 fileData->m_Size = dataSize;
                 fileData->m_Data = data;
+            } break;
+            case EFileStatus::UnownedUnknown:
+            {
+                // it's ok to attempt to write to an unknown file during shutdown, just do nothing
+                assert(m_OnlineState != EOnlineState::InGame);
             } break;
             default:
                 assert(false);
@@ -2268,7 +2329,7 @@ namespace
                 assert(newData->m_Data == nullptr);
                 assert(fileData->m_Data != nullptr);
 
-                auto dataSize = fileData->m_Size;
+                int dataSize = fileData->m_Size;
                 auto data = YYAlloc(dataSize);
                 assert(data != nullptr);
                 memcpy(data, fileData->m_Data, dataSize);
@@ -2297,7 +2358,6 @@ namespace
                 init_real(result, 0);
             } break;
             case EFileStatus::UnownedUnknown:
-            case EFileStatus::UnownedLoading:
             case EFileStatus::UnownedDoesNotExist:
             case EFileStatus::UnownedExists:
             {
@@ -2306,6 +2366,12 @@ namespace
             default:
                 assert(false);
             }
+        }
+
+        void CacheCurrentTime()
+        {
+            double elapsedMs = m_FramesElapsedAtCurrentGameSpeed * m_GameSpeedMsPerFrame;
+            m_CachedCurrentTime = round(m_BaseCurrentTime + elapsedMs);
         }
     };
 
@@ -2324,7 +2390,8 @@ YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions,
     g_pYYRunnerInterface = &g_RunnerInterface;
 
     auto version = extGetVersion(c_ExtensionName);
-    if (strncmp(version, c_ExtensionVersion, countof(c_ExtensionVersion) - 1) != 0)
+
+    if (strcmp(version, c_ExtensionVersion) != 0)
     {
         char msg[1024];
         sprintf_s(msg, "Error: Version mismatch detected between PFO.dll (v%s) and data.win (v%s).\n\nPlease make sure you have copied PFO.dll into the same folder as data.win, and that both are the from the same version of the mod.", c_ExtensionVersion, version);
@@ -2347,6 +2414,7 @@ YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions,
     g_gml_buffer_seek = get_builtin_function("buffer_seek");
     g_gml_file_delete = get_builtin_function("file_delete");
     g_gml_file_copy = get_builtin_function("file_copy");
+    g_gml_game_set_speed = get_builtin_function("game_set_speed");
 
     g_SteamFriends = SteamFriends();
     g_SteamMatchmaking = SteamMatchmaking();
@@ -2455,7 +2523,7 @@ YYEXPORT void pfo_set_input_delay_mode(RValue& result, CInstance* selfinst, CIns
 {
     assert(argc == 1);
 
-    auto mode = YYGetInt64(arg, 0);
+    int64 mode = YYGetInt64(arg, 0);
     assert(mode >= 0 && mode < static_cast<int64>(EInputDelayMode::COUNT));
 
     auto newInputDelayMode = static_cast<EInputDelayMode>(mode);
@@ -2479,7 +2547,7 @@ YYEXPORT void pfo_set_input_delay_favored_client_index(RValue& result, CInstance
     assert(argc == 1);
 
     int clientIndex = YYGetInt32(arg, 0);
-    assert(clientIndex >= -1 && clientIndex < static_cast<int>(countof(g_pfo.m_ClientData)));
+    assert(clientIndex >= -1 && clientIndex < countof(g_pfo.m_ClientData));
 
     if (g_pfo.m_AssignedClientsCount > 1 && g_pfo.m_ClientData[clientIndex].m_PlayerData.m_PlayerIndex >= 0 && g_pfo.m_InputDelayFavoredClientIndex != clientIndex)
     {
@@ -2523,7 +2591,7 @@ YYEXPORT void pfo_set_max_automatic_input_delay(RValue& result, CInstance* selfi
 {
     assert(argc == 1);
 
-    int delay = static_cast<int>(YYGetInt32(arg, 0));
+    int delay = YYGetInt32(arg, 0);
     delay = min(delay, c_MaxInputDelay);
     delay = max(delay, 0);
 
@@ -2550,7 +2618,7 @@ YYEXPORT void pfo_init(RValue& result, CInstance* selfinst, CInstance* otherinst
     constexpr auto get_script_callback = [](const char* optionName) -> int
         {
             auto name = extOptGetString(c_ExtensionName, optionName);
-            if (name == nullptr || name[0] == '\0' || strncmp(name, "undefined", 9) == 0)
+            if (name == nullptr || name[0] == '\0' || strcmp(name, "undefined") == 0)
             {
                 YYError("Missing extension option '%s'", optionName);
             }
@@ -2709,8 +2777,8 @@ YYEXPORT void pfo_steam_lobby_set_game_server(RValue& result, CInstance* selfins
 {
     assert(argc == 4);
     auto lobbyId = CSteamID(static_cast<uint64>(YYGetInt64(arg, 0)));
-    auto serverIp = static_cast<uint32>(YYGetInt32(arg, 1));
-    auto serverPort = static_cast<uint16>(YYGetInt32(arg, 2));
+    auto serverIp = YYGetUint32(arg, 1);
+    auto serverPort = static_cast<uint16>(YYGetUint32(arg, 2));
     auto serverId = CSteamID(static_cast<uint64>(YYGetInt64(arg, 3)));
 
     g_SteamMatchmaking->SetLobbyGameServer(lobbyId, serverIp, serverPort, serverId);
@@ -2769,4 +2837,76 @@ YYEXPORT void pfo_client_get_ping(RValue& result, CInstance* selfinst, CInstance
     }
 
     init_real(result, ping);
+}
+
+YYEXPORT void pfo_reset(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 0);
+
+    g_pfo.m_Frame = 0;
+    g_pfo.m_BaseCurrentTime = 0.0;
+    g_pfo.m_FramesElapsedAtCurrentGameSpeed = 0;
+    g_pfo.CacheCurrentTime();
+}
+
+YYEXPORT void pfo_current_time(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 0);
+
+    init_real(result, g_pfo.m_CachedCurrentTime);
+}
+
+YYEXPORT void pfo_game_get_speed(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 1);
+
+    double type = YYGetReal(arg, 0);
+
+    if (type == 0.0)
+    {
+        init_real(result, g_pfo.m_GameSpeedFramesPerSecond);
+    }
+    else
+    {
+        init_real(result, g_pfo.m_GameSpeedMsPerFrame * 1000.0);
+    }
+}
+
+YYEXPORT void pfo_game_set_speed(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 2);
+
+    double speed = YYGetReal(arg, 0);
+    double type = YYGetReal(arg, 1);
+
+    double elapsedMs = g_pfo.m_FramesElapsedAtCurrentGameSpeed * g_pfo.m_GameSpeedMsPerFrame;
+    bool changedSpeed = false;
+
+    if (type == 0.0)
+    {
+        if (g_pfo.m_GameSpeedFramesPerSecond != speed)
+        {
+            g_pfo.m_GameSpeedFramesPerSecond = speed;
+            g_pfo.m_GameSpeedMsPerFrame = 1'000.0 / speed;
+            changedSpeed = true;
+        }
+    }
+    else
+    {
+        if (g_pfo.m_GameSpeedMsPerFrame != speed * 0.001)
+        {
+            g_pfo.m_GameSpeedMsPerFrame = speed * 0.001;
+            g_pfo.m_GameSpeedFramesPerSecond = 1'000'000.0 / speed;
+            changedSpeed = true;
+        }
+    }
+
+    if (changedSpeed)
+    {
+        g_pfo.m_BaseCurrentTime += elapsedMs;
+        g_pfo.m_FramesElapsedAtCurrentGameSpeed = 0;
+        g_pfo.CacheCurrentTime();
+    
+        Script_Perform(g_gml_game_set_speed, selfinst, otherinst, argc, &result, arg);
+    }
 }

@@ -28,48 +28,48 @@ if (keyboard_check_pressed(vk_f3))
 // if (keyboard_check_pressed(vk_f10))
 //     global.mGameOnlineHUDVAlign[global.currGame] = 2;
 
+scrSetFont(global.fontThinOutline);
+draw_set_color(c_white);
+
+// fixes the HUD moving back to the default library position when switching between games in the library attract mode
+var currGame = global.currGame;
+if (currGame == 0 && global.attractModeLibraryTimer >= global.AM_LIB_TIME)
+{
+    currGame = prevGame;
+}
+prevGame = currGame;
+
+var halign = fa_right;
+var valign = fa_top;
+if (currGame >= 1 && currGame <= global.NUM_GAMES)
+{
+    halign = global.mGameOnlineHUDHAlign[currGame];
+    valign = global.mGameOnlineHUDVAlign[currGame];
+}
+draw_set_halign(halign);
+draw_set_valign(valign);
+
+var xx = 1;
+var yy = 1;
+var ydelta = 8;
+
+if (halign == fa_right)
+{
+    xx = real(SCREEN.WIDTH);
+}
+else if (halign == fa_center)
+{
+    xx = real(SCREEN.WIDTH) / 2;
+}
+
+if (valign == fa_bottom)
+{
+    yy = real(SCREEN.HEIGHT) + 1;
+    ydelta *= -1;
+}
+
 if (pfo_is_online())
-{    
-    scrSetFont(global.fontThinOutline);
-    draw_set_color(c_white);
-
-    // fixes the HUD moving back to the default library position when switching between games in the library attract mode
-    var currGame = global.currGame;
-    if (currGame == 0 && global.attractModeLibraryTimer >= global.AM_LIB_TIME)
-    {
-        currGame = prevGame;
-    }
-    prevGame = currGame;
-
-    var halign = fa_right;
-    var valign = fa_top;
-    if (currGame >= 1 && currGame <= global.NUM_GAMES)
-    {
-        halign = global.mGameOnlineHUDHAlign[currGame];
-        valign = global.mGameOnlineHUDVAlign[currGame];
-    }
-    draw_set_halign(halign);
-    draw_set_valign(valign);
-
-    var xx = 1;
-    var yy = 1;
-    var ydelta = 8;
-
-    if (halign == fa_right)
-    {
-        xx = real(SCREEN.WIDTH);
-    }
-    else if (halign == fa_center)
-    {
-        xx = real(SCREEN.WIDTH) / 2;
-    }
-
-    if (valign == fa_bottom)
-    {
-        yy = real(SCREEN.HEIGHT) + 1;
-        ydelta *= -1;
-    }
-    
+{
     if (showDelay && pfo_get_assigned_clients_count() > 0)
     {
         if (pfo_client_get_player_index() >= 0)
@@ -108,18 +108,41 @@ if (pfo_is_online())
         draw_text(xx, yy, "FPS: " + string(fps));
         yy += ydelta;
     }
-    
-    if (showFrame)
+}
+
+if (showFrame)
+{
+    draw_text(xx, yy, string(pfo_get_frame()));
+    yy += ydelta;
+
+    draw_text(xx, yy, string(pfo_current_time()));
+    yy += ydelta;
+
+    draw_text(xx, yy, "currCutscene:" + string(global.currCutscene));
+    yy += ydelta;
+    draw_text(xx, yy, "playbackOver:" + string(global.playbackOver));
+    yy += ydelta;
+    draw_text(xx, yy, "resetGame:" + string(global.resetGame));
+    yy += ydelta;
+
+    if (variable_global_exists("g11_collectionEgg"))
     {
-        draw_text(xx, yy, string(pfo_get_frame()));
+        draw_text(xx, yy, "g11_collectionEgg:" + string(global.g11_collectionEgg));
+        yy += ydelta;
+    }
+    if (variable_global_exists("g11_levelsVisited"))
+    {
+        draw_text(xx, yy, "g11_levelsVisited:" + string(global.g11_levelsVisited));
         yy += ydelta;
     }
 }
 
-if (alertMessageTimer >= current_time)
+if (alertMessageTimer > current_time)
 {
     scrSetFont(global.fontDefault);
     draw_set_color(c_white);
+    draw_set_halign(fa_left);
+    draw_set_valign(fa_top);
     draw_text(1, 208, alertMessageText);
 }
 
