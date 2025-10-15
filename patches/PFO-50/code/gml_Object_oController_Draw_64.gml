@@ -115,26 +115,12 @@ if (showFrame)
     draw_text(xx, yy, string(pfo_get_frame()));
     yy += ydelta;
 
-    draw_text(xx, yy, string(pfo_current_time()));
+    draw_text(xx, yy, string(global.pfo_current_time));
     yy += ydelta;
-
-    draw_text(xx, yy, "currCutscene:" + string(global.currCutscene));
+    draw_text(xx, yy, string(current_time));
     yy += ydelta;
-    draw_text(xx, yy, "playbackOver:" + string(global.playbackOver));
+    draw_text(xx, yy, string(current_time - global.pfo_current_time));
     yy += ydelta;
-    draw_text(xx, yy, "resetGame:" + string(global.resetGame));
-    yy += ydelta;
-
-    if (variable_global_exists("g11_collectionEgg"))
-    {
-        draw_text(xx, yy, "g11_collectionEgg:" + string(global.g11_collectionEgg));
-        yy += ydelta;
-    }
-    if (variable_global_exists("g11_levelsVisited"))
-    {
-        draw_text(xx, yy, "g11_levelsVisited:" + string(global.g11_levelsVisited));
-        yy += ydelta;
-    }
 }
 
 if (alertMessageTimer > current_time)

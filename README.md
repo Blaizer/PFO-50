@@ -32,6 +32,7 @@ but for some turn-based games the input delay will favor the current player.
 
 Credits
 -------
-Blazier - programming, art
-Sailor - testing
-p-sam - ufo50-patcher
+* Blazier: programming, art
+* Sailor: testing
+* p-sam: ufo50-patcher
+* Mossmouth: making UFO 50

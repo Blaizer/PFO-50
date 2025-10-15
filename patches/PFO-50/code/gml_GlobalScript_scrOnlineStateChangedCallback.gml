@@ -11,21 +11,79 @@ function scrInitAttractModePlaylist()
     scrShuffle(global.attractModePlaylist);
 }
 
+function scrOnlineCleanup()
+{
+    scrInitAch();
+
+    if (is_array(global.onlineDefaultLanguage))
+    {
+        global.defaultLanguage = global.onlineDefaultLanguage[1];
+
+        global.profileLanguage = global.defaultLanguage;
+        if (global.currFile == 0)
+        {
+           scrUpdateLanguage(global.defaultLanguage);
+        }
+    }
+
+    global.onlineDefaultLanguage = undefined;
+    global.onlineClientNames = undefined;
+    global.onlineRandomizeSeed = undefined;
+}
+
 function scrOnlineStateChangedCallback(state)
 {
     if (state == PFO_OnlineState.Online)
     {
         steam_lobby_leave();
-        pfo_reset();
         pfo_start();
+        scrUnpause();
+
         pfo_set_randomize_seed(global.onlineRandomizeSeed);
         scrRandomize(0);
+
+        global.currGame = 0;
+        global.currGameID = 0;
+        global.solutionState = false;
+        global.memoryMessage = "";
+        global.memoryMessagePage = 1;
+        global.numPlayers = 1;
+        global.playIntro = false;
+        global.resetGame = false;
 
         global.attractMode = false;
         global.attractModeLibrary = false;
         global.attractModeLibraryTimer = 0;
         global.attractModeIndex = 0;
         scrInitAttractModePlaylist();
+        global.playbackMode = false;
+        global.inputPlayback = array_create(0);
+        global.inputFrame = 0;
+        global.newInputFrame = true;
+        global.playbackOver = false;
+
+        pfo_game_set_speed(global.STANDARD_FPS, gamespeed_fps);
+        global.halfTime = 0;
+        global.timeStamp = 0;
+        global.timeStampGame = 0;
+        global.timeStampSpeedRun = 0;
+        global.speedRunPrevious = 0;
+        global.timeStampIncremental = -1;
+        global.timeSumIncremental = 0;
+
+        scrClearCheats();
+        global.currFile = 0;
+        global.currFileName = "";
+        global.backupTimer = global.BACKUP_MINIMUM_TIME;
+        global.all50 = 0;
+
+        global.crashToTerminal = 0;
+        global.currCutscene = -1;
+        global.currGardenWin = 0;
+        global.currWin = 0;
+        global.multStyle = 0;
+        global.selGame = 1;
+        global.selSort = 0;
 
         if (is_array(global.onlineDefaultLanguage))
         {
@@ -34,11 +92,9 @@ function scrOnlineStateChangedCallback(state)
         global.profileLanguage = global.defaultLanguage;
         scrUpdateLanguage(global.defaultLanguage);
 
-        global.halfTime = 0;
-
         global.SKIP_INTRO = 2;
         global.roomPrev = rmInit;
-        room_restart();
+        room_goto(rmLibrary);
     }
     else if (state == PFO_OnlineState.Disconnecting)
     {
@@ -56,19 +112,13 @@ function scrOnlineStateChangedCallback(state)
         
         if (!saveFileOwned)
         {
+            scrUnpause();
             scrCloseProfile();
         }
     }
     else if (state == PFO_OnlineState.Offline)
     {
-        if (is_array(global.onlineDefaultLanguage))
-        {
-            global.defaultLanguage = global.onlineDefaultLanguage[1];
-            global.onlineDefaultLanguage = undefined;
-
-            global.profileLanguage = global.defaultLanguage;
-            scrUpdateLanguage(global.defaultLanguage);
-        }
+        scrOnlineCleanup();
 
         if (saveFileOwned)
         {
@@ -91,11 +141,6 @@ function scrOnlineStateChangedCallback(state)
         }
         else
         {
-            global.currFile = 0;
-            scrInitAch();
-            scrClearCheats();
-            scrUnpause();
-
             // we need to return to the title screen to make sure we don't keep using the current save file
             global.attractModeLibraryTimer = 0;
             if (room == rmLibrary)
@@ -109,6 +154,7 @@ function scrOnlineStateChangedCallback(state)
             else
             {
                 scrExitToLibrary();
+                scrClearCheats();
                 global.SKIP_INTRO = true;
                 global.roomPrev = rmInit;
             }

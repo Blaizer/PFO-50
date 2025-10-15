@@ -39,21 +39,24 @@ function scrSerializeChecksum(writer)
 {
     var read = writer.isReader;
 
-    writer.Write(buffer_u64, read ? "randomize_state" : global.pfo_randomizeState);
+    writer.Write(buffer_u64, read ? "randomize_state" : global.pfo_randomize_state);
     writer.Write(buffer_u32, read ? "random_seed"     : random_get_seed());
     writer.Write(buffer_s32, read ? "room"            : room);
     writer.Write(buffer_s32, read ? "instance_count"  : instance_count - instance_number(oOkay) - instance_number(oSaveIcon));
 
-    writer.Write(buffer_s8,  read ? "curr_game_id"  : global.currGameID);
-    writer.Write(buffer_s8,  read ? "curr_file"     : global.currFile);
-    writer.Write(buffer_s8,  read ? "num_players"   : global.numPlayers);
-    writer.Write(buffer_s8,  read ? "paused"        : global.paused);
-    writer.Write(buffer_s8,  read ? "attract_mode"  : global.attractMode);
-    writer.Write(buffer_s8,  read ? "playback_mode" : global.playbackMode);
-    writer.Write(buffer_s8,  read ? "half_time"     : global.halfTime);
-    writer.Write(buffer_u64, read ? "rng_state_1"   : global.rng_state_1);
-    writer.Write(buffer_u64, read ? "rng_state_2"   : global.rng_state_2);
+    writer.Write(buffer_s8,  read ? "curr_game_id" : global.currGameID);
+    writer.Write(buffer_s8,  read ? "curr_file"    : global.currFile);
+    writer.Write(buffer_s8,  read ? "num_players"  : global.numPlayers);
+    writer.Write(buffer_s8,  read ? "paused"       : global.paused);
+    writer.Write(buffer_s8,  read ? "attract_mode" : global.attractMode);
+    writer.Write(buffer_s8,  read ? "language"     : global.language);
+    writer.Write(buffer_s8,  read ? "half_time"    : global.halfTime);
+    writer.Write(buffer_u64, read ? "rng_state_1"  : global.rng_state_1);
+    writer.Write(buffer_u64, read ? "rng_state_2"  : global.rng_state_2);
 
+    writer.Write(buffer_f64, read ? "current_time"               : global.pfo_current_time);
+    writer.Write(buffer_f64, read ? "base_current_time"          : global.pfo_base_current_time);
+    writer.Write(buffer_f64, read ? "time_stamp_incremental"     : global.timeStampIncremental)
     writer.Write(buffer_s16, read ? "attract_mode_library_timer" : global.attractModeLibraryTimer);
 
     var hasGameData = writer.Write(buffer_s8, read ? "has_game_data" : instance_exists(o14_Game));

@@ -12,10 +12,35 @@ function scrUpdateManualInputDelays()
     }
 }
 
+function scrGetPlayerNames(fromNames, excludingIndex)
+{
+    var names = array_create(array_length(fromNames));
+    var index = 0;
+    for (var clientIndex = 0; clientIndex < array_length(global.onlineClientNames); clientIndex++)
+    {
+        if (clientIndex != excludingIndex)
+        {
+            names[index] = fromNames[clientIndex];
+            selectionClientIndex[index++] = clientIndex;
+        }
+    }
+
+    names[index] = "NONE";
+    selectionClientIndex[index] = -1;
+
+    return names;
+}
+
 SUB_PRE_INIT = 0;
 SUB_INIT = 1;
 SUB_NAV = 2;
 SUB_RESET = 3;
+
+if (!pfo_is_online())
+{
+    scrSwitchState(statePrev);
+    exit;
+}
 
 if (substate == SUB_PRE_INIT)
 {
@@ -45,14 +70,12 @@ else if (substate == SUB_INIT)
         playerNames[clientIndex] = string_copy(global.onlineClientNames[clientIndex], 1, 15);
     }
 
-    var playerNames2 = array_create(array_length(playerNames));
-    array_copy(playerNames2, 0, playerNames, 0, array_length(playerNames));
-    array_push(playerNames2, "NONE");
+    var playerNames2 = scrGetPlayerNames(playerNames, onlinePlayers[0]);
 
     var mode = pfo_get_input_delay_mode();
 
     OP_PLAYER1 = scrMenuItem(TYPE_DUAL, "P1 ASSIGN", onlinePlayers[0], playerNames);
-    OP_PLAYER2 = scrMenuItem(TYPE_DUAL, "P2 ASSIGN", onlinePlayers[1] < 0 ? 2 : onlinePlayers[1], playerNames2);
+    OP_PLAYER2 = scrMenuItem(TYPE_DUAL, "P2 ASSIGN", onlinePlayers[1] < 0 ? 1 : 0, playerNames2);
     OP_DELAY_MODE = scrMenuItem(TYPE_DUAL, "INPUT DELAY MODE", mode, ["AUTO", "MANUAL"]);
 
     OP_AUTO_DELAY_MIN = noone;
@@ -114,22 +137,12 @@ else if (substate == SUB_NAV)
         switch (menuSel)
         {
             case OP_PLAYER1:
-                if (choice == itemIndex[OP_PLAYER2])
-                {
-                    itemIndex[OP_PLAYER2] = !itemIndex[OP_PLAYER2];
-                }
                 onlinePlayers[0] = itemIndex[OP_PLAYER1];
-                onlinePlayers[1] = itemIndex[OP_PLAYER2] >= 2 ? -1 : itemIndex[OP_PLAYER2];
-                scrUpdateManualInputDelays();
-                break;
+                itemValues[OP_PLAYER2] = scrGetPlayerNames(itemValues[OP_PLAYER1], onlinePlayers[0]);
+                // fallthrough;
             
             case OP_PLAYER2:
-                if (choice == itemIndex[OP_PLAYER1])
-                {
-                    itemIndex[OP_PLAYER1] = !itemIndex[OP_PLAYER1];
-                }
-                onlinePlayers[0] = itemIndex[OP_PLAYER1];
-                onlinePlayers[1] = itemIndex[OP_PLAYER2] >= 2 ? -1 : itemIndex[OP_PLAYER2];
+                onlinePlayers[1] = selectionClientIndex[itemIndex[OP_PLAYER2]];
                 scrUpdateManualInputDelays();
                 break;
             

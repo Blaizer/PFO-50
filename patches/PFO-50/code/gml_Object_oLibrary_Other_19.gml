@@ -159,6 +159,7 @@ if (substate == SUB_ONLINE_CONNECT)
     else if (stateCounter == 2)
     {
         pfo_set_players([0, 1]);
+        scrInitAch();
     }
     else if (stateCounter == 3)
     {

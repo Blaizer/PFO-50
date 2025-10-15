@@ -12,6 +12,10 @@ void PatchPFO50Extension()
     var extensionName = "PFO";
     var extensionVersion = GetModVersion();
     var gameVersion = GetGameVersion();
+    if (gameVersion.EndsWith(".0"))
+    {
+        gameVersion = gameVersion.Substring(0, gameVersion.Length - 2);
+    }
 
     var pfoExtension = Data.Extensions.ByName(extensionName);
     if (pfoExtension == null)
@@ -106,7 +110,6 @@ void PatchPFO50Extension()
         DefineExtensionFunction("pfo_connect");
         DefineExtensionFunction("pfo_client_get_ping");
         DefineExtensionFunction("pfo_reset");
-        DefineExtensionFunction("pfo_current_time");
         DefineExtensionFunction("pfo_game_get_speed");
         DefineExtensionFunction("pfo_game_set_speed");
 

@@ -131,6 +131,9 @@ namespace
     ISteamNetworkingSockets* g_SteamNetworkingSockets;
     ISteamNetworkingUtils* g_SteamNetworkingUtils;
 
+    double g_GameSpeedFPS = 0.0;
+    double g_GameSpeedMicroseconds = 0.0;
+
     int g_GmlChecksumBuffer1;
     int g_GmlChecksumBuffer2;
 
@@ -173,9 +176,6 @@ namespace
         {
             m_Size += size;
         }
-
-        constexpr void SetName(const char* name) {}
-        constexpr void SetName(const char* name, int i, const char* iName) {}
     };
 
     struct Writer
@@ -201,9 +201,6 @@ namespace
             memcpy(m_Buffer + m_Offset, buffer, size);
             m_Offset += size;
         }
-
-        constexpr void SetName(const char* name) {}
-        constexpr void SetName(const char* name, int i, const char* iName) {}
     };
 
     struct Reader
@@ -229,9 +226,12 @@ namespace
             memcpy(buffer, m_Buffer + m_Offset, size);
             m_Offset += size;
         }
+    };
 
-        constexpr void SetName(const char* name) {}
-        constexpr void SetName(const char* name, int i, const char* iName) {}
+    template<typename T>
+    concept HasSetName = requires(T t, const char* name, int i, const char* iName) {
+        { t.SetName(name) };
+        { t.SetName(name, i, iName) };
     };
 
     struct StringWriter
@@ -259,12 +259,7 @@ namespace
             m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, fmt, value);
         }
 
-        void SetName(const char* name)
-        {
-            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, "  %s: ", name);
-        }
-
-        void SetName(const char* name, int i, const char* iName)
+        void SetName(const char* name, int i = 0, const char* iName = nullptr)
         {
             m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, "  ");
             m_Offset += WriteName(m_String + m_Offset, m_Size - m_Offset, name, i, iName);
@@ -273,21 +268,35 @@ namespace
 
         static int WriteName(char* str, size_t count, const char* name, int i, const char* iName)
         {
-            auto p = name;
-            size_t iNameLength = strlen(iName);
-
-            while (true)
+            constexpr char prefix[] = "m_";
+            constexpr size_t prefixLength = countof(prefix) - 1;
+            if (strncmp(name, prefix, prefixLength) == 0)
             {
-                p = strstr(p, "[");
-                if (p == nullptr)
-                {
-                    break;
-                }
+                name += prefixLength;
+            }
 
-                p++;
-                if (strncmp(p, iName, iNameLength) == 0)
+            if (iName == nullptr)
+            {
+                return sprintf_s(str, count, "%s", name);
+            }
+            else
+            {
+                auto p = name;
+                size_t iNameLength = strlen(iName);
+
+                while (true)
                 {
-                    return sprintf_s(str, count, "%.*s%d%s", narrow_cast<uint32>(p - name), name, i, p + iNameLength);
+                    p = strstr(p, "[");
+                    if (p == nullptr)
+                    {
+                        break;
+                    }
+
+                    p++;
+                    if (strncmp(p, iName, iNameLength) == 0)
+                    {
+                        return sprintf_s(str, count, "%.*s%d%s", narrow_cast<uint32>(p - name), name, i, p + iNameLength);
+                    }
                 }
             }
 
@@ -295,7 +304,7 @@ namespace
         }
     };
 
-    template<typename T>
+    template<typename TDiffable>
     struct Differ
     {
         const uint8* m_Buffer1;
@@ -304,17 +313,12 @@ namespace
         const char* m_IteratorName = nullptr;
         size_t m_Size;
         size_t m_Offset = 0;
-        T m_Diff1;
-        T m_Diff2;
         int m_Iterator = 0;
 
         Differ() = delete;
         Differ(Reader& reader1, Reader& reader2) : m_Buffer1(reader1.m_Buffer), m_Buffer2(reader2.m_Buffer), m_Size(reader1.m_Size)
         {
             assert(reader1.m_Size == reader2.m_Size);
-
-            m_Diff1.Serialize(reader1);
-            m_Diff2.Serialize(reader2);
         }
 
         template<typename T>
@@ -329,43 +333,39 @@ namespace
                 constexpr size_t size = countof(g_TempBuffer);
 
                 offset += sprintf_s(str + offset, size - offset, "Desync detected!\n\nDifference in PFO value: ");
-                
-                if (m_IteratorName != nullptr)
-                {
-                    offset += StringWriter::WriteName(str + offset, size - offset, m_Name, m_Iterator, m_IteratorName);
-                }
-                else
-                {
-                    offset += sprintf_s(str + offset, size - offset, "%s", m_Name);
-                }
-
+                offset += StringWriter::WriteName(str + offset, size - offset, m_Name, m_Iterator, m_IteratorName);
                 offset += sprintf_s(str + offset, size - offset, "\n\nOurs:\n");
 
+                auto& diff1 = *new TDiffable();
+                auto& diff2 = *new TDiffable();
+
+                Reader reader1(m_Buffer1, m_Size);
+                Reader reader2(m_Buffer2, m_Size);
+                diff1.Serialize(reader1);
+                diff2.Serialize(reader2);
+
                 StringWriter nameWriter1(str + offset, size - offset);
-                m_Diff1.Serialize(nameWriter1);
+                diff1.Serialize(nameWriter1);
                 offset += nameWriter1.m_Offset;
 
                 offset += sprintf_s(str + offset, size - offset, "\nTheirs:\n");
 
                 StringWriter nameWriter2(str + offset, size - offset);
-                m_Diff2.Serialize(nameWriter2);
+                diff2.Serialize(nameWriter2);
                 offset += nameWriter2.m_Offset;
 
                 ShowMessage(g_TempBuffer);
 
                 breakpoint();
+
+                delete &diff1;
+                delete &diff2;
             }
 
             m_Offset += sizeof(T);
         }
 
-        constexpr void SetName(const char* name)
-        {
-            m_Name = name;
-            m_IteratorName = nullptr;
-        }
-
-        constexpr void SetName(const char* name, int i, const char* iName)
+        constexpr void SetName(const char* name, int i = 0, const char* iName = nullptr)
         {
             m_Name = name;
             m_Iterator = i;
@@ -461,91 +461,21 @@ namespace
         int m_InputDelay = 0;
     };
 
-    struct Checksum
-    {
-        uint32 m_Frame = 0;
-        EInputDelayMode m_InputDelayMode = {};
-        int m_InputDelayFavoredClientIndex = 0;
-        int m_MinAutomaticInputDelay = 0;
-        int m_MaxAutomaticInputDelay = 0;
-        int m_PlayerIndexToClientIndexMap[2] = {};
-        double m_BaseCurrentTime = 0.0;
-        double m_CachedCurrentTime = 0.0;
-
-        struct
-        {
-            int m_InputDelay = 0;
-            int m_AutomaticInputDelay = 0;
-            InputFlags_t m_InputBuffer[2] = {};
-            AutomaticInputDelayChange m_AutomaticInputDelayChanges[countof(m_InputBuffer)];
-        } m_ClientData[2];
-
-        template<typename T>
-        constexpr void Serialize(T& writer)
-        {
-            #define WRITE_NAMED(val) writer.SetName(#val); writer.Write(val);
-            #define WRITE_NAMED_INDEX(val, i) writer.SetName(#val, i, #i); writer.Write(val);
-
-            WRITE_NAMED(m_Frame);
-            WRITE_NAMED(m_InputDelayMode);
-            WRITE_NAMED(m_InputDelayFavoredClientIndex);
-            WRITE_NAMED(m_MinAutomaticInputDelay);
-            WRITE_NAMED(m_MaxAutomaticInputDelay);
-            WRITE_NAMED(m_BaseCurrentTime);
-            WRITE_NAMED(m_CachedCurrentTime);
-
-            for (int i = 0; i < countof(m_PlayerIndexToClientIndexMap); i++)
-            {
-                WRITE_NAMED_INDEX(m_PlayerIndexToClientIndexMap[i], i);
-            }
-
-            for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
-            {
-                WRITE_NAMED_INDEX(m_ClientData[clientIndex].m_InputDelay, clientIndex);
-                WRITE_NAMED_INDEX(m_ClientData[clientIndex].m_AutomaticInputDelay, clientIndex);
-
-                auto& clientData = m_ClientData[clientIndex];
-
-                for (int i = 0; i < countof(clientData.m_InputBuffer); i++)
-                {
-                    WRITE_NAMED_INDEX(clientData.m_InputBuffer[i], i);
-                }
-
-                for (int i = 0; i < countof(clientData.m_AutomaticInputDelayChanges); i++)
-                {
-                    WRITE_NAMED_INDEX(clientData.m_AutomaticInputDelayChanges[i].m_InputFrame, i);
-                    WRITE_NAMED_INDEX(clientData.m_AutomaticInputDelayChanges[i].m_InputDelay, i);
-                }
-            }
-
-            #undef WRITE_NAMED
-            #undef WRITE_NAMED_INDEX
-        }
-
-        static consteval int GetMaxSize()
-        {
-            SizeGetter size;
-            Checksum checksum;
-            checksum.Serialize(size);
-            return size.m_Size;
-        }
-    };
-
     struct ChecksumBuffer
     {
         uint32 m_Frame = 0;
         uint32 m_Checksum = 0;
-        int m_PfoBufferSize = 0;
+        int m_SessionBufferSize = 0;
         int m_GmlBufferSize = 0;
         bool m_HasBuffer = false;
-        uint8 m_PfoBuffer[Checksum::GetMaxSize()] = {};
-        uint8 m_GmlBuffer[64] = {};
+        uint8 m_SessionBuffer[76] = {};
+        uint8 m_GmlBuffer[96] = {};
 
         constexpr void Reset()
         {
             m_Frame = 0;
             m_Checksum = 0;
-            m_PfoBufferSize = 0;
+            m_SessionBufferSize = 0;
             m_GmlBufferSize = 0;
             m_HasBuffer = false;
         }
@@ -555,9 +485,9 @@ namespace
         {
             writer.Write(m_Frame);
             writer.Write(m_Checksum);
-            writer.Write(m_PfoBufferSize);
+            writer.Write(m_SessionBufferSize);
             writer.Write(m_GmlBufferSize);
-            writer.Write(m_PfoBuffer, m_PfoBufferSize);
+            writer.Write(m_SessionBuffer, m_SessionBufferSize);
             writer.Write(m_GmlBuffer, m_GmlBufferSize);
         }
     };
@@ -787,7 +717,7 @@ namespace
             SizeGetter size;
             Message message;
             ChecksumBuffer checksumBuffer;
-            checksumBuffer.m_PfoBufferSize = sizeof(checksumBuffer.m_PfoBuffer);
+            checksumBuffer.m_SessionBufferSize = sizeof(checksumBuffer.m_SessionBuffer);
             checksumBuffer.m_GmlBufferSize = sizeof(checksumBuffer.m_GmlBuffer);
             message.m_InputFrameCount = countof(message.m_Inputs);
 
@@ -801,27 +731,20 @@ namespace
         }
     };
 
-    struct PFO
+    struct Session
     {
         ClientData m_ClientData[2];
         int m_PlayerIndexToClientIndexMap[2] = { -1, -1 };
         FileData m_FileData[32];
-        
-        double m_BaseCurrentTime = 0.0;
-        double m_CachedCurrentTime = 0.0;
-        double m_GameSpeedMsPerFrame = 0.0;
-        double m_GameSpeedFramesPerSecond = 0.0;
 
         HSteamListenSocket m_ListenSocket = k_HSteamListenSocket_Invalid;
 
         EOnlineState m_OnlineState = {};
         uint32 m_Frame = 0;
-        uint32 m_FramesElapsedAtCurrentGameSpeed = 0;
+        uint32 m_LastSentChecksumFrame = 0;
         int m_ClientIndex = 0;
         int m_AssignedClientsCount = 0;
         int m_PreviousFrameAssignedClientsCount = 0;
-
-        uint32 m_LastSentChecksumFrame = 0;
 
         EInputDelayMode m_InputDelayMode = {};
         uint32 m_RequestedAutomaticInputDelayFrame = 0;
@@ -844,16 +767,13 @@ namespace
                 }
             }
 
-            if (m_OnlineState != EOnlineState::InGame || advanceFrame)
-            {
-                m_Frame++;
-
-                m_FramesElapsedAtCurrentGameSpeed++;
-                CacheCurrentTime();
-            }
-
             if (m_OnlineState == EOnlineState::InGame)
             {
+                if (advanceFrame)
+                {
+                    m_Frame++;
+                }
+
                 // write checksum
                 {
                     ChecksumBuffer* pChecksumBuffer;
@@ -873,43 +793,9 @@ namespace
                     checksumBuffer.m_HasBuffer = true;
 
                     {
-                        Checksum checksum;
-                        checksum.m_Frame = m_Frame;
-                        checksum.m_InputDelayMode = m_InputDelayMode;
-                        checksum.m_InputDelayFavoredClientIndex = m_InputDelayFavoredClientIndex;
-                        checksum.m_MinAutomaticInputDelay = m_MinAutomaticInputDelay;
-                        checksum.m_MaxAutomaticInputDelay = m_MaxAutomaticInputDelay;
-                        copy(checksum.m_PlayerIndexToClientIndexMap, m_PlayerIndexToClientIndexMap);
-                        checksum.m_BaseCurrentTime = m_BaseCurrentTime;
-                        checksum.m_CachedCurrentTime = m_CachedCurrentTime;
-
-                        for (int clientIndex = 0; clientIndex < countof(checksum.m_ClientData); clientIndex++)
-                        {
-                            auto& clientData = m_ClientData[clientIndex];
-                            auto& playerData = clientData.m_PlayerData;
-                            auto& checksumPlayerData = checksum.m_ClientData[clientIndex];
-
-                            checksumPlayerData.m_InputDelay = clientData.m_InputDelay;
-                            checksumPlayerData.m_AutomaticInputDelay = clientData.m_AutomaticInputDelay;
-
-                            for (int i = 0; i < countof(checksumPlayerData.m_InputBuffer); i++)
-                            {
-                                checksumPlayerData.m_InputBuffer[i] = playerData.m_InputBuffer[(m_Frame - i - 1) & (countof(playerData.m_InputBuffer) - 1)];
-                            }
-
-                            for (int i = 0; i < countof(checksumPlayerData.m_AutomaticInputDelayChanges); i++)
-                            {
-                                auto& changeRequest = clientData.m_AutomaticInputDelayChanges[(m_Frame - i - 1) & (countof(clientData.m_AutomaticInputDelayChanges) - 1)];
-                                if (changeRequest.m_InputFrame == m_Frame - i - 1)
-                                {
-                                    checksumPlayerData.m_AutomaticInputDelayChanges[i] = changeRequest;
-                                }
-                            }
-                        }
-
-                        Writer writer(checksumBuffer.m_PfoBuffer, sizeof(checksumBuffer.m_PfoBuffer));
-                        checksum.Serialize(writer);
-                        checksumBuffer.m_PfoBufferSize = writer.m_Offset;
+                        Writer writer(checksumBuffer.m_SessionBuffer, sizeof(checksumBuffer.m_SessionBuffer));
+                        Serialize(writer);
+                        checksumBuffer.m_SessionBufferSize = writer.m_Offset;
                     }
 
                     {
@@ -933,7 +819,7 @@ namespace
                         memcpy(checksumBuffer.m_GmlBuffer, data, checksumBuffer.m_GmlBufferSize);
                     }
 
-                    checksumBuffer.m_Checksum = hash_fnv1a32(checksumBuffer.m_PfoBuffer, checksumBuffer.m_PfoBufferSize);
+                    checksumBuffer.m_Checksum = hash_fnv1a32(checksumBuffer.m_SessionBuffer, checksumBuffer.m_SessionBufferSize);
                     checksumBuffer.m_Checksum = hash_fnv1a32(checksumBuffer.m_GmlBuffer, checksumBuffer.m_GmlBufferSize, checksumBuffer.m_Checksum);
 
                     CheckChecksum(checksumBuffer, instance);
@@ -1551,21 +1437,7 @@ namespace
                     Script_Perform(g_gml_Script_onlineStateChangedCallback, instance, instance, 1, &result, &arg);
                 }
 
-                m_OnlineState = EOnlineState::Offline;
-
-                for (int i = 0; i < countof(m_FileData); i++)
-                {
-                    auto& fileData = m_FileData[i];
-                    if (fileData.m_Filename != nullptr)
-                    {
-                        YYFree(fileData.m_Filename);
-                    }
-                    if (fileData.m_Data != nullptr)
-                    {
-                        YYFree(fileData.m_Data);
-                    }
-                    reset(fileData);
-                }
+                Reset();
 
                 {
                     RValue result = {};
@@ -1574,6 +1446,93 @@ namespace
                     Script_Perform(g_gml_Script_onlineStateChangedCallback, instance, instance, 1, &result, &arg);
                 }
             }
+        }
+
+        void Reset()
+        {
+            for (int i = 0; i < countof(m_FileData); i++)
+            {
+                auto& fileData = m_FileData[i];
+                if (fileData.m_Filename != nullptr)
+                {
+                    YYFree(fileData.m_Filename);
+                    fileData.m_Filename = nullptr;
+                }
+                if (fileData.m_Data != nullptr)
+                {
+                    YYFree(fileData.m_Data);
+                    fileData.m_Data = nullptr;
+                }
+            }
+
+            for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+            {
+                auto& clientData = m_ClientData[clientIndex];
+                if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
+                {
+                    g_SteamNetworkingSockets->CloseConnection(clientData.m_ConnectSocket, k_ESteamNetConnectionEnd_App_Generic + 1, "Session ended", false);
+                    clientData.m_ConnectSocket = k_HSteamNetConnection_Invalid;
+                }
+            }
+
+            if (m_ListenSocket != k_HSteamListenSocket_Invalid)
+            {
+                g_SteamNetworkingSockets->CloseListenSocket(m_ListenSocket);
+                m_ListenSocket = k_HSteamListenSocket_Invalid;
+            }
+
+            reset(*this);
+        }
+
+        template<typename T>
+        constexpr void Serialize(T& writer)
+        {
+#define WRITE_NAMED(val) if constexpr (HasSetName<T>) writer.SetName(#val); writer.Write(val);
+#define WRITE_NAMED_INDEX(val, i) if constexpr (HasSetName<T>) writer.SetName(#val, i, #i); writer.Write(val);
+
+            WRITE_NAMED(m_Frame);
+            WRITE_NAMED(m_InputDelayMode);
+            WRITE_NAMED(m_InputDelayFavoredClientIndex);
+            WRITE_NAMED(m_MinAutomaticInputDelay);
+            WRITE_NAMED(m_MaxAutomaticInputDelay);
+
+            for (int i = 0; i < countof(m_PlayerIndexToClientIndexMap); i++)
+            {
+                WRITE_NAMED_INDEX(m_PlayerIndexToClientIndexMap[i], i);
+            }
+
+            for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+            {
+                WRITE_NAMED_INDEX(m_ClientData[clientIndex].m_InputDelay, clientIndex);
+                WRITE_NAMED_INDEX(m_ClientData[clientIndex].m_AutomaticInputDelay, clientIndex);
+
+                auto& clientData = m_ClientData[clientIndex];
+                auto& playerData = clientData.m_PlayerData;
+
+                for (int i = 0; i < 2; i++)
+                {
+                    int frame = (m_Frame - i - 1) & (countof(playerData.m_InputBuffer) - 1);
+                    WRITE_NAMED_INDEX(playerData.m_InputBuffer[frame], frame);
+                }
+
+                for (int i = 0; i < 1; i++)
+                {
+                    int frame = (m_Frame - i - 1) & (countof(clientData.m_AutomaticInputDelayChanges) - 1);
+                    WRITE_NAMED_INDEX(clientData.m_AutomaticInputDelayChanges[frame].m_InputFrame, frame);
+                    WRITE_NAMED_INDEX(clientData.m_AutomaticInputDelayChanges[frame].m_InputDelay, frame);
+                }
+            }
+
+#undef WRITE_NAMED
+#undef WRITE_NAMED_INDEX
+        }
+
+        static consteval int GetMaxSize()
+        {
+            SizeGetter size;
+            Session session;
+            session.Serialize(size);
+            return size.m_Size;
         }
 
         InputFlags_t PlayerGetInput(CInstance* instance, int playerIndex)
@@ -1645,13 +1604,13 @@ namespace
         void DiffChecksums(ChecksumBuffer& a, ChecksumBuffer& b, CInstance* instance)
         {
             // compare pfo checksum
-            if (a.m_PfoBufferSize != b.m_PfoBufferSize || memcmp(a.m_PfoBuffer, b.m_PfoBuffer, a.m_PfoBufferSize) != 0)
+            if (a.m_SessionBufferSize != b.m_SessionBufferSize || memcmp(a.m_SessionBuffer, b.m_SessionBuffer, a.m_SessionBufferSize) != 0)
             {
-                Reader readerA(a.m_PfoBuffer, a.m_PfoBufferSize);
-                Reader readerB(b.m_PfoBuffer, b.m_PfoBufferSize);
+                Reader readerA(a.m_SessionBuffer, a.m_SessionBufferSize);
+                Reader readerB(b.m_SessionBuffer, b.m_SessionBufferSize);
 
-                Differ<Checksum> differ(readerA, readerB);
-                differ.m_Diff1.Serialize(differ);
+                Differ<Session> differ(readerA, readerB);
+                Serialize(differ);
             }
 
             // compare gml checksum
@@ -1685,7 +1644,7 @@ namespace
             {
                 if (info.m_eState == k_ESteamNetworkingConnectionState_ClosedByPeer)
                 {
-                    g_SteamNetworkingSockets->CloseConnection(hConn, k_ESteamNetConnectionEnd_App_Min, nullptr, false);
+                    g_SteamNetworkingSockets->CloseConnection(hConn, k_ESteamNetConnectionEnd_App_Generic, "Closed by peer", false);
                 }
                 else
                 {
@@ -1704,13 +1663,19 @@ namespace
                 if (info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally &&
                     (info.m_eEndReason == k_ESteamNetConnectionEnd_Remote_Timeout || info.m_eEndReason == k_ESteamNetConnectionEnd_Misc_Timeout))
                 {
-                    ReleaseConsoleOutput("Let's try to reconnect!\n");
-                    //m_OnlineState = EOnlineState::Reconnecting;
-                    m_OnlineState = EOnlineState::Disconnecting;
+                    if (m_OnlineState == EOnlineState::InGame)
+                    {
+                        ReleaseConsoleOutput("Let's try to reconnect!\n");
+                        //m_OnlineState = EOnlineState::Reconnecting;
+                        m_OnlineState = EOnlineState::Disconnecting;
+                    }
                 }
                 else
                 {
-                    m_OnlineState = EOnlineState::Disconnecting;
+                    if (m_OnlineState == EOnlineState::InGame)
+                    {
+                        m_OnlineState = EOnlineState::Disconnecting;
+                    }
                 }
             }
 
@@ -1722,7 +1687,8 @@ namespace
                 {
                     if (m_ClientData[1].m_ConnectSocket != k_HSteamNetConnection_Invalid)
                     {
-                        g_SteamNetworkingSockets->CloseConnection(hConn, k_ESteamNetConnectionEnd_AppException_Generic + 2, "New connection received", false);
+                        g_SteamNetworkingSockets->CloseConnection(m_ClientData[1].m_ConnectSocket, k_ESteamNetConnectionEnd_AppException_Generic + 2, "New connection received", false);
+                        m_ClientData[1].m_ConnectSocket = k_HSteamNetConnection_Invalid;
                     }
 
                     EResult res = g_SteamNetworkingSockets->AcceptConnection(hConn);
@@ -1732,8 +1698,8 @@ namespace
                     }
                     else
                     {
-                        YYError("AcceptConnection returned %d", res);
                         g_SteamNetworkingSockets->CloseConnection(hConn, k_ESteamNetConnectionEnd_AppException_Generic, "Failed to accept connection", false);
+                        YYError("AcceptConnection returned %d", res);
                     }
                 }
                 else
@@ -1753,6 +1719,8 @@ namespace
 
         void AddConnection(int playerIndex, HSteamNetConnection hConn)
         {
+            assert(m_ClientData[playerIndex].m_ConnectSocket == k_HSteamNetConnection_Invalid);
+
             constexpr int lanePriorities[] = { 1, 1 }; // lowest number drains first
             constexpr uint16 laneWeights[] = { 1, 1 }; // higher number means more relative bandwidth
             g_SteamNetworkingSockets->ConfigureConnectionLanes(hConn, countof(lanePriorities), lanePriorities, laneWeights);
@@ -1854,13 +1822,13 @@ namespace
                     }
                 }
 
-                automaticInputDelay = min(automaticInputDelay, m_MaxAutomaticInputDelay);
-                automaticInputDelay = max(automaticInputDelay, m_MinAutomaticInputDelay);
-
                 // set input delay based on the current favored player
                 for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
                 {
                     int delay = 0;
+                    int maxDelay = m_MaxAutomaticInputDelay;
+                    int minDelay = m_MinAutomaticInputDelay;
+
                     if (m_InputDelayFavoredClientIndex < 0)
                     {
                         delay = automaticInputDelay;
@@ -1868,12 +1836,19 @@ namespace
                     else if (m_InputDelayFavoredClientIndex == clientIndex)
                     {
                         delay = 0;
+                        minDelay = 0;
+                        maxDelay = 0;
                     }
                     else
                     {
                         delay = automaticInputDelay * 2 + c_FavoredModeExtraInputDelay;
+                        maxDelay *= 2;
+                        minDelay *= 2;
                     }
-                    assert(delay >= 0 && delay <= c_MaxInputDelay * 2 + c_FavoredModeExtraInputDelay);
+
+                    delay = min(delay, maxDelay);
+                    delay = max(delay, minDelay);
+                    assert(delay >= 0 && delay <= c_MaxInputDelay * 2);
 
                     auto& clientData = m_ClientData[clientIndex];
                     clientData.m_InputDelay = delay;
@@ -2367,15 +2342,12 @@ namespace
                 assert(false);
             }
         }
-
-        void CacheCurrentTime()
-        {
-            double elapsedMs = m_FramesElapsedAtCurrentGameSpeed * m_GameSpeedMsPerFrame;
-            m_CachedCurrentTime = round(m_BaseCurrentTime + elapsedMs);
-        }
     };
 
-    PFO g_pfo;
+    static constexpr int c_SessionMaxSize = Session::GetMaxSize();
+    static_assert(c_SessionMaxSize == sizeof(ChecksumBuffer::m_SessionBuffer));
+
+    Session g_Session;
 }
 
 YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions, size_t _functions_size)
@@ -2421,8 +2393,8 @@ YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions,
     g_SteamNetworkingSockets = SteamNetworkingSockets();
     g_SteamNetworkingUtils = SteamNetworkingUtils();
 
-    g_GmlChecksumBuffer1 = CreateBuffer(sizeof(ChecksumBuffer::m_GmlBuffer), eBuffer_Format_Fixed, 1);
-    g_GmlChecksumBuffer2 = CreateBuffer(sizeof(ChecksumBuffer::m_GmlBuffer), eBuffer_Format_Fixed, 1);
+    g_GmlChecksumBuffer1 = CreateBuffer(sizeof(ChecksumBuffer::m_GmlBuffer) + 8, eBuffer_Format_Fixed, 1);
+    g_GmlChecksumBuffer2 = CreateBuffer(sizeof(ChecksumBuffer::m_GmlBuffer) + 8, eBuffer_Format_Fixed, 1);
 
     g_SteamNetworkingUtils->InitRelayNetworkAccess();
     g_SteamNetworkingSockets->InitAuthentication();
@@ -2432,7 +2404,7 @@ YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions,
     {
         STEAM_CALLBACK(SteamCallbacks, OnNetConnectionStatusChanged, SteamNetConnectionStatusChangedCallback_t)
         {
-            g_pfo.OnNetConnectionStatusChanged(pParam);
+            g_Session.OnNetConnectionStatusChanged(pParam);
         }
 
         STEAM_CALLBACK(SteamCallbacks, OnLobbyDataUpdate, LobbyDataUpdate_t)
@@ -2467,7 +2439,7 @@ YYEXPORT void pfo_update(RValue& result, CInstance* selfinst, CInstance* otherin
 
     bool advanceFrame = argc > 0 ? YYGetBool(arg, 0) : true;
 
-    g_pfo.Update(selfinst, advanceFrame);
+    g_Session.Update(selfinst, advanceFrame);
     init_bool(result, true);
 }
 
@@ -2476,24 +2448,24 @@ YYEXPORT void pfo_player_get_input(RValue& result, CInstance* selfinst, CInstanc
     assert(argc == 1);
 
     int playerIndex = YYGetInt32(arg, 0);
-    init_int64(result, g_pfo.PlayerGetInput(selfinst, playerIndex));
+    init_int64(result, g_Session.PlayerGetInput(selfinst, playerIndex));
 }
 
 YYEXPORT void pfo_is_online(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
-    init_bool(result, g_pfo.m_OnlineState >= EOnlineState::InGame);
+    init_bool(result, g_Session.m_OnlineState >= EOnlineState::InGame);
 }
 
 YYEXPORT void pfo_client_get_input_delay(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc <= 1);
 
-    int clientIndex = argc > 0 ? YYGetInt32(arg, 0) : g_pfo.m_ClientIndex;
-    assert(clientIndex >= 0 && clientIndex < countof(g_pfo.m_ClientData));
+    int clientIndex = argc > 0 ? YYGetInt32(arg, 0) : g_Session.m_ClientIndex;
+    assert(clientIndex >= 0 && clientIndex < countof(g_Session.m_ClientData));
 
-    init_real(result, g_pfo.m_ClientData[clientIndex].m_InputDelay);
+    init_real(result, g_Session.m_ClientData[clientIndex].m_InputDelay);
 }
 
 YYEXPORT void pfo_client_set_input_delay(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2501,14 +2473,14 @@ YYEXPORT void pfo_client_set_input_delay(RValue& result, CInstance* selfinst, CI
     assert(argc > 0 && argc <= 2);
 
     int delay = YYGetInt32(arg, 0);
-    assert(delay >= 0 && delay <= c_MaxInputDelay * 2 + c_FavoredModeExtraInputDelay);
+    assert(delay >= 0 && delay <= c_MaxInputDelay * 2);
 
-    int clientIndex = argc > 1 ? YYGetInt32(arg, 1) : g_pfo.m_ClientIndex;
-    assert(clientIndex >= 0 && clientIndex < countof(g_pfo.m_ClientData));
+    int clientIndex = argc > 1 ? YYGetInt32(arg, 1) : g_Session.m_ClientIndex;
+    assert(clientIndex >= 0 && clientIndex < countof(g_Session.m_ClientData));
 
-    if (g_pfo.m_InputDelayMode != EInputDelayMode::Automatic)
+    if (g_Session.m_InputDelayMode != EInputDelayMode::Automatic)
     {
-        g_pfo.m_ClientData[clientIndex].m_InputDelay = delay;
+        g_Session.m_ClientData[clientIndex].m_InputDelay = delay;
     }
 }
 
@@ -2516,7 +2488,7 @@ YYEXPORT void pfo_get_input_delay_mode(RValue& result, CInstance* selfinst, CIns
 {
     assert(argc == 0);
 
-    init_int64(result, static_cast<int64>(g_pfo.m_InputDelayMode));
+    init_int64(result, static_cast<int64>(g_Session.m_InputDelayMode));
 }
 
 YYEXPORT void pfo_set_input_delay_mode(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2527,11 +2499,11 @@ YYEXPORT void pfo_set_input_delay_mode(RValue& result, CInstance* selfinst, CIns
     assert(mode >= 0 && mode < static_cast<int64>(EInputDelayMode::COUNT));
 
     auto newInputDelayMode = static_cast<EInputDelayMode>(mode);
-    if (g_pfo.m_InputDelayMode != newInputDelayMode)
+    if (g_Session.m_InputDelayMode != newInputDelayMode)
     {
-        g_pfo.m_InputDelayMode = newInputDelayMode;
-        g_pfo.UpdateInputDelay();
-        g_pfo.RequestAutomaticInputDelayChange();
+        g_Session.m_InputDelayMode = newInputDelayMode;
+        g_Session.UpdateInputDelay();
+        g_Session.RequestAutomaticInputDelayChange();
     }
 }
 
@@ -2539,7 +2511,7 @@ YYEXPORT void pfo_get_input_delay_favored_client_index(RValue& result, CInstance
 {
     assert(argc == 0);
 
-    init_real(result, g_pfo.m_InputDelayFavoredClientIndex);
+    init_real(result, g_Session.m_InputDelayFavoredClientIndex);
 }
 
 YYEXPORT void pfo_set_input_delay_favored_client_index(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2547,12 +2519,12 @@ YYEXPORT void pfo_set_input_delay_favored_client_index(RValue& result, CInstance
     assert(argc == 1);
 
     int clientIndex = YYGetInt32(arg, 0);
-    assert(clientIndex >= -1 && clientIndex < countof(g_pfo.m_ClientData));
+    assert(clientIndex >= -1 && clientIndex < countof(g_Session.m_ClientData));
 
-    if (g_pfo.m_AssignedClientsCount > 1 && g_pfo.m_ClientData[clientIndex].m_PlayerData.m_PlayerIndex >= 0 && g_pfo.m_InputDelayFavoredClientIndex != clientIndex)
+    if (g_Session.m_AssignedClientsCount > 1 && g_Session.m_ClientData[clientIndex].m_PlayerData.m_PlayerIndex >= 0 && g_Session.m_InputDelayFavoredClientIndex != clientIndex)
     {
-        g_pfo.m_InputDelayFavoredClientIndex = clientIndex;
-        g_pfo.UpdateInputDelay();
+        g_Session.m_InputDelayFavoredClientIndex = clientIndex;
+        g_Session.UpdateInputDelay();
     }
 }
 
@@ -2560,7 +2532,7 @@ YYEXPORT void pfo_get_min_automatic_input_delay(RValue& result, CInstance* selfi
 {
     assert(argc == 0);
 
-    init_real(result, g_pfo.m_MinAutomaticInputDelay);
+    init_real(result, g_Session.m_MinAutomaticInputDelay);
 }
 
 YYEXPORT void pfo_set_min_automatic_input_delay(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2571,20 +2543,20 @@ YYEXPORT void pfo_set_min_automatic_input_delay(RValue& result, CInstance* selfi
     delay = min(delay, c_MaxInputDelay);
     delay = max(delay, 0);
 
-    if (g_pfo.m_MinAutomaticInputDelay != delay)
+    if (g_Session.m_MinAutomaticInputDelay != delay)
     {
-        g_pfo.m_MinAutomaticInputDelay = delay;
-        g_pfo.UpdateInputDelay();
+        g_Session.m_MinAutomaticInputDelay = delay;
+        g_Session.UpdateInputDelay();
     }
 
-    init_real(result, g_pfo.m_MinAutomaticInputDelay);
+    init_real(result, g_Session.m_MinAutomaticInputDelay);
 }
 
 YYEXPORT void pfo_get_max_automatic_input_delay(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
-    init_real(result, g_pfo.m_MaxAutomaticInputDelay);
+    init_real(result, g_Session.m_MaxAutomaticInputDelay);
 }
 
 YYEXPORT void pfo_set_max_automatic_input_delay(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2595,20 +2567,20 @@ YYEXPORT void pfo_set_max_automatic_input_delay(RValue& result, CInstance* selfi
     delay = min(delay, c_MaxInputDelay);
     delay = max(delay, 0);
 
-    if (g_pfo.m_MaxAutomaticInputDelay != delay)
+    if (g_Session.m_MaxAutomaticInputDelay != delay)
     {
-        g_pfo.m_MaxAutomaticInputDelay = delay;
-        g_pfo.UpdateInputDelay();
+        g_Session.m_MaxAutomaticInputDelay = delay;
+        g_Session.UpdateInputDelay();
     }
 
-    init_real(result, g_pfo.m_MaxAutomaticInputDelay);
+    init_real(result, g_Session.m_MaxAutomaticInputDelay);
 }
 
 YYEXPORT void pfo_get_frame(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
-    init_real(result, g_pfo.m_Frame);
+    init_real(result, g_Session.m_Frame);
 }
 
 YYEXPORT void pfo_init(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2642,7 +2614,7 @@ YYEXPORT void pfo_set_players(RValue& result, CInstance* selfinst, CInstance* ot
 {
     assert(argc == 1);
 
-    int map[countof(g_pfo.m_PlayerIndexToClientIndexMap)];
+    int map[countof(g_Session.m_PlayerIndexToClientIndexMap)];
 
     assert(KIND_RValue(&arg[0]) == VALUE_ARRAY);
     int count = YYArrayGetLength(&arg[0]);
@@ -2662,24 +2634,24 @@ YYEXPORT void pfo_set_players(RValue& result, CInstance* selfinst, CInstance* ot
         }
     }
 
-    g_pfo.SetPlayers(map);
+    g_Session.SetPlayers(map);
 }
 
 YYEXPORT void pfo_get_client_index(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
-    init_real(result, g_pfo.m_ClientIndex);
+    init_real(result, g_Session.m_ClientIndex);
 }
 
 YYEXPORT void pfo_client_get_player_index(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0 || argc == 1);
 
-    int clientIndex = argc > 0 ? YYGetInt32(arg, 0) : g_pfo.m_ClientIndex;
-    assert(clientIndex >= 0 && clientIndex < countof(g_pfo.m_ClientData));
+    int clientIndex = argc > 0 ? YYGetInt32(arg, 0) : g_Session.m_ClientIndex;
+    assert(clientIndex >= 0 && clientIndex < countof(g_Session.m_ClientData));
 
-    init_real(result, g_pfo.m_ClientData[clientIndex].m_PlayerData.m_PlayerIndex);
+    init_real(result, g_Session.m_ClientData[clientIndex].m_PlayerData.m_PlayerIndex);
 }
 
 YYEXPORT void pfo_player_get_client_index(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2687,16 +2659,16 @@ YYEXPORT void pfo_player_get_client_index(RValue& result, CInstance* selfinst, C
     assert(argc == 1);
 
     int playerIndex = YYGetInt32(arg, 0);
-    assert(playerIndex >= 0 && playerIndex < countof(g_pfo.m_PlayerIndexToClientIndexMap));
+    assert(playerIndex >= 0 && playerIndex < countof(g_Session.m_PlayerIndexToClientIndexMap));
 
-    init_real(result, g_pfo.m_PlayerIndexToClientIndexMap[playerIndex]);
+    init_real(result, g_Session.m_PlayerIndexToClientIndexMap[playerIndex]);
 }
 
 YYEXPORT void pfo_get_assigned_clients_count(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
-    init_real(result, g_pfo.m_PreviousFrameAssignedClientsCount); // TODO: this is a temporary hack
+    init_real(result, g_Session.m_PreviousFrameAssignedClientsCount); // TODO: this is a temporary hack
 }
 
 YYEXPORT void pfo_file_exists(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2705,14 +2677,14 @@ YYEXPORT void pfo_file_exists(RValue& result, CInstance* selfinst, CInstance* ot
 
     int clientIndex = argc > 1 ? YYGetInt32(arg, 1) : 0;
 
-    g_pfo.FileExists(result, selfinst, arg, clientIndex);
+    g_Session.FileExists(result, selfinst, arg, clientIndex);
 }
 
 YYEXPORT void pfo_buffer_load(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 1);
 
-    g_pfo.BufferLoad(result, selfinst, arg);
+    g_Session.BufferLoad(result, selfinst, arg);
 }
 
 YYEXPORT void pfo_buffer_save(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2721,35 +2693,35 @@ YYEXPORT void pfo_buffer_save(RValue& result, CInstance* selfinst, CInstance* ot
     assert(KIND_RValue(&arg[0]) == VALUE_REF);
     assert(GET_REF_TYPE(arg[0].v64) == REFID_BUFFER);
 
-    g_pfo.BufferSave(result, selfinst, arg);
+    g_Session.BufferSave(result, selfinst, arg);
 }
 
 YYEXPORT void pfo_file_delete(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 1);
 
-    g_pfo.FileDelete(result, selfinst, arg);
+    g_Session.FileDelete(result, selfinst, arg);
 }
 
 YYEXPORT void pfo_file_copy(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 2);
 
-    g_pfo.FileCopy(result, selfinst, arg);
+    g_Session.FileCopy(result, selfinst, arg);
 }
 
 YYEXPORT void pfo_file_status(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 1);
 
-    g_pfo.FileStatus(result, YYGetString(arg, 0));
+    g_Session.FileStatus(result, YYGetString(arg, 0));
 }
 
 YYEXPORT void pfo_quit(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
-    g_pfo.Quit();
+    g_Session.Quit();
 }
 
 YYEXPORT void pfo_steam_lobby_get_member_data(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2788,16 +2760,16 @@ YYEXPORT void pfo_create_listen_socket(RValue& result, CInstance* selfinst, CIns
 {
     assert(argc == 0);
 
-    g_pfo.m_ClientIndex = 0;
+    g_Session.m_ClientIndex = 0;
 
-    if (g_pfo.m_ListenSocket != k_HSteamListenSocket_Invalid)
+    if (g_Session.m_ListenSocket != k_HSteamListenSocket_Invalid)
     {
-        g_SteamNetworkingSockets->CloseListenSocket(g_pfo.m_ListenSocket);
-        g_pfo.m_ListenSocket = k_HSteamListenSocket_Invalid;
+        g_SteamNetworkingSockets->CloseListenSocket(g_Session.m_ListenSocket);
+        g_Session.m_ListenSocket = k_HSteamListenSocket_Invalid;
     }
 
-    g_pfo.m_ListenSocket = g_SteamNetworkingSockets->CreateListenSocketP2P(0, 0, nullptr);
-    if (g_pfo.m_ListenSocket == k_HSteamListenSocket_Invalid) YYError("Listen socket invalid");
+    g_Session.m_ListenSocket = g_SteamNetworkingSockets->CreateListenSocketP2P(0, 0, nullptr);
+    if (g_Session.m_ListenSocket == k_HSteamListenSocket_Invalid) YYError("Listen socket invalid");
 }
 
 YYEXPORT void pfo_connect(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2806,12 +2778,12 @@ YYEXPORT void pfo_connect(RValue& result, CInstance* selfinst, CInstance* otheri
     SteamNetworkingIdentity identity;
     identity.SetSteamID64(static_cast<uint64>(YYGetInt64(arg, 0)));
 
-    g_pfo.m_ClientIndex = 1;
+    g_Session.m_ClientIndex = 1;
 
     auto hConn = g_SteamNetworkingSockets->ConnectP2P(identity, 0, 0, nullptr);
     if (hConn != k_HSteamNetConnection_Invalid)
     {
-        g_pfo.AddConnection(0, hConn);
+        g_Session.AddConnection(0, hConn);
     }
     else
     {
@@ -2824,9 +2796,9 @@ YYEXPORT void pfo_client_get_ping(RValue& result, CInstance* selfinst, CInstance
     assert(argc == 0);
 
     int ping = -2;
-    for (int i = 0; i < countof(g_pfo.m_ClientData); i++)
+    for (int i = 0; i < countof(g_Session.m_ClientData); i++)
     {
-        auto& clientData = g_pfo.m_ClientData[i];
+        auto& clientData = g_Session.m_ClientData[i];
         if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
         {
             SteamNetConnectionRealTimeStatus_t status;
@@ -2843,17 +2815,7 @@ YYEXPORT void pfo_reset(RValue& result, CInstance* selfinst, CInstance* otherins
 {
     assert(argc == 0);
 
-    g_pfo.m_Frame = 0;
-    g_pfo.m_BaseCurrentTime = 0.0;
-    g_pfo.m_FramesElapsedAtCurrentGameSpeed = 0;
-    g_pfo.CacheCurrentTime();
-}
-
-YYEXPORT void pfo_current_time(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
-{
-    assert(argc == 0);
-
-    init_real(result, g_pfo.m_CachedCurrentTime);
+    g_Session.Reset();
 }
 
 YYEXPORT void pfo_game_get_speed(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2864,11 +2826,11 @@ YYEXPORT void pfo_game_get_speed(RValue& result, CInstance* selfinst, CInstance*
 
     if (type == 0.0)
     {
-        init_real(result, g_pfo.m_GameSpeedFramesPerSecond);
+        init_real(result, g_GameSpeedFPS);
     }
     else
     {
-        init_real(result, g_pfo.m_GameSpeedMsPerFrame * 1000.0);
+        init_real(result, g_GameSpeedMicroseconds);
     }
 }
 
@@ -2879,34 +2841,29 @@ YYEXPORT void pfo_game_set_speed(RValue& result, CInstance* selfinst, CInstance*
     double speed = YYGetReal(arg, 0);
     double type = YYGetReal(arg, 1);
 
-    double elapsedMs = g_pfo.m_FramesElapsedAtCurrentGameSpeed * g_pfo.m_GameSpeedMsPerFrame;
     bool changedSpeed = false;
 
     if (type == 0.0)
     {
-        if (g_pfo.m_GameSpeedFramesPerSecond != speed)
+        if (g_GameSpeedFPS != speed)
         {
-            g_pfo.m_GameSpeedFramesPerSecond = speed;
-            g_pfo.m_GameSpeedMsPerFrame = 1'000.0 / speed;
+            g_GameSpeedFPS = speed;
+            g_GameSpeedMicroseconds = 1'000'000.0 / speed;
             changedSpeed = true;
         }
     }
     else
     {
-        if (g_pfo.m_GameSpeedMsPerFrame != speed * 0.001)
+        if (g_GameSpeedMicroseconds != speed)
         {
-            g_pfo.m_GameSpeedMsPerFrame = speed * 0.001;
-            g_pfo.m_GameSpeedFramesPerSecond = 1'000'000.0 / speed;
+            g_GameSpeedMicroseconds = speed;
+            g_GameSpeedFPS = 1'000'000.0 / speed;
             changedSpeed = true;
         }
     }
 
     if (changedSpeed)
     {
-        g_pfo.m_BaseCurrentTime += elapsedMs;
-        g_pfo.m_FramesElapsedAtCurrentGameSpeed = 0;
-        g_pfo.CacheCurrentTime();
-    
         Script_Perform(g_gml_game_set_speed, selfinst, otherinst, argc, &result, arg);
     }
 }

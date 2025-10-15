@@ -1,15 +1,22 @@
 function pfo_start()
 {
-    global.pfo_inputCommand = int64(0);
-    global.pfo_inputCommandParam = int64(0);
-    global.pfo_inputCommandToSend = int64(0);
-    global.pfo_inputCommandParamToSend = int64(0);
-    global.pfo_inputCommandFutureSendFrame = 0;
+    global.pfo_randomize_state = int64(0);
+
+    global.pfo_previous_gamespeed_fps = 0;
+    global.pfo_base_current_time = 0;
+    global.pfo_frames_at_current_gamespeed = 0;
+    global.pfo_current_time = 0;
+
+    global.pfo_input_command = int64(0);
+    global.pfo_input_command_param = int64(0);
+    global.pfo_input_command_to_send = int64(0);
+    global.pfo_input_command_param_to_send = int64(0);
+    global.pfo_input_command_future_send_frame = 0;
 
     for (var p = 0; p < real(PFO.MaxPlayers); p++)
     {
-        global.pfo_inputCommandEach[p] = int64(0);
-        global.pfo_inputCommandParamEach[p] = int64(0);
+        global.pfo_input_command_each[p] = int64(0);
+        global.pfo_input_command_param_each[p] = int64(0);
     }
 }
 
@@ -20,12 +27,12 @@ function pfo_add_extra_input(futureFrame)
         var flags = argument[1];
         var c = int64(0);
 
-        if (global.pfo_inputCommandToSend != int64(0))
+        if (global.pfo_input_command_to_send != int64(0))
         {
-            if (LOG.LEVEL >= LOG.INFO) show_debug_message("Writing command to input flags: " + string(global.pfo_inputCommandToSend) + " " + string(global.pfo_inputCommandParamToSend) + " with future frame " + string(futureFrame) + " on frame " + string(pfo_get_frame()));
-            c |= (global.pfo_inputCommandToSend      & int64((1 << PFO.InputCommandBits)      - 1));
-            c |= (global.pfo_inputCommandParamToSend & int64((1 << PFO.InputCommandParamBits) - 1)) << PFO.InputCommandBits;
-            global.pfo_inputCommandFutureSendFrame = futureFrame;
+            if (LOG.LEVEL >= LOG.INFO) show_debug_message("Writing command to input flags: " + string(global.pfo_input_command_to_send) + " " + string(global.pfo_input_command_param_to_send) + " with future frame " + string(futureFrame) + " on frame " + string(pfo_get_frame()));
+            c |= (global.pfo_input_command_to_send      & int64((1 << PFO.InputCommandBits)      - 1));
+            c |= (global.pfo_input_command_param_to_send & int64((1 << PFO.InputCommandParamBits) - 1)) << PFO.InputCommandBits;
+            global.pfo_input_command_future_send_frame = futureFrame;
         }
 
         return (flags << PFO.ExtraInputBits) | c;
@@ -43,13 +50,13 @@ function pfo_remove_extra_input(flags)
 
 function pfo_update_extra_input()
 {
-    global.pfo_inputCommand = int64(0);
-    global.pfo_inputCommandParam = int64(0);
+    global.pfo_input_command = int64(0);
+    global.pfo_input_command_param = int64(0);
 
     for (var p = 0; p < real(PFO.MaxPlayers); p++)
     {
-        global.pfo_inputCommandEach[p] = int64(0);
-        global.pfo_inputCommandParamEach[p] = int64(0);
+        global.pfo_input_command_each[p] = int64(0);
+        global.pfo_input_command_param_each[p] = int64(0);
     }
 
     if (pfo_is_online())
@@ -64,24 +71,24 @@ function pfo_update_extra_input()
             if (command != int64(0))
             {
                 if (LOG.LEVEL >= LOG.INFO) show_debug_message("Read command from input flags for player " + string(p) + ": " + string(command) + " " + string(commandParam) + " on frame " + string(pfo_get_frame()));
-                global.pfo_inputCommand = command;
-                global.pfo_inputCommandParam = commandParam;
-                global.pfo_inputCommandEach[p] = command;
-                global.pfo_inputCommandParamEach[p] = commandParam;
+                global.pfo_input_command = command;
+                global.pfo_input_command_param = commandParam;
+                global.pfo_input_command_each[p] = command;
+                global.pfo_input_command_param_each[p] = commandParam;
             }
         }
     }
 
-    global.pfo_inputCommandToSend = int64(0);
-    global.pfo_inputCommandParamToSend = int64(0);
+    global.pfo_input_command_to_send = int64(0);
+    global.pfo_input_command_param_to_send = int64(0);
 }
 
 function pfo_send_command_in_progress()
 {
     var ret = false;
-    if (pfo_is_online() && pfo_get_frame() <= global.pfo_inputCommandFutureSendFrame)
+    if (pfo_is_online() && pfo_get_frame() <= global.pfo_input_command_future_send_frame)
     {
-        if (LOG.LEVEL >= LOG.VERBOSE) show_debug_message("Send command in progress until future frame " + string(global.pfo_inputCommandFutureSendFrame) + " on frame " + string(pfo_get_frame()));
+        if (LOG.LEVEL >= LOG.VERBOSE) show_debug_message("Send command in progress until future frame " + string(global.pfo_input_command_future_send_frame) + " on frame " + string(pfo_get_frame()));
         ret = true;
     }
     return ret;
@@ -95,22 +102,22 @@ function pfo_send_command(command)
     if (p >= 0 && pfo_is_online())
     {
         if (LOG.LEVEL >= LOG.INFO) show_debug_message("Set Command to send: " + string(command) + " " + string(commandParam) + " on frame " + string(pfo_get_frame()));
-        global.pfo_inputCommandToSend = command;
-        global.pfo_inputCommandParamToSend = commandParam;
-        global.pfo_inputCommandFutureSendFrame = pfo_get_frame(); // guarantees the command send will be in progress at least for this frame
+        global.pfo_input_command_to_send = command;
+        global.pfo_input_command_param_to_send = commandParam;
+        global.pfo_input_command_future_send_frame = pfo_get_frame(); // guarantees the command send will be in progress at least for this frame
     }
     else
     {
         p = argument_count > 2 ? argument[2] : -1;
         if (p >= 0)
         {
-            global.pfo_inputCommandEach[p] = command;
-            global.pfo_inputCommandParamEach[p] = commandParam;
+            global.pfo_input_command_each[p] = command;
+            global.pfo_input_command_param_each[p] = commandParam;
         }
         else
         {
-            global.pfo_inputCommand = command;
-            global.pfo_inputCommandParam = commandParam;
+            global.pfo_input_command = command;
+            global.pfo_input_command_param = commandParam;
         }
     }
 }
@@ -125,13 +132,13 @@ function pfo_receive_command(command, param)
     
     if (p >= 0)
     {
-        inputCommand = global.pfo_inputCommandEach[p];
-        commandParam = global.pfo_inputCommandParamEach[p];
+        inputCommand = global.pfo_input_command_each[p];
+        commandParam = global.pfo_input_command_param_each[p];
     }
     else
     {
-        inputCommand = global.pfo_inputCommand;
-        commandParam = global.pfo_inputCommandParam;
+        inputCommand = global.pfo_input_command;
+        commandParam = global.pfo_input_command_param;
     }
 
     if (inputCommand == command)
@@ -153,10 +160,10 @@ function pfo_randomize()
 {
     if (pfo_is_online())
     {
-        global.pfo_randomizeState = (global.pfo_randomizeState * int64(0xd1342543de82ef95)) + int64(0x9e3779b97f4a7c15);
-        random_set_seed((global.pfo_randomizeState >> int64(32)) & int64(0xffffffff));
+        global.pfo_randomize_state = (global.pfo_randomize_state * int64(0xd1342543de82ef95)) + int64(0x9e3779b97f4a7c15);
+        random_set_seed((global.pfo_randomize_state >> int64(32)) & int64(0xffffffff));
 
-        if (LOG.LEVEL >= LOG.VERBOSE) show_debug_message("Frame " + string(pfo_get_frame()) + ": Randomize: " + string(global.pfo_randomizeState));
+        if (LOG.LEVEL >= LOG.VERBOSE) show_debug_message("Frame " + string(pfo_get_frame()) + ": Randomize: " + string(global.pfo_randomize_state));
     }
     else
     {
@@ -166,7 +173,25 @@ function pfo_randomize()
 
 function pfo_set_randomize_seed(seed)
 {
-    global.pfo_randomizeState = int64(seed);
+    global.pfo_randomize_state = int64(seed);
+}
+
+function pfo_update_time()
+{
+    var _fps = pfo_game_get_speed(gamespeed_fps);
+
+    if (global.pfo_previous_gamespeed_fps != _fps)
+    {
+        if (global.pfo_frames_at_current_gamespeed != 0)
+        {
+            global.pfo_base_current_time += global.pfo_frames_at_current_gamespeed * 1000.0 / global.pfo_previous_gamespeed_fps;
+            global.pfo_frames_at_current_gamespeed = 0;
+        }
+        global.pfo_previous_gamespeed_fps = _fps;
+    }
+
+    global.pfo_frames_at_current_gamespeed++;
+    global.pfo_current_time = round(global.pfo_base_current_time + global.pfo_frames_at_current_gamespeed * 1000.0 / _fps);
 }
 
 enum PFO

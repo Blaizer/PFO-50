@@ -28,6 +28,19 @@ var newData = await LoadExternalData(newFilePath, true);
 var mergeDir = GetMergeDir();
 var conflicts = new List<string>();
 
+string GetRenamedScriptName(string script)
+{
+    var renameFrom = "gml_Object_oSteamController_";
+    var renameTo = "gml_Object_oController_";
+
+    if (script.StartsWith(renameFrom))
+    {
+        script = renameTo + script.Substring(renameFrom.Length);
+    }
+
+    return script;
+}
+
 {
     SetProgressBar("Exporting code", "...", 0, 0);
     var patchPath = Path.Join(GetPatchesDir(), modName, $"{oldVersion}.code.diff");
@@ -37,7 +50,7 @@ var conflicts = new List<string>();
 
     var newTempDir = Path.Combine(tempDir.Path, "theirs");
     Directory.CreateDirectory(newTempDir);
-    await ExportSpecificCodeToDir(newData, scriptNames, newTempDir);
+    await ExportSpecificCodeToDir(newData, scriptNames.ConvertAll(s => GetRenamedScriptName(s)), newTempDir);
 
     var baseTempDir = Path.Combine(tempDir.Path, "base");
     Directory.CreateDirectory(baseTempDir);
@@ -65,10 +78,12 @@ var conflicts = new List<string>();
     foreach (var script in scriptNames)
     {
         var scriptName = $"{script}.gml";
+        var newScript = GetRenamedScriptName(script);
+        var newScriptName = $"{newScript}.gml";
 
-        if (!File.Exists(Path.Join(newTempDir, scriptName)))
+        if (!File.Exists(Path.Join(newTempDir, newScriptName)))
         {
-            conflicts.Add(script);
+            conflicts.Add(script + " (deleted)");
             continue;
         }
 
@@ -85,7 +100,7 @@ var conflicts = new List<string>();
         };
 
         startInfo.ArgumentList.Add("-m");
-        startInfo.ArgumentList.Add(Path.Join(Path.GetFileName(newTempDir), scriptName));
+        startInfo.ArgumentList.Add(Path.Join(Path.GetFileName(newTempDir), newScriptName));
         startInfo.ArgumentList.Add(Path.Join(Path.GetFileName(baseTempDir), scriptName));
         startInfo.ArgumentList.Add(Path.Join(Path.GetFileName(patchedTempDir), scriptName));
         startInfo.EnvironmentVariables["PATH"] = Path.GetDirectoryName(diff3Path);
@@ -104,15 +119,15 @@ var conflicts = new List<string>();
 
             if (p.ExitCode == 1)
             {
-                conflicts.Add(script);
+                conflicts.Add(newScript);
                 res = RemoveNewFileDiffs(res, "||||||| ", "=======");
             }
             else if (p.ExitCode != 0)
             {
-                throw new ScriptException($"diff3 exited with code {p.ExitCode}:\n\nfile: {script}\n\n{err}");
+                throw new ScriptException($"diff3 exited with code {p.ExitCode}:\n\nfile: {newScript}\n\n{err}");
             }
 
-            File.WriteAllText(Path.Join(mergeDir, scriptName), res);
+            File.WriteAllText(Path.Join(mergeDir, newScriptName), res);
         }
     }
 }

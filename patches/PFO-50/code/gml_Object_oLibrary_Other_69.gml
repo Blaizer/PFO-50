@@ -28,6 +28,7 @@ function scrUpdateLobbyUsers(lobbyId)
         if (!lobbyStartingGame && readyCount > 1 && readyCount == ds_list_size(lobbyUsers) && steam_get_user_steam_id() == ownerSteamId)
         {
         	lobbyStartingGame = true;
+            pfo_reset();
             pfo_create_listen_socket();
             steam_lobby_set_joinable(false);
             
@@ -123,6 +124,7 @@ else if (eventType == "lobby_game_created")
                 global.onlineClientNames[i] = ds_list_find_value(lobbyUsers, i).personaName;
             }
 
+            pfo_reset();
             pfo_connect(ownerSteamId);
         }
     }
