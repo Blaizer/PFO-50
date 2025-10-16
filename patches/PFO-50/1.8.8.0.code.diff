@@ -3883,6 +3883,17 @@
  frozen = false;
  terrain = o50_Game.GRASS;
  sparkleTimer = 0;
+--- original/gml_Object_oAudioHandler_Step_0.gml
++++ patched/gml_Object_oAudioHandler_Step_0.gml
+@@ -13,7 +13,7 @@
+         {
+             _inLibraryTitle = true;
+         }
+-        else if (state == STATE_PROFILE)
++        else if (state == STATE_PROFILE || state == STATE_ONLINE)
+         {
+             _inLibraryProfile = true;
+         }
 --- original/gml_Object_oConfirm_Step_1.gml
 +++ patched/gml_Object_oConfirm_Step_1.gml
 @@ -11,11 +11,11 @@
@@ -3929,7 +3940,7 @@
 --- original/gml_Object_oController_Step_0.gml
 +++ patched/gml_Object_oController_Step_0.gml
 @@ -1,23 +0,0 @@
--if (delta_time < 200000)
+-if (delta_time < 2000000)
 -{
 -    totalTime += delta_time;
 -}
@@ -4042,27 +4053,23 @@
          scrDrawTextInput(8, 184, _str[0], 0, 0, false);
          scrDrawTextInput(8, 192, _str[1], 0, 0, false);
          scrSetFont(global.fontThinOutline);
--        draw_text(8, 200, "v1.8.5");
+-        draw_text(8, 200, "v1.8.8");
 +        draw_text(8, 200, global.betaVersion);
          scrFontDefault();
      }
      if (substate == SUB_CRACK_WAIT)
-@@ -125,11 +125,26 @@
- if (state == STATE_LASER_X)
+@@ -126,10 +126,22 @@
  {
      scrFillScreen(0);
-+    var showAlternateLogo = true;
-+    if (showAlternateLogo)
+     draw_sprite(sLaserX, 0, 192, 92);
++    var showOnlineLogo = true;
++    if (showOnlineLogo)
 +    {
 +        draw_sprite(sLaserXOnline, 0, 96, 12);
 +    }
-+    else
-+    {
-     draw_sprite(sLaserX, 0, 192, 92);
-+    }
      scrSetFont(global.fontTall);
      draw_set_color(c_white);
-+    if (showAlternateLogo)
++    if (showOnlineLogo)
 +    {
 +        draw_text_centered(192, 176, "PLAY FOREVER: ONLINE", 8);
 +    }
@@ -4074,7 +4081,7 @@
  if (state == STATE_INTRO)
  {
      scrLibraryIntro(INTRO_SCENE);
-@@ -249,8 +264,11 @@
+@@ -249,8 +261,11 @@
          var left = 8;
          fileHeight = 56;
          var f = menuSel + 1;
@@ -4087,7 +4094,7 @@
      if (substate != SUB_CONFIRM_DELETE && substate != SUB_CONFIRM_OVERWRITE)
      {
          top = 48;
-@@ -258,56 +276,85 @@
+@@ -258,56 +273,85 @@
          for (var i = 0; i < global.NUM_PROFILES_ACCESSIBLE; i++)
          {
              var menuSelXoff = 0;
@@ -4189,7 +4196,7 @@
          if (menuSel == selPos)
          {
              draw_sprite(sMenuHand, 0, _handX, yPos + 1);
-@@ -315,17 +362,17 @@
+@@ -315,17 +359,17 @@
      }
      if (substate == SUB_COPY_FROM)
      {
@@ -4211,7 +4218,7 @@
          if (menuSel == selPos)
          {
              draw_sprite(sMenuHand, 0, _handX, yPos + 1);
-@@ -333,18 +380,18 @@
+@@ -333,18 +377,18 @@
      }
      if (substate == SUB_COPY_TO)
      {
@@ -4234,7 +4241,7 @@
          if (menuSel == selPos)
          {
              draw_sprite(sMenuHand, 0, _handX, yPos + 1);
-@@ -972,4 +1019,8 @@
+@@ -972,4 +1016,8 @@
  if (state == STATE_PRE_GAMES_BUFFER)
  {
      scrFillScreen(0);

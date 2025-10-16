@@ -19,10 +19,10 @@ static char g_TempBuffer[8192];
 
 #if !defined(NDEBUG) || 1
 #define breakpoint() (IsDebuggerPresent() && (__debugbreak(), false))
-#define assert(a) do { if (!(a)) [[unlikely]] { handle_assert(#a, __FILE__, __FUNCTION__, __LINE__); __debugbreak(); __assume(false); } } while (0)
+#define assert(a) if (!(a)) [[unlikely]] { handle_assert(#a, __FILE__, __FUNCTION__, __LINE__); __debugbreak(); __assume(false); } else {}
 #else
 #define breakpoint() (false)
-#define assert(a) do { __assume(a); } while (0)
+#define assert(a) __assume(a)
 #endif
 
 #define countof(a) static_cast<intptr_t>(sizeof(a) / sizeof((a)[0]))
@@ -159,6 +159,7 @@ namespace
     template<typename T>
     FORCEINLINE void* reset(T& dst)
     {
+        dst.~T();
         return new(&dst) T();
     }
 
@@ -229,9 +230,9 @@ namespace
     };
 
     template<typename T>
-    concept HasSetName = requires(T t, const char* name, int i, const char* iName) {
-        { t.SetName(name) };
-        { t.SetName(name, i, iName) };
+    concept HasSetName = requires(T t) {
+        { t.SetName(static_cast<const char*>("name")) };
+        { t.SetName(static_cast<const char*>("name"), 0, static_cast<const char*>("iName")) };
     };
 
     struct StringWriter
@@ -354,6 +355,7 @@ namespace
                 diff2.Serialize(nameWriter2);
                 offset += nameWriter2.m_Offset;
 
+                ReleaseConsoleOutput(g_TempBuffer);
                 ShowMessage(g_TempBuffer);
 
                 breakpoint();
@@ -1487,8 +1489,8 @@ namespace
         template<typename T>
         constexpr void Serialize(T& writer)
         {
-#define WRITE_NAMED(val) if constexpr (HasSetName<T>) writer.SetName(#val); writer.Write(val);
-#define WRITE_NAMED_INDEX(val, i) if constexpr (HasSetName<T>) writer.SetName(#val, i, #i); writer.Write(val);
+#define WRITE_NAMED(val) if constexpr (HasSetName<T>) { writer.SetName(#val); } writer.Write(val);
+#define WRITE_NAMED_INDEX(val, i) if constexpr (HasSetName<T>) { writer.SetName(#val, i, #i); } writer.Write(val);
 
             WRITE_NAMED(m_Frame);
             WRITE_NAMED(m_InputDelayMode);
@@ -2350,6 +2352,31 @@ namespace
     Session g_Session;
 }
 
+void* CreateRingBuffer(size_t bufferSize)
+{
+    SYSTEM_INFO sysInfo;
+    GetSystemInfo(&sysInfo);
+    assert((bufferSize % sysInfo.dwAllocationGranularity) == 0);
+
+    void* placeholder1 = VirtualAlloc2FromApp(nullptr, nullptr, bufferSize * 2, MEM_RESERVE | MEM_RESERVE_PLACEHOLDER, PAGE_NOACCESS, nullptr, 0);
+    assert(placeholder1 != nullptr);
+
+    BOOL result = VirtualFree(placeholder1, bufferSize, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER);
+    assert(result);
+    void* placeholder2 = static_cast<void*>(static_cast<uint8_t*>(placeholder1) + bufferSize);
+
+    HANDLE section = CreateFileMappingFromApp(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, bufferSize, nullptr);
+    assert(section != nullptr);
+
+    void* view1 = MapViewOfFile3FromApp(section, nullptr, placeholder1, 0, bufferSize, MEM_REPLACE_PLACEHOLDER, PAGE_READWRITE, nullptr, 0);
+    assert(view1 != nullptr);
+
+    void* view2 = MapViewOfFile3FromApp(section, nullptr, placeholder2, 0, bufferSize, MEM_REPLACE_PLACEHOLDER, PAGE_READWRITE, nullptr, 0);
+    assert(view2 != nullptr);
+
+    return view1;
+}
+
 YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions, size_t _functions_size)
 {
     if (_functions_size < sizeof(YYRunnerInterface))
@@ -2431,6 +2458,13 @@ YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions,
     new SteamCallbacks();
 
     DebugConsoleOutput("PFO 50 YYExtensionInitialise CONFIGURED\n");
+
+    constexpr size_t sz = 0x100000;
+    uint8_t* buf = static_cast<uint8_t*>(CreateRingBuffer(sz));
+    buf[0] = 123;
+    assert(buf[sz] == 123);
+    buf[sz + 98] = 98;
+    assert(buf[98] == 98);
 }
 
 YYEXPORT void pfo_update(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)

@@ -82,7 +82,9 @@ function scrGetChecksumCallback()
 
         if (array_length(differ.differences) > 0)
         {
-            show_message("Desync detected!\n\nDifference in GML values: " + string(differ.differences) + "\n\nOurs: " + string(differ.diff1) + "\n\nTheirs: " + string(differ.diff2));
+            var message = "Desync detected!\n\nDifference in GML values: " + string(differ.differences) + "\n\nOurs: " + string(differ.diff1) + "\n\nTheirs: " + string(differ.diff2);
+            show_debug_message(message);
+            show_message(message);
         }
     }
 }
