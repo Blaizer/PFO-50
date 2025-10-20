@@ -2460,7 +2460,7 @@ YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions,
     DebugConsoleOutput("PFO 50 YYExtensionInitialise CONFIGURED\n");
 
     constexpr size_t sz = 0x100000;
-    uint8_t* buf = static_cast<uint8_t*>(CreateRingBuffer(sz));
+    volatile uint8_t* buf = static_cast<uint8_t*>(CreateRingBuffer(sz));
     buf[0] = 123;
     assert(buf[sz] == 123);
     buf[sz + 98] = 98;

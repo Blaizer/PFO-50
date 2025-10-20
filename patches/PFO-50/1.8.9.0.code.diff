@@ -378,7 +378,7 @@
  function scr50_MessageFast(arg0)
  {
 -    if (controller == 3)
-+    if (controller == 3 || (pfo_is_online() && numPlayers == 2 && controller != (pfo_client_get_player_index() + 1)))
++    if (controller == 3 || (numPlayers == 2 && scr50_IsOnlineRemotePlayer(controller)))
      {
          exit;
      }
@@ -388,7 +388,7 @@
  function scr50_MessageFastLocal(arg0)
  {
 -    if (controller == 3)
-+    if (controller == 3 || (pfo_is_online() && numPlayers == 2 && controller != (pfo_client_get_player_index() + 1)))
++    if (controller == 3 || (numPlayers == 2 && scr50_IsOnlineRemotePlayer(controller)))
      {
          exit;
      }
@@ -398,7 +398,7 @@
  function scr50_MessageSlow(arg0)
  {
 -    if (controller == 3)
-+    if (controller == 3 || (pfo_is_online() && numPlayers == 2 && controller != (pfo_client_get_player_index() + 1)))
++    if (controller == 3 || (numPlayers == 2 && scr50_IsOnlineRemotePlayer(controller)))
      {
          exit;
      }
@@ -417,7 +417,7 @@
  function scr50_Sfx(arg0, arg1)
  {
 -    if (controller == 3)
-+    if (controller == 3 || (state != STATE_COMBAT && pfo_is_online() && numPlayers == 2 && controller != (pfo_client_get_player_index() + 1)))
++    if (controller == 3 || (state != STATE_COMBAT && numPlayers == 2 && scr50_IsOnlineRemotePlayer(controller)))
      {
          exit;
      }
@@ -2406,7 +2406,18 @@
      }
 --- original/gml_Object_o14_Game_Step_0.gml
 +++ patched/gml_Object_o14_Game_Step_0.gml
-@@ -13,8 +13,19 @@
+@@ -5,6 +5,10 @@
+     substate = 0;
+     stateTimer = 0;
+ }
++if (state >= STATE_TURN_MAIN && state <= STATE_TURN_STABLE && numPlayers == 2 && pfo_is_online() && currPlayer == pfo_client_get_player_index())
++{
++    global.onlineFavoredPlayer = -2;
++}
+ if (scrTransitionDone())
+ {
+     if (state == STATE_GAME_SETUP)
+@@ -13,8 +17,19 @@
      }
      else if (state == STATE_TURN_AI || state == STATE_RACE_NEWS || state == STATE_RACE || state == STATE_RACE_RESULTS || state == STATE_GAME_END || state == STATE_GAME_RESULTS || state == STATE_RACE_LOOK_AT_SCREEN)
      {
@@ -2426,7 +2437,7 @@
      else if (numPlayers == 1 || numPlayers == 3 || (numPlayers == 2 && currPlayer == 0))
      {
          scrGetInput(0);
-@@ -84,6 +95,324 @@
+@@ -84,6 +99,324 @@
          event_user(15);
          break;
  }
@@ -2751,7 +2762,7 @@
  for (var i = 0; i < 3; i++)
  {
      var numRepeats = 1;
-@@ -124,12 +453,44 @@
+@@ -124,12 +457,44 @@
  }
  for (var i = 0; i < 3; i++)
  {
@@ -2799,6 +2810,26 @@
 +    Value_24,
 +    Value_25
  }
+--- original/gml_Object_o20_Game_Step_0.gml
++++ patched/gml_Object_o20_Game_Step_0.gml
+@@ -61,6 +61,17 @@
+         scr20_SeedSelection();
+         break;
+ }
++if (numPlayers == 2)
++{
++    if (futureState == STATE_PLAYER_HANDOFF)
++    {
++        global.onlineFavoredPlayer = !cp;
++    }
++    else
++    {
++        global.onlineFavoredPlayer = cp;
++    }
++}
+ exit;
+ if (keyboard_check_pressed(ord("1")))
+ {
 --- original/gml_Object_o22_Ball_Draw_0.gml
 +++ patched/gml_Object_o22_Ball_Draw_0.gml
 @@ -7,7 +7,7 @@
@@ -3046,6 +3077,27 @@
      if (stateTime <= 0)
      {
          if (speed == 0)
+--- original/gml_Object_o33_Game_Step_0.gml
++++ patched/gml_Object_o33_Game_Step_0.gml
+@@ -68,3 +68,18 @@
+     stateTimer = 0;
+ }
+ event_user(state);
++if (numPlayers == 2)
++{
++    if ((state == STATE_MAP && subState == 8 && stateTimer > 0) || (state == STATE_PLAY && subState == 10 && stateTimer > 2))
++    {
++        global.onlineFavoredPlayer = !(player - 1);
++    }
++    else if ((mode == MODE_SKIRMISH) ? (state == STATE_PLAY || futureState == STATE_MATCH_OVER) : (state == STATE_WAR_SETUP || (futureState >= STATE_MAP_GEN && futureState <= STATE_MATCH_OVER)))
++    {
++        global.onlineFavoredPlayer = player - 1;
++    }
++    else if (mode == MODE_SKIRMISH && (state == STATE_LEVEL_GEN || state == STATE_ARMY_SETUP))
++    {
++        global.onlineFavoredPlayer = attacker - 1;
++    }
++}
 --- original/gml_Object_o35_Game_Step_0.gml
 +++ patched/gml_Object_o35_Game_Step_0.gml
 @@ -85,7 +85,7 @@
@@ -3161,6 +3213,23 @@
  with (o35__Enemy)
  {
      if (abs(x - other.x) < 32 && abs(y - (other.y + 16)) < 64)
+--- original/gml_Object_o36_Game_Step_0.gml
++++ patched/gml_Object_o36_Game_Step_0.gml
+@@ -81,3 +81,14 @@
+         event_user(13);
+         break;
+ }
++if (numPlayers == 2)
++{
++    if (futureState == STATE_START_PARTY && time[0] != NUM_DAYS)
++    {
++        global.onlineFavoredPlayer = !cp;
++    }
++    else
++    {
++        global.onlineFavoredPlayer = cp;
++    }
++}
 --- original/gml_Object_o45_MapNode_Draw_0.gml
 +++ patched/gml_Object_o45_MapNode_Draw_0.gml
 @@ -14,7 +14,7 @@
@@ -3310,40 +3379,47 @@
  {
 --- original/gml_Object_o50_Game_Draw_0.gml
 +++ patched/gml_Object_o50_Game_Draw_0.gml
-@@ -388,7 +388,7 @@
+@@ -1,3 +1,6 @@
++var hasOnlinePlayers = scr50_HasOnlinePlayers();
++var isAnyOnlineLocalPlayer = scr50_IsOnlineLocalPlayer(1) || scr50_IsOnlineLocalPlayer(2);
++var onlineLocalPlayer = scr50_IsOnlineLocalPlayer(2) ? 2 : 1;
+ var viewx = camera_get_view_x(view_get_camera(0));
+ var viewy = camera_get_view_y(view_get_camera(0));
+ scrSetFont(global.fontAvianos);
+@@ -388,7 +391,7 @@
                      }
                  }
              }
 -            if (loc.revealed || (loc.owner == player && numPlayers == 2 && !combatFlash && state != STATE_END_COMBAT && state != STATE_END_TURN) || (loc.owner == 1 && numPlayers == 1) || !fogOfWar)
-+            if ((!pfo_is_online() && numPlayers == 2 && loc.revealed[player] && !combatFlash && state != STATE_END_COMBAT && state != STATE_END_TURN) || (pfo_is_online() && numPlayers == 2 && loc.revealed[pfo_client_get_player_index() + 1]) || (numPlayers == 1 && loc.revealed[1]) || (!pfo_is_online() && loc.owner == player && numPlayers == 2 && !combatFlash && state != STATE_END_COMBAT && state != STATE_END_TURN) || (pfo_is_online() && numPlayers == 2 && loc.owner == (pfo_client_get_player_index() + 1)) || (loc.owner == 1 && numPlayers == 1) || !fogOfWar)
++            if ((numPlayers == 2 && !hasOnlinePlayers && loc.revealed[player] && !combatFlash && state != STATE_END_COMBAT && state != STATE_END_TURN) || (numPlayers == 2 && hasOnlinePlayers && loc.revealed[onlineLocalPlayer]) || (numPlayers == 1 && loc.revealed[1]) || (numPlayers == 2 && !hasOnlinePlayers && loc.owner == player && !combatFlash && state != STATE_END_COMBAT && state != STATE_END_TURN) || (numPlayers == 2 && hasOnlinePlayers && loc.owner == onlineLocalPlayer) || (numPlayers == 1 && loc.owner == 1) || !fogOfWar || (numPlayers == 2 && hasOnlinePlayers && !isAnyOnlineLocalPlayer))
              {
                  var xShift = 0;
                  for (k = 0; k < NUM_BUILDINGS; k++)
-@@ -416,7 +416,7 @@
+@@ -416,7 +419,7 @@
                  {
                      if (loc.resources[k])
                      {
 -                        if (loc.owner == player)
-+                        if ((pfo_is_online() && numPlayers == 2) ? (loc.owner == (pfo_client_get_player_index() + 1)) : (loc.owner == player))
++                        if ((numPlayers == 2 && hasOnlinePlayers) ? (loc.owner == onlineLocalPlayer || !isAnyOnlineLocalPlayer) : (loc.owner == player))
                          {
                              if (!flicker20)
                              {
-@@ -515,7 +515,7 @@
+@@ -515,7 +518,7 @@
              }
          }
      }
 -    if ((fogOfWar == false && !custom) || controller != 3)
-+    if ((pfo_is_online() && numPlayers == 2) ? (controller == (pfo_client_get_player_index() + 1)) : ((fogOfWar == false && !custom) || controller != 3))
++    if ((numPlayers == 2 && hasOnlinePlayers) ? (controller == onlineLocalPlayer || !isAnyOnlineLocalPlayer) : ((fogOfWar == false && !custom) || controller != 3))
      {
          var OFF_COLOR = 24;
          if (selectMode == 1)
-@@ -565,9 +565,13 @@
+@@ -565,9 +568,13 @@
                      {
                          var xPos = scrIRandomRange(GRID_LEFT + (GRID_WIDTH * i), (GRID_LEFT + (GRID_WIDTH * i) + GRID_WIDTH) - 8);
                          var yPos = scrIRandomRange(GRID_TOP + (GRID_HEIGHT * j), (GRID_TOP + (GRID_HEIGHT * j) + GRID_HEIGHT) - 8);
 -                        scrFX(s50_StarFX, 0.3, scrQuantize(xPos, 8), scrQuantize(yPos, 8));
 +                        var starFX = scrFX(s50_StarFX, 0.3, scrQuantize(xPos, 8), scrQuantize(yPos, 8));
-+                        if (is_int64(map[i][j].sparkleTimer) && (pfo_is_online() && numPlayers == 2 && controller != (pfo_client_get_player_index() + 1)))
++                        if (is_int64(map[i][j].sparkleTimer) && (numPlayers == 2 && scr50_IsOnlineRemotePlayer(controller)))
 +                        {
 +                            starFX.visible = false;
                      }
@@ -3352,24 +3428,24 @@
                  map[i][j].sparkleTimer--;
              }
          }
-@@ -580,7 +584,7 @@
+@@ -580,7 +587,7 @@
              draw_sprite(s50_Combat, 1, GRID_LEFT + (GRID_WIDTH * selX) + 24, GRID_TOP + (GRID_HEIGHT * selY) + 16);
          }
      }
 -    if ((numPlayers == 2 && fogOfWar && !combatFlash && state != STATE_END_COMBAT && state != STATE_END_TURN) || (numPlayers == 1 && fogOfWar && player == 1) || (numPlayers == 1 && !fogOfWar && (player == 1 || !custom)) || (numPlayers == 2 && !fogOfWar) || aiVersus)
-+    if ((!pfo_is_online() && numPlayers == 2 && fogOfWar && !combatFlash && state != STATE_END_COMBAT && state != STATE_END_TURN) || (pfo_is_online() && numPlayers == 2 && controller == (pfo_client_get_player_index() + 1)) || (numPlayers == 1 && fogOfWar && player == 1) || (numPlayers == 1 && !fogOfWar && (player == 1 || !custom)) || (!pfo_is_online() && numPlayers == 2 && !fogOfWar) || aiVersus)
++    if ((numPlayers == 2 && !hasOnlinePlayers && fogOfWar && !combatFlash && state != STATE_END_COMBAT && state != STATE_END_TURN) || (numPlayers == 2 && hasOnlinePlayers && controller == onlineLocalPlayer) || (numPlayers == 1 && fogOfWar && player == 1) || (numPlayers == 1 && !fogOfWar && (player == 1 || !custom)) || (numPlayers == 2 && !hasOnlinePlayers && !fogOfWar) || (numPlayers == 2 && hasOnlinePlayers && !isAnyOnlineLocalPlayer) || aiVersus)
      {
          if ((state == STATE_GOD_SELECT && subState == 4) || (state == STATE_ACTIONS && subState == (200 + (10 * OFFERING) + 3)))
          {
-@@ -931,37 +935,52 @@
+@@ -931,37 +938,52 @@
      }
      else
      {
 -        draw_sprite(s50_MiniHUD, actionHighlight, HUD_LEFT + hudShiftX, 0);
-+        var _hudShiftX = (pfo_is_online() && numPlayers == 2) ? miniHudShiftX : hudShiftX;
++        var _hudShiftX = (numPlayers == 2 && hasOnlinePlayers) ? miniHudShiftX : hudShiftX;
 +        _hudShiftX = hudShiftX;
 +        draw_sprite(s50_MiniHUD, actionHighlight, HUD_LEFT + _hudShiftX, 0);
-+        if (pfo_is_online() && numPlayers == 2)
++        if (numPlayers == 2 && hasOnlinePlayers)
 +        {
 +            if (player == 1)
 +            {
@@ -3419,34 +3495,36 @@
      draw_set_color(c_white);
      draw_text(GRID_LEFT, 200, scrMessageWrite(2));
 -    if ((fogOfWar == false && !custom) || controller != 3)
-+    if ((pfo_is_online() && numPlayers == 2) ? (controller == (pfo_client_get_player_index() + 1)) : ((fogOfWar == false && !custom) || controller != 3))
++    if ((numPlayers == 2 && hasOnlinePlayers) ? (controller == onlineLocalPlayer || !isAnyOnlineLocalPlayer) : ((fogOfWar == false && !custom) || controller != 3))
      {
          if (transfer)
          {
-@@ -1073,6 +1092,8 @@
+@@ -1073,6 +1095,9 @@
      draw_rectangle(viewx, viewy + 192, viewx + 384, viewy + 216, false);
      if (!global.attractMode)
      {
-+        if (!(pfo_is_online() && numPlayers == 2 && pfo_client_get_player_index() != 0))
++        var drewPlayer1 = false;
++        if (!(numPlayers == 2 && scr50_IsOnlineRemotePlayer(1)))
 +        {
          if (defendPlayer == 1 && surpriseAttack)
          {
              draw_set_color(c_white);
-@@ -1134,7 +1155,8 @@
+@@ -1134,7 +1159,9 @@
                  }
              }
          }
 -        if (numPlayers == 2)
++            drewPlayer1 = true;
 +        }
-+        if ((!pfo_is_online() && numPlayers == 2) || (pfo_is_online() && numPlayers == 2 && pfo_client_get_player_index() == 1))
++        if (numPlayers == 2 && !scr50_IsOnlineRemotePlayer(2))
          {
              if (defendPlayer == 2 && surpriseAttack)
              {
-@@ -1197,8 +1219,11 @@
+@@ -1197,8 +1224,11 @@
                      }
                  }
              }
-+            if (!pfo_is_online())
++            if (drewPlayer1)
 +            {
              draw_set_color(c_white);
              draw_line(viewx + 192, viewy + 192, viewx + 192, viewy + 216);
@@ -3475,7 +3553,7 @@
      {
          scrSfx(soundMissionStart, 10);
 -        if (numPlayers == 1 || !fogOfWar)
-+        if (numPlayers == 1 || !fogOfWar || pfo_is_online())
++        if (numPlayers == 1 || !fogOfWar || scr50_HasOnlinePlayers())
          {
              futureState = STATE_START_TURN;
          }
@@ -3511,7 +3589,7 @@
  {
      subState = 1;
      scr50_MessageFastLocal("which_god");
-+    if (pfo_is_online() && numPlayers == 2 && controller != (pfo_client_get_player_index() + 1))
++    if (numPlayers == 2 && scr50_IsOnlineRemotePlayer(controller))
 +    {
 +        scrMessageSet("ENEMY PLAYER TURN");
 +    }
@@ -3523,7 +3601,7 @@
          scrSfx(soundGodSelect, 30);
          scr50_MessageFast("");
 -        if (controller == 3)
-+        if (controller == 3 || (pfo_is_online() && numPlayers == 2 && controller != (pfo_client_get_player_index() + 1)))
++        if (controller == 3 || (numPlayers == 2 && scr50_IsOnlineRemotePlayer(controller)))
          {
              scrMessageSet(scrStringVal("enemy_prays", GOD_NAMES[god]));
          }
@@ -3543,18 +3621,9 @@
      if (stateTimer >= 120)
      {
 -        if (controller != 3)
-+        if (controller != 3 && !(pfo_is_online() && numPlayers == 2 && controller != (pfo_client_get_player_index() + 1)))
++        if (controller != 3 && !(numPlayers == 2 && scr50_IsOnlineRemotePlayer(controller)))
          {
              scrBGM(bgm50_bless);
-         }
-@@ -227,7 +235,7 @@
-     }
-     if (fire2pressed)
-     {
--        if (controller != 3)
-+        if (controller != 3 && !(pfo_is_online() && numPlayers == 2 && controller != (pfo_client_get_player_index() + 1)))
-         {
-             muteBGM();
          }
 @@ -245,7 +253,11 @@
          {
@@ -3562,7 +3631,7 @@
              var yPos = scrIRandomRange(ACTION_TOP + (ACTION_HEIGHT * upgradeIndex), (ACTION_TOP + (ACTION_HEIGHT * upgradeIndex) + ACTION_HEIGHT) - 8);
 -            scrFX(s50_StarFXBlack, 0.3, scrQuantize(xPos, 8), scrQuantize(yPos, 8));
 +            var starFX = scrFX(s50_StarFXBlack, 0.3, scrQuantize(xPos, 8), scrQuantize(yPos, 8));
-+            if (pfo_is_online() && numPlayers == 2 && controller != (pfo_client_get_player_index() + 1))
++            if (numPlayers == 2 && scr50_IsOnlineRemotePlayer(controller))
 +            {
 +                starFX.visible = false;
 +            }
@@ -3576,16 +3645,16 @@
              controller = 1;
          }
 -        if (numPlayers == 1 && player == 1)
-+        else if (pfo_is_online() && numPlayers == 2)
++        else if (numPlayers == 2 && scr50_HasOnlinePlayers())
          {
 +            controller = (player == 1) ? 2 : 1;
 +        }
-+        if ((numPlayers == 1 && player == 1) || (pfo_is_online() && numPlayers == 2 && player == (pfo_client_get_player_index() + 1)))
++        if ((numPlayers == 1 && player == 1) || (numPlayers == 2 && scr50_IsOnlineLocalPlayer(player)))
 +        {
              scrMessageSet(scrString("you_attacked"));
          }
 -        else if (numPlayers == 1 && player == 2)
-+        else if ((numPlayers == 1 && player == 2) || (pfo_is_online() && numPlayers == 2 && player != (pfo_client_get_player_index() + 1)))
++        else if ((numPlayers == 1 && player == 2) || (numPlayers == 2 && scr50_IsOnlineRemotePlayer(player)))
          {
              scrMessageSet(scrString("they_attacked"));
          }
@@ -3594,7 +3663,7 @@
      else
      {
 -        if (controller == 3 && toLoc.owner != player)
-+        if ((controller == 3 || (pfo_is_online() && numPlayers == 2 && controller != (pfo_client_get_player_index() + 1))) && toLoc.owner != player)
++        if ((controller == 3 || (numPlayers == 2 && scr50_IsOnlineRemotePlayer(controller))) && toLoc.owner != player)
          {
              scrSfx(soundMoveUnits, 70);
              scrMessageSet(scrString("enemy_expand"));
@@ -3613,31 +3682,20 @@
      if (stateTimer >= 120)
      {
          mirChoice = false;
-+        if (!(pfo_is_online() && numPlayers == 2 && controller != (pfo_client_get_player_index() + 1)))
++        if (!(numPlayers == 2 && scr50_IsOnlineRemotePlayer(controller)))
 +        {
          scrBGM(bgm50_bless);
 +        }
          stateTimer = 0;
          subState++;
          upgradeIndex = -1;
-@@ -159,7 +162,10 @@
-     }
-     if (fire2pressed)
-     {
-+        if (!(pfo_is_online() && numPlayers == 2 && controller != (pfo_client_get_player_index() + 1)))
-+        {
-         muteBGM();
-+        }
-         scr50_Sfx(soundMiracle, 50);
-         scr50_MessageSlow(scrStringExt("action_upgraded", "*", 35, 0));
-         subState++;
-@@ -174,9 +180,13 @@
+@@ -174,9 +177,13 @@
          {
              var xPos = scrIRandomRange(HUD_LEFT, (HUD_LEFT + HUD_WIDTH) - 8);
              var yPos = scrIRandomRange(ACTION_TOP + (ACTION_HEIGHT * upgradeIndex), (ACTION_TOP + (ACTION_HEIGHT * upgradeIndex) + ACTION_HEIGHT) - 8);
 -            scrFX(s50_StarFXBlack, 0.3, scrQuantize(xPos, 8), scrQuantize(yPos, 8));
 +            var starFX = scrFX(s50_StarFXBlack, 0.3, scrQuantize(xPos, 8), scrQuantize(yPos, 8));
-+            if (pfo_is_online() && numPlayers == 2 && controller != (pfo_client_get_player_index() + 1))
++            if (numPlayers == 2 && scr50_IsOnlineRemotePlayer(controller))
 +            {
 +                starFX.visible = false;
          }
@@ -3646,7 +3704,7 @@
      if (stateTimer >= 144)
      {
          stateTimer = 100;
-@@ -203,7 +213,7 @@
+@@ -203,7 +210,7 @@
          for (var j = 0; j < GRID_Y_NUM; j++)
          {
              var loc = map[i][j];
@@ -3655,7 +3713,7 @@
              {
                  numSelectable++;
                  selectable[i][j] = true;
-@@ -243,13 +253,13 @@
+@@ -243,13 +250,13 @@
      else if (fire2pressed)
      {
          scr50_Sfx(soundMiracle, 50);
@@ -3671,25 +3729,32 @@
          }
      }
  }
-@@ -316,7 +326,7 @@
+@@ -316,7 +323,7 @@
          {
              scrSfx(soundMiracle, 50);
              map[selX][selY].frozen = 3;
 -            if (numPlayers == 1 && player == 2)
-+            if ((numPlayers == 1 && player == 2) || (pfo_is_online() && numPlayers == 2 && controller != (pfo_client_get_player_index() + 1)))
++            if ((numPlayers == 1 && player == 2) || (numPlayers == 2 && scr50_IsOnlineRemotePlayer(player)))
              {
                  scrMessageSet(scrStringVal("snowed_in_by_comp", unitsFrozen));
              }
-@@ -397,7 +407,7 @@
+@@ -397,13 +404,13 @@
          else
          {
              scrSfx(soundMiracle, 50);
 -            if (numPlayers == 1 && player == 2)
-+            if ((numPlayers == 1 && player == 2) || (pfo_is_online() && numPlayers == 2 && player != (pfo_client_get_player_index() + 1)))
++            if ((numPlayers == 1 && player == 2) || (numPlayers == 2 && scr50_IsOnlineRemotePlayer(player)))
              {
                  scrMessageSet(scrStringVal("killed_by_comp", unitsStruck));
              }
-@@ -853,4 +863,9 @@
+             else
+             {
+-                scr50_MessageSlow(scrStringVal("enemy_units_killed", unitsStruck));
++                scrMessageSet(scrStringVal("enemy_units_killed", unitsStruck));
+             }
+             map[selX][selY].sparkleTimer = 48;
+         }
+@@ -853,4 +860,9 @@
      var refundAmount = action.params[subY][1];
      resources[player][refundType] += refundAmount;
      scr50_MessageFastLocal("what_miracle");
@@ -3714,7 +3779,7 @@
      {
          scrSfx(soundFlagGained, 80);
 -        if (numPlayers == 1 && player == 1)
-+        if ((numPlayers == 1 && player == 1) || (pfo_is_online() && numPlayers == 2 && player == (pfo_client_get_player_index() + 1)))
++        if ((numPlayers == 1 && player == 1) || (numPlayers == 2 && scr50_IsOnlineLocalPlayer(player)))
          {
              if (NUM_CONTROL_POINTS == 0 || flagCounter[player] >= 2)
              {
@@ -3723,7 +3788,7 @@
              }
          }
 -        if (numPlayers == 1 && player == 2)
-+        else if ((numPlayers == 1 && player == 2) || (pfo_is_online() && numPlayers == 2 && player != (pfo_client_get_player_index() + 1)))
++        else if ((numPlayers == 1 && player == 2) || (numPlayers == 2 && scr50_IsOnlineRemotePlayer(player)))
          {
              if (NUM_CONTROL_POINTS == 0 || flagCounter[player] >= 2)
              {
@@ -3753,7 +3818,7 @@
 -            futureState = STATE_START_TURN;
 -        }
 -        else if (!fogOfWar)
-+        if (numPlayers == 1 || !fogOfWar || pfo_is_online())
++        if (numPlayers == 1 || !fogOfWar || scr50_HasOnlinePlayers())
          {
              futureState = STATE_START_TURN;
          }
@@ -3763,7 +3828,7 @@
              {
                  if (bPressLeft[inp])
                  {
-+                    if (!(pfo_is_online() && numPlayers == 2 && inp != pfo_client_get_player_index()))
++                    if (!(numPlayers == 2 && scr50_IsOnlineRemotePlayer(inp)))
 +                    {
                      scr50_Sfx(soundBattleNavi, 60);
 +                    }
@@ -3774,7 +3839,7 @@
                  }
                  if (bPressRight[inp])
                  {
-+                    if (!(pfo_is_online() && numPlayers == 2 && inp != pfo_client_get_player_index()))
++                    if (!(numPlayers == 2 && scr50_IsOnlineRemotePlayer(inp)))
 +                    {
                      scr50_Sfx(soundBattleNavi, 60);
 +                    }
@@ -3785,7 +3850,7 @@
                  }
                  if (bFire2pressed[inp] && currOrder[p] != orderSel[p])
                  {
-+                    if (!(pfo_is_online() && numPlayers == 2 && inp != pfo_client_get_player_index()))
++                    if (!(numPlayers == 2 && scr50_IsOnlineRemotePlayer(inp)))
 +                    {
                      scr50_Sfx(soundBattleSelect, 65);
 +                    }
@@ -3807,7 +3872,7 @@
              }
          }
 -        if (numPlayers == 1 || !fogOfWar || (actionIndex == 2 && action.type != MIRACLE))
-+        if (numPlayers == 1 || !fogOfWar || pfo_is_online() || (actionIndex == 2 && action.type != MIRACLE))
++        if (numPlayers == 1 || !fogOfWar || scr50_HasOnlinePlayers() || (actionIndex == 2 && action.type != MIRACLE))
          {
 -            scr50_MessageSlow(scrString("attack_successful"));
 +            scrMessageSet(scrString("attack_successful"));
@@ -3824,7 +3889,7 @@
              defendLoc.units[i] += defendRunners[i];
          }
 -        if (numPlayers == 1 || !fogOfWar || (actionIndex == 2 && action.type != MIRACLE))
-+        if (numPlayers == 1 || !fogOfWar || pfo_is_online() || (actionIndex == 2 && action.type != MIRACLE))
++        if (numPlayers == 1 || !fogOfWar || scr50_HasOnlinePlayers() || (actionIndex == 2 && action.type != MIRACLE))
          {
 -            scr50_MessageSlow(scrString("attack_failed"));
 +            scrMessageSet(scrString("attack_failed"));
@@ -3840,7 +3905,7 @@
  {
      stateTimer++;
 -    if (numPlayers == 1 || !fogOfWar)
-+    if (numPlayers == 1 || !fogOfWar || pfo_is_online())
++    if (numPlayers == 1 || !fogOfWar || scr50_HasOnlinePlayers())
      {
          if (stateTimer >= 152)
          {
@@ -3851,24 +3916,50 @@
      mirChoice = false;
      recruitChioce = false;
 -    if (numPlayers == 1)
-+    if (numPlayers == 1 || (pfo_is_online() && numPlayers == 2))
++    if (numPlayers == 1 || (numPlayers == 2 && (scr50_IsOnlineLocalPlayer(winner) || scr50_IsOnlineRemotePlayer(winner))))
      {
 -        if (winner == 1)
-+        if ((numPlayers == 1 && winner == 1) || (numPlayers == 2 && winner == (pfo_client_get_player_index() + 1)))
++        if ((numPlayers == 1 && winner == 1) || (numPlayers == 2 && scr50_IsOnlineLocalPlayer(winner)))
          {
              if (scenarioY != 2)
              {
+@@ -58,7 +58,7 @@
+             {
+                 endSubMsg = scrString("enemy_lost_all_alt");
+             }
+-            if (!custom)
++            if (numPlayers == 1 && !custom)
+             {
+                 scenarioWins[scenarioY] = true;
+                 if (scenarioY == 2)
 @@ -95,7 +95,10 @@
              {
                  endSubMsg = scrStringExt("lost_all_alt", "*", 40, 0);
              }
-+            if (!custom)
++            if (numPlayers == 1 && !custom)
 +            {
              scrSaveGame(0);
 +            }
          }
      }
      else if (numPlayers == 2)
+--- original/gml_Object_o50_Game_Step_0.gml
++++ patched/gml_Object_o50_Game_Step_0.gml
+@@ -74,3 +74,14 @@
+         }
+     }
+ }
++if (numPlayers == 2 && !hotseat)
++{
++    if (futureState == STATE_END_TURN)
++    {
++        global.onlineFavoredPlayer = !(player - 1);
++    }
++    else if ((controller == player && (futureState >= STATE_START_TURN && futureState <= STATE_END_TURN)) || futureState == STATE_END_COMBAT || (state == STATE_LEVEL_GEN && subState == 2))
++    {
++        global.onlineFavoredPlayer = player - 1;
++    }
++}
 --- original/gml_Object_o50_Location_Create_0.gml
 +++ patched/gml_Object_o50_Location_Create_0.gml
 @@ -13,7 +13,10 @@
@@ -4049,16 +4140,19 @@
  {
      draw_clear_alpha(c_black, 1);
      exit;
-@@ -88,7 +88,7 @@
-         scrDrawTextInput(8, 184, _str[0], 0, 0, false);
-         scrDrawTextInput(8, 192, _str[1], 0, 0, false);
-         scrSetFont(global.fontThinOutline);
--        draw_text(8, 200, "v1.8.8");
-+        draw_text(8, 200, global.betaVersion);
-         scrFontDefault();
-     }
+@@ -81,8 +81,10 @@
+     draw_rectangle_color(8, 24, 199, 151, c_black, c_black, c_black, c_black, 0);
      if (substate == SUB_CRACK_WAIT)
-@@ -126,10 +126,22 @@
+     {
+-        scrSetFont(global.fontHandwriting);
+         draw_set_color(global.palette[17]);
++        scrSetFont(global.fontThinOutline);
++        draw_text(8, 200, global.betaVersion);
++        scrSetFont(global.fontHandwriting);
+         var _str = scrStringVal("crack_launch_text", "[2");
+         _str = string_line_breaks(_str, 16, 2);
+         scrDrawTextInput(8, 184, _str[0], 0, 0, false);
+@@ -126,10 +128,22 @@
  {
      scrFillScreen(0);
      draw_sprite(sLaserX, 0, 192, 92);
@@ -4081,7 +4175,7 @@
  if (state == STATE_INTRO)
  {
      scrLibraryIntro(INTRO_SCENE);
-@@ -249,8 +261,11 @@
+@@ -249,8 +263,11 @@
          var left = 8;
          fileHeight = 56;
          var f = menuSel + 1;
@@ -4094,7 +4188,7 @@
      if (substate != SUB_CONFIRM_DELETE && substate != SUB_CONFIRM_OVERWRITE)
      {
          top = 48;
-@@ -258,56 +273,85 @@
+@@ -258,56 +275,85 @@
          for (var i = 0; i < global.NUM_PROFILES_ACCESSIBLE; i++)
          {
              var menuSelXoff = 0;
@@ -4196,7 +4290,7 @@
          if (menuSel == selPos)
          {
              draw_sprite(sMenuHand, 0, _handX, yPos + 1);
-@@ -315,17 +359,17 @@
+@@ -315,17 +361,17 @@
      }
      if (substate == SUB_COPY_FROM)
      {
@@ -4218,7 +4312,7 @@
          if (menuSel == selPos)
          {
              draw_sprite(sMenuHand, 0, _handX, yPos + 1);
-@@ -333,18 +377,18 @@
+@@ -333,18 +379,18 @@
      }
      if (substate == SUB_COPY_TO)
      {
@@ -4241,7 +4335,7 @@
          if (menuSel == selPos)
          {
              draw_sprite(sMenuHand, 0, _handX, yPos + 1);
-@@ -972,4 +1016,8 @@
+@@ -972,4 +1018,8 @@
  if (state == STATE_PRE_GAMES_BUFFER)
  {
      scrFillScreen(0);

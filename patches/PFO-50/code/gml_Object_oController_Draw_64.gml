@@ -85,7 +85,8 @@ if (pfo_is_online())
                 draw_set_color(global.palette[12]);
             }
 
-            draw_text(xx, yy, "Delay: " + string(pfo_client_get_input_delay()) + "f");
+            var delayPrefix = global.onlineFavoredPlayer == -2 ? "Delay: 0/" : "Delay: ";
+            draw_text(xx, yy, delayPrefix + string(pfo_client_get_input_delay()) + "f");
             yy += ydelta;
 
             draw_set_color(c_white);
@@ -114,12 +115,7 @@ if (showFrame)
 {
     draw_text(xx, yy, string(pfo_get_frame()));
     yy += ydelta;
-
     draw_text(xx, yy, string(global.pfo_current_time));
-    yy += ydelta;
-    draw_text(xx, yy, string(current_time));
-    yy += ydelta;
-    draw_text(xx, yy, string(current_time - global.pfo_current_time));
     yy += ydelta;
 }
 

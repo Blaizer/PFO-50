@@ -72,17 +72,28 @@ else if (substate == SUB_INIT)
 
     var playerNames2 = scrGetPlayerNames(playerNames, onlinePlayers[0]);
 
-    var mode = pfo_get_input_delay_mode();
+    var allowPlayerAssignment = true;
+    if (global.currGameID == 14 && global.numPlayers == 2 && pfo_is_online())
+    {
+        allowPlayerAssignment = false;
+    }
 
-    OP_PLAYER1 = scrMenuItem(TYPE_DUAL, "P1 ASSIGN", onlinePlayers[0], playerNames);
-    OP_PLAYER2 = scrMenuItem(TYPE_DUAL, "P2 ASSIGN", onlinePlayers[1] < 0 ? 1 : 0, playerNames2);
-    OP_DELAY_MODE = scrMenuItem(TYPE_DUAL, "INPUT DELAY MODE", mode, ["AUTO", "MANUAL"]);
-
+    OP_PLAYER1 = noone;
+    OP_PLAYER2 = noone;
     OP_AUTO_DELAY_MIN = noone;
     OP_AUTO_DELAY_MAX = noone;
     OP_MANUAL_DELAY = noone;
     OP_MANUAL_DELAY_P1 = noone;
     OP_MANUAL_DELAY_P2 = noone;
+
+    if (allowPlayerAssignment)
+    {
+        OP_PLAYER1 = scrMenuItem(TYPE_DUAL, "P1 ASSIGN", onlinePlayers[0], playerNames);
+        OP_PLAYER2 = scrMenuItem(TYPE_DUAL, "P2 ASSIGN", onlinePlayers[1] < 0 ? 1 : 0, playerNames2);
+    }
+
+    var mode = pfo_get_input_delay_mode();
+    OP_DELAY_MODE = scrMenuItem(TYPE_DUAL, "INPUT DELAY MODE", mode, ["AUTO", "MANUAL"]);
 
     if (mode == InputDelayMode.Automatic)
     {
@@ -110,6 +121,12 @@ else if (substate == SUB_INIT)
     scrMenuSpacer(MENU_MEDIUM_SPACER);
     scrMenuSpacer(MENU_MEDIUM_SPACER);
     scrMenuSpacer(MENU_MEDIUM_SPACER);
+
+    if (!allowPlayerAssignment)
+    {
+        scrMenuSpacer(MENU_MEDIUM_SPACER);
+        scrMenuSpacer(MENU_MEDIUM_SPACER);
+    }
     
     OP_BACK = scrMenuItem(TYPE_SINGLE, scrString("menu_item_back_to_root"));
     
@@ -119,7 +136,17 @@ else if (substate == SUB_NAV)
 {
     var choice = scrMenuNavigation();
     
-    if (choice == -2)
+    if (!localInputDisabled() && keyboard_check_pressed(vk_f1))
+    {
+        pfo_send_command(Command.Reset);
+    }
+
+    if (pfo_receive_command(Command.Reset))
+    {
+        scrSfxLibrary(soundSet[currentSoundSet]);
+        scrSwitchSub(SUB_RESET);
+    }
+    else if (choice == -2)
     {
         scrSfxLibrary(soundSubExit[currentSoundSet]);
         scrSwitchState(statePrev);
@@ -127,10 +154,6 @@ else if (substate == SUB_NAV)
     else if (pressStart)
     {
         scrSwitchState(STATE_UNPAUSE);
-    }
-    else if (!localInputDisabled() && keyboard_check_pressed(vk_f1))
-    {
-        pfo_send_command(Command.Reset);
     }
     else if (choice >= 0)
     {
@@ -175,12 +198,6 @@ else if (substate == SUB_NAV)
                 scrSwitchState(statePrev);
                 break;
         }
-    }
-
-    if (pfo_receive_command(Command.Reset))
-    {
-        scrSfxLibrary(soundSet[currentSoundSet]);
-        scrSwitchSub(SUB_RESET);
     }
 }
 else if (substate == SUB_RESET)
