@@ -11,24 +11,93 @@ function scrInitAttractModePlaylist()
     scrShuffle(global.attractModePlaylist);
 }
 
-function scrOnlineCleanup()
+function scrSetOnlinePlayers(players)
 {
+    if (pfo_is_online())
+    {
+        pfo_set_players(players);
+
+        if (pfo_client_get_player_index() >= 0)
+        {
+            instance_destroy(global.onlineSpectatorPauseMenu);
+            global.onlineSpectatorPauseMenu = noone;
+        }
+    }
+}
+
+function scrOnlineCleanup(forceExitToTitleScreen)
+{
+    var saveFileOwned = !is_int64(pfo_file_status(global.ACCOUNT_FILE));
+    var onlinePlayerIndex = pfo_client_get_player_index();
+    
+    if (!saveFileOwned || forceExitToTitleScreen)
+    {
+        scrUnpause();
+        scrCloseProfile();
+
+        if (!saveFileOwned)
+        {
+            instance_destroy(oSaveIcon);
+        }
+    }
+    else
+    {
+        // make sure we don't get softlocked in the pause screen
+        if (global.paused)
+        {
+            with (oPauseMenu)
+            {
+                if (menuType == 0)
+                {
+                    if (player != -1 && player != onlinePlayerIndex)
+                    {
+                        scrUnpause();
+                    }
+                }
+            }
+        }
+    }
+
+    pfo_reset();
     scrInitAch();
 
-    if (is_array(global.onlineDefaultLanguage))
+    if (!is_undefined(global.onlineBackupDefaultLanguage))
     {
-        global.defaultLanguage = global.onlineDefaultLanguage[1];
+        global.defaultLanguage = global.onlineBackupDefaultLanguage;
 
-        global.profileLanguage = global.defaultLanguage;
         if (global.currFile == 0)
         {
            scrUpdateLanguage(global.defaultLanguage);
         }
     }
 
-    global.onlineDefaultLanguage = undefined;
-    global.onlineClientNames = undefined;
-    global.onlineRandomizeSeed = undefined;
+    instance_destroy(global.onlineSpectatorPauseMenu);
+    global.onlineSpectatorPauseMenu = noone;
+
+    global.onlineSettings = undefined;
+    global.onlineBackupDefaultLanguage = undefined;
+
+    if (!saveFileOwned || forceExitToTitleScreen)
+    {
+        global.attractModeLibraryTimer = 0;
+
+        // we need to return to the title screen to make sure we don't keep using the current save file
+        if (room == rmLibrary)
+        {
+            with (oLibrary)
+            {
+                scrSwitchState(STATE_LOGO);
+                event_perform(ev_step, ev_step_begin);
+            }
+        }
+        else
+        {
+            scrExitToLibrary();
+            scrClearCheats();
+            global.SKIP_INTRO = true;
+            global.roomPrev = rmInit;
+        }
+    }
 }
 
 function scrOnlineStateChangedCallback(state)
@@ -36,10 +105,14 @@ function scrOnlineStateChangedCallback(state)
     if (state == PFO_OnlineState.Online)
     {
         steam_lobby_leave();
+
         pfo_start();
+        global.onlineSimultaneousTurns = false;
+        global.onlineRunUpdate = true;
+        global.onlineFavoredPlayer = -1;         
         scrUnpause();
 
-        pfo_set_randomize_seed(global.onlineRandomizeSeed);
+        pfo_set_randomize_seed(global.onlineSettings.randomizeSeed);
         scrRandomize(0);
 
         global.currGame = 0;
@@ -85,12 +158,13 @@ function scrOnlineStateChangedCallback(state)
         global.selGame = 1;
         global.selSort = 0;
 
-        if (is_array(global.onlineDefaultLanguage))
+        if (pfo_get_client_index() != 0)
         {
-            global.defaultLanguage = global.onlineDefaultLanguage[0];
+            global.onlineBackupDefaultLanguage = global.defaultLanguage;
         }
-        global.profileLanguage = global.defaultLanguage;
+        global.defaultLanguage = global.onlineSettings.defaultLanguage;
         scrUpdateLanguage(global.defaultLanguage);
+        global.profileLanguage = global.defaultLanguage;
 
         global.SKIP_INTRO = 2;
         global.roomPrev = rmInit;
@@ -98,67 +172,7 @@ function scrOnlineStateChangedCallback(state)
     }
     else if (state == PFO_OnlineState.Disconnecting)
     {
-        var otherClientIndex = !pfo_get_client_index();
-        var clientName = global.EXTERNAL_TEXT_ERROR;
-        if (!is_undefined(global.onlineClientNames) && array_length(global.onlineClientNames) > otherClientIndex)
-        {
-            clientName = global.onlineClientNames[otherClientIndex];
-        }
-
-        alertMessageText = clientName + " Disconnected";
-        alertMessageTimer = current_time + 5000;
-        saveFileOwned = !is_int64(pfo_file_status(global.ACCOUNT_FILE));
-        previousOnlinePlayerIndex = pfo_client_get_player_index();
-        
-        if (!saveFileOwned)
-        {
-            scrUnpause();
-            scrCloseProfile();
-        }
-    }
-    else if (state == PFO_OnlineState.Offline)
-    {
-        scrOnlineCleanup();
-
-        if (saveFileOwned)
-        {
-            // make sure we don't get softlocked in the pause screen
-            if (global.paused)
-            {
-                var previousPlayer = previousOnlinePlayerIndex;
-                with (oPauseMenu)
-                {
-                    if (previousPlayer != player)
-                    {
-                        scrUnpause();
-                    }
-                    else
-                    {
-                        player = 2;
-                    }
-                }
-            }
-        }
-        else
-        {
-            // we need to return to the title screen to make sure we don't keep using the current save file
-            global.attractModeLibraryTimer = 0;
-            if (room == rmLibrary)
-            {
-                with (oLibrary)
-                {
-                    scrSwitchState(STATE_LOGO);
-                    event_perform(ev_step, ev_step_begin);
-                }
-            }
-            else
-            {
-                scrExitToLibrary();
-                scrClearCheats();
-                global.SKIP_INTRO = true;
-                global.roomPrev = rmInit;
-            }
-        }
+        scrOnlineCleanup(false);
     }
 }
 

@@ -1,48 +1,95 @@
+function scrGetUserPersonaName(steamId)
+{
+    var name = steam_get_user_persona_name_sync(steamId);
+    return (is_string(name) && name != "") ? name : global.EXTERNAL_TEXT_ERROR;
+}
+
 function scrUpdateLobbyUsers(lobbyId)
 {
     if (lobbyId == steam_lobby_get_lobby_id())
     {
-        var count = steam_lobby_get_member_count();
-        var ownerSteamId = steam_lobby_get_owner_id();
         ds_list_clear(lobbyUsers);
-        var readyCount = 0;
 
-        for (var i = 0; i < count; i++)
+        var hasOnlineSettings = substate == SUB_ONLINE_LOBBY && stateCounter >= 2 && !is_undefined(global.onlineSettings);
+        if (hasOnlineSettings)
         {
-            var steamId = steam_lobby_get_member_id(i);
-            var personaName = string(steam_get_user_persona_name_sync(steamId));
-            var ready = pfo_steam_lobby_get_member_data(lobbyId, steamId, "ready") != "";
-            if (ready) readyCount++;
-            var data = { steamId: steamId, personaName: personaName, ready: ready };
+            var ids = global.onlineSettings.clientIds;
+            for (var i = 0; i < array_length(ids); i++)
+            {
+                ds_list_add(lobbyUsers, ids[i]);
+            }   
+        }
+        else
+        {
+            var count = steam_lobby_get_member_count();
+            var ownerSteamId = steam_lobby_get_owner_id();
 
-            if (steamId == ownerSteamId)
+            for (var i = 0; i < count; i++)
             {
-                ds_list_insert(lobbyUsers, 0, data);
-            }
-            else
-            {
-                ds_list_add(lobbyUsers, data);
+                var steamId = steam_lobby_get_member_id(i);
+                if (steamId == ownerSteamId)
+                {
+                    ds_list_insert(lobbyUsers, 0, steamId);
+                }
+                else
+                {
+                    ds_list_add(lobbyUsers, steamId);
+                }
             }
         }
 
-        if (!lobbyStartingGame && readyCount > 1 && readyCount == ds_list_size(lobbyUsers) && steam_get_user_steam_id() == ownerSteamId)
+        var readyCount = 0;
+        var connectReadyCount = 0;
+        for (var i = 0; i < ds_list_size(lobbyUsers); i++)
         {
-        	lobbyStartingGame = true;
-            pfo_reset();
-            pfo_create_listen_socket();
+            var steamId = ds_list_find_value(lobbyUsers, i);
+            var personaName = scrGetUserPersonaName(steamId);
+            var ready = pfo_steam_lobby_get_member_data(lobbyId, steamId, "ready");
+            
+            if (ready == "2")
+            {
+                ready = 2;
+                readyCount++;
+                connectReadyCount++;
+            }
+            else if (ready == "1" || hasOnlineSettings)
+            {
+                ready = 1;
+                readyCount++;
+            }
+            else
+            {
+                ready = 0;
+            }
+
+            var data = { steamId: steamId, personaName: personaName, ready: ready };
+            ds_list_set(lobbyUsers, i, data);
+        }
+
+        if (substate == SUB_ONLINE_LOBBY && stateCounter < 1 && readyCount > 1 && readyCount == ds_list_size(lobbyUsers) && steam_get_user_steam_id() == ownerSteamId)
+        {
+        	stateCounter = 1;
             steam_lobby_set_joinable(false);
             
             randomize();
-            var seed = int64(irandom(0xffffffff)) | (int64(irandom(0xffffffff)) << int64(32));
-            
-            global.onlineRandomizeSeed = seed;
-            global.onlineClientNames = array_create(2, global.EXTERNAL_TEXT_ERROR);
+            var startGameSettings =
+            {
+                seed: int64(irandom(0xffffffff)) | (int64(irandom(0xffffffff)) << int64(32)),
+                lang: global.defaultLanguage,
+                ids: array_create(ds_list_size(lobbyUsers), int64(0)),
+            };
+
             for (var i = 0; i < ds_list_size(lobbyUsers); i++)
             {
-                global.onlineClientNames[i] = ds_list_find_value(lobbyUsers, i).personaName;
+                startGameSettings.ids[i] = ds_list_find_value(lobbyUsers, i).steamId;
             }
 
-            pfo_steam_lobby_set_game_server(steam_lobby_get_lobby_id(), 0, global.defaultLanguage, seed);
+            steam_lobby_set_data("start_game_settings", json_stringify(startGameSettings));
+        }
+        else if (hasOnlineSettings && stateCounter < 3 && connectReadyCount == ds_list_size(lobbyUsers))
+        {
+            stateCounter = 3;
+            pfo_connect();
         }
     }
 }
@@ -50,8 +97,12 @@ function scrUpdateLobbyUsers(lobbyId)
 var param = async_load;
 if (LOG.LEVEL >= LOG.VERBOSE) show_debug_message("Steam Async Event: " + json_encode(param));
 
-var eventType = ds_map_find_value(param, "event_type");
+if (state != STATE_ONLINE)
+{
+    exit;
+}
 
+var eventType = ds_map_find_value(param, "event_type");
 if (eventType == "lobby_list")
 {
 	lobbyListCount = ds_map_find_value(param, "lobby_count");
@@ -61,9 +112,9 @@ if (eventType == "lobby_list")
 		ds_list_add(lobbyList, steam_lobby_list_get_lobby_id(i));
 	}
 
-    if (!lobbyListSearchedFirstTime)
+    if (substate == SUB_ONLINE_MAIN && stateCounter == 0)
     {
-        lobbyListSearchedFirstTime = true;
+        stateCounter = 1;
         arrowSel = lobbyListCount > 0 ? 1 : 0;
     }
 }
@@ -95,37 +146,60 @@ else if (eventType == "lobby_data_update")
     var lobbyId = ds_map_find_value(param, "lobby_id");
     var memberId = ds_map_find_value(param, "member_id");
 
-    if (lobbyId == steam_lobby_get_lobby_id() && memberId == steam_get_user_steam_id())
-    {
-    	settingReady = false;
-    }
-
-    if (ds_map_find_value(param, "success") && memberId != lobbyId)
-    {
-	    scrUpdateLobbyUsers(lobbyId);
-    }
-}
-else if (eventType == "lobby_game_created")
-{
-	var ownerSteamId = steam_lobby_get_owner_id();
-    if (steam_get_user_steam_id() != ownerSteamId)
-    {
-        var lobbyId = ds_map_find_value(param, "lobby_id");
-        var seed = ds_map_find_value(param, "server_id");
-        var defaultLanguage = ds_map_find_value(param, "port");
-        if (!lobbyStartingGame && lobbyId == steam_lobby_get_lobby_id())
+    if (lobbyId == steam_lobby_get_lobby_id())
+    { 
+        if (memberId == steam_get_user_steam_id() && substate == SUB_ONLINE_LOBBY && stateCounter == 0.5)
         {
-        	lobbyStartingGame = true;
-        	global.onlineRandomizeSeed = seed;
-            global.onlineDefaultLanguage = [ defaultLanguage, global.defaultLanguage ];
-            global.onlineClientNames = array_create(2, global.EXTERNAL_TEXT_ERROR);
-            for (var i = 0; i < ds_list_size(lobbyUsers); i++)
-            {
-                global.onlineClientNames[i] = ds_list_find_value(lobbyUsers, i).personaName;
-            }
+        	stateCounter = 0;
+        }
 
-            pfo_reset();
-            pfo_connect(ownerSteamId);
+        if (ds_map_find_value(param, "success"))
+        {
+            if (memberId != lobbyId)
+            {
+        	    scrUpdateLobbyUsers(lobbyId);
+            }
+            else
+            {
+                if (substate == SUB_ONLINE_LOBBY && stateCounter < 2)
+                {
+                    var startGameSettings = steam_lobby_get_data("start_game_settings");
+                    if (is_string(startGameSettings) && startGameSettings != "")
+                    {
+                        if (LOG.LEVEL >= LOG.VERBOSE) show_debug_message("start_game_settings: " + startGameSettings);
+
+                        stateCounter = 2;
+                        global.onlineSettings =
+                        {
+                            randomizeSeed: int64(0),
+                            defaultLanguage: 0,
+                            clientIds: [],
+                            clientNames: [],
+                        };
+
+                        try
+                        {
+                            var settings = json_parse(startGameSettings);
+                            global.onlineSettings.randomizeSeed = int64(settings.seed);
+                            global.onlineSettings.defaultLanguage = real(settings.lang);
+                            for (var i = 0; i < array_length(settings.ids); i++)
+                            {
+                                global.onlineSettings.clientIds[i] = int64(settings.ids[i]);
+                                global.onlineSettings.clientNames[i] = scrGetUserPersonaName(global.onlineSettings.clientIds[i]);
+                            }
+                        }
+                        catch (_exception)
+                        {
+                        }
+
+                        pfo_reset();
+                        pfo_set_clients(global.onlineSettings.clientIds);
+                        scrUpdateLobbyUsers(lobbyId);
+
+                        pfo_steam_lobby_set_member_data(lobbyId, "ready", "2");
+                    }
+                }
+            }
         }
     }
 }

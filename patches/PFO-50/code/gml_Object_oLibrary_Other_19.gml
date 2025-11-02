@@ -1,29 +1,19 @@
-SUB_ONLINE_INIT = 0;
-SUB_ONLINE_MAIN = 1;
-SUB_ONLINE_INIT_LOBBY = 2;
-SUB_ONLINE_LOBBY = 3;
-SUB_ONLINE_CONNECT = 4;
+#macro steam_lobby_type_private 0
+#macro steam_lobby_type_friends_only 1
+#macro steam_lobby_type_public 2
+#macro steam_lobby_list_filter_eq 0
+#macro steam_lobby_list_filter_ne 3
+#macro steam_lobby_list_filter_lt -1
+#macro steam_lobby_list_filter_gt 1
+#macro steam_lobby_list_filter_le -2
+#macro steam_lobby_list_filter_ge 2
+#macro steam_lobby_list_distance_filter_close 0
+#macro steam_lobby_list_distance_filter_default 1
+#macro steam_lobby_list_distance_filter_far 2
+#macro steam_lobby_list_distance_filter_worldwide 3
 
 if (substate == SUB_ONLINE_INIT)
 {
-    // GMEXT-Steamworks constants - they've been stripped out so let's just define them here
-    steam_lobby_type_private = 0;
-    steam_lobby_type_friends_only = 1;
-    steam_lobby_type_public = 2;
-
-    steam_lobby_list_filter_eq = 0;
-    steam_lobby_list_filter_ne = 3;
-    steam_lobby_list_filter_lt = -1;
-    steam_lobby_list_filter_gt = 1;
-    steam_lobby_list_filter_le = -2;
-    steam_lobby_list_filter_ge = 2;
-
-    steam_lobby_list_distance_filter_close = 0;
-    steam_lobby_list_distance_filter_default = 1;
-    steam_lobby_list_distance_filter_far = 2;
-    steam_lobby_list_distance_filter_worldwide = 3;
-
-    lobbyListSearchedFirstTime = false;
     creatingLobby = false;
     joiningLobby = false;
     lobbyListCount = 0;
@@ -76,14 +66,14 @@ if (substate == SUB_ONLINE_MAIN)
         steam_lobby_list_request();
     }
 
-    var action = scrOnlineSelect(lobbyListSearchedFirstTime && !creatingLobby && !joiningLobby, 2);
+    var action = scrOnlineSelect(stateCounter >= 1 && !creatingLobby && !joiningLobby, 2);
     if (action == -2)
     {
     }
     else if (action == 0)
     {
         creatingLobby = true;
-        steam_lobby_create(steam_lobby_type_public, 2);
+        steam_lobby_create(steam_lobby_type_public, 8);
     }
     else if (action == 1 && lobbyListCount > 0)
     {
@@ -98,10 +88,8 @@ if (substate == SUB_ONLINE_MAIN)
 
 if (substate == SUB_ONLINE_INIT_LOBBY)
 {
-    settingReady = false;
+    global.onlineSettings = undefined;
     readyState = false;
-    lobbyStartingGame = false;
-
     arrowSel = 0;
     arrowBlink = -1;
 
@@ -124,10 +112,10 @@ if (substate == SUB_ONLINE_LOBBY)
         }
     }
 
-    var action = scrOnlineSelect(!settingReady && !lobbyStartingGame, 2);
+    var action = scrOnlineSelect(stateCounter == 0, 2);
     if (action == 0 && !readyState)
     {
-        settingReady = true;
+        stateCounter = 0.5;
         pfo_steam_lobby_set_member_data(lobbyId, "ready", "1");
     }
     else if (action == 1 && readyState)
@@ -217,38 +205,6 @@ function scrDrawOnlineMenuSelection(text, enabled)
     sel++;
 }
 
-function scrDrawOnlinePlayer(player)
-{
-    var text = "PLAYER " + string(player + 1) + ": ";
-    var readyText = "";
-
-    var color;
-    if (ds_list_size(lobbyUsers) > player)
-    {
-        var user = ds_list_find_value(lobbyUsers, player);
-        text += user.personaName;
-
-        if (user.ready)
-        {
-            readyText = "[READY] ";
-            color = 12;
-        }
-        else
-        {
-            color = 11;
-        }
-    }
-    else
-    {
-        text += "<EMPTY>";
-        color = 28;
-    }
-    
-    draw_set_color(global.palette[color]);
-    draw_text(104, 64 + player * 16, text);
-    draw_text(104 - string_length(readyText) * 8, 64 + player * 16, readyText);
-}
-
 function scrLibraryOnlineStateDraw()
 {
     scrFillScreen(0);
@@ -260,7 +216,7 @@ function scrLibraryOnlineStateDraw()
         draw_text_bg_centered_2(192, 48, "CREATE OR JOIN A LOBBY", global.palette[11], 8, 8, false);
 
         var joinLobbyText = "";
-        if (lobbyListSearchedFirstTime)
+        if (stateCounter >= 1)
         {
             joinLobbyText = "(" + (lobbyListCount > 0 ? string(lobbyListCount) + " OPEN" : "NONE FOUND") + ")";
         }
@@ -279,8 +235,37 @@ function scrLibraryOnlineStateDraw()
         draw_text_bg_centered_2(192, 40, "YOU ARE IN A LOBBY", global.palette[11], 8, 8, false);
         draw_set_color(global.palette[11]);
         
-        scrDrawOnlinePlayer(0);
-        scrDrawOnlinePlayer(1);
+        for (var player = 0; player < max(2, ds_list_size(lobbyUsers)); player++)
+        {
+            var text = "PLAYER " + string(player + 1) + ": ";
+            var readyText = "";
+
+            var color;
+            if (ds_list_size(lobbyUsers) > player)
+            {
+                var user = ds_list_find_value(lobbyUsers, player);
+                text += user.personaName;
+
+                if (user.ready)
+                {
+                    readyText = "[READY] ";
+                    color = 12;
+                }
+                else
+                {
+                    color = 11;
+                }
+            }
+            else
+            {
+                text += "<EMPTY>";
+                color = 28;
+            }
+            
+            draw_set_color(global.palette[color]);
+            draw_text(104, 64 + player * 16, text);
+            draw_text(104 - string_length(readyText) * 8, 64 + player * 16, readyText);
+        }
         
         sel = 0;
         selY = 112;

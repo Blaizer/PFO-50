@@ -61,14 +61,6 @@ function scrGetInputCallback(frame)
     }
 }
 
-enum GetInputType
-{
-    None,
-    NoOnline,
-    NoPlayback,
-    Raw
-}
-
 enum LOG
 {
     NONE = 0,

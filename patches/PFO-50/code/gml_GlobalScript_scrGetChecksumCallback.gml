@@ -42,7 +42,7 @@ function scrSerializeChecksum(writer)
     writer.Write(buffer_u64, read ? "randomize_state" : global.pfo_randomize_state);
     writer.Write(buffer_u32, read ? "random_seed"     : random_get_seed());
     writer.Write(buffer_s32, read ? "room"            : room);
-    writer.Write(buffer_s32, read ? "instance_count"  : instance_count - instance_number(oOkay) - instance_number(oSaveIcon));
+    writer.Write(buffer_s32, read ? "instance_count"  : instance_count - instance_number(oOkay) - instance_number(oSaveIcon) - instance_exists(global.onlineSpectatorPauseMenu));
 
     writer.Write(buffer_s8,  read ? "curr_game_id" : global.currGameID);
     writer.Write(buffer_s8,  read ? "curr_file"    : global.currFile);
@@ -58,6 +58,7 @@ function scrSerializeChecksum(writer)
     writer.Write(buffer_f64, read ? "base_current_time"          : global.pfo_base_current_time);
     writer.Write(buffer_f64, read ? "time_stamp_incremental"     : global.timeStampIncremental)
     writer.Write(buffer_s16, read ? "attract_mode_library_timer" : global.attractModeLibraryTimer);
+    writer.Write(buffer_s8,  read ? "online_simultaneous_turns"  : global.onlineSimultaneousTurns);
 
     var hasGameData = writer.Write(buffer_s8, read ? "has_game_data" : instance_exists(o14_Game));
     if (hasGameData)
@@ -85,6 +86,30 @@ function scrGetChecksumCallback()
             var message = "Desync detected!\n\nDifference in GML values: " + string(differ.differences) + "\n\nOurs: " + string(differ.diff1) + "\n\nTheirs: " + string(differ.diff2);
             show_debug_message(message);
             show_message(message);
+        }
+
+        if (array_contains(differ.differences, "instance_count"))
+        {
+            show_debug_message("=== INSTANCE COUNTS ===");
+
+            var map = ds_map_create();
+
+            with (all)
+            {
+                if (!ds_map_exists(map, object_index))
+                {
+                    ds_map_add(map, object_index, 1);
+                }
+            }
+
+            for (var obj = ds_map_find_first(map); !is_undefined(obj); obj = ds_map_find_next(map, obj))
+            {
+                show_debug_message(object_get_name(obj) + ": " + string(instance_number(obj)));
+            }
+
+            ds_map_destroy(map);
+
+            show_debug_message("========================");
         }
     }
 }

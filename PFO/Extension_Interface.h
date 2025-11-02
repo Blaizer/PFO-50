@@ -1371,7 +1371,7 @@ extern YYRunnerInterface* g_pYYRunnerInterface;
 inline void ShowMessage(const char* msg) { g_pYYRunnerInterface->ShowMessage(msg); }
 
 // for printing error messages
-#define YYError(_error, ...)				g_pYYRunnerInterface->YYError( "[PFO.dll] " _error "\n", __VA_ARGS__ )
+#define YYError(_error, ...)				g_pYYRunnerInterface->YYError( "[PFO.dll] " _error "\n" __VA_OPT__(,) __VA_ARGS__ )
 
 // alloc, realloc and free
 inline void* YYAlloc(int _size) { return g_pYYRunnerInterface->YYAlloc(_size); }

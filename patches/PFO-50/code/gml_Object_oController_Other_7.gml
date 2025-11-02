@@ -38,5 +38,23 @@ if (global.onlineRunUpdate)
     pfo_update_extra_input();
 }
 
+if (!global.paused && pfo_get_frame() > 10 && pfo_client_get_player_index() < 0 && !instance_exists(global.onlineSpectatorPauseMenu))
+{
+    with (oScreenHandler)
+    {
+        scrGetInput(0, GetInputType.Raw);
+
+        if (pressStart)
+        {
+            global.onlineSpectatorPauseMenu = instance_create_depth(-32, -32, -16000, oPauseMenu, { menuType: 1 });
+
+            with (global.onlineSpectatorPauseMenu)
+            {
+                persistent = true;
+            }
+        }
+    }
+}
+
 global.onlineFavoredPlayer = -1;
 global.onlineRunUpdate = true;

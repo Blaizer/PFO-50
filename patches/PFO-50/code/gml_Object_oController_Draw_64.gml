@@ -55,16 +55,16 @@ var ydelta = 8;
 
 if (halign == fa_right)
 {
-    xx = real(SCREEN.WIDTH);
+    xx = SCREEN_WIDTH;
 }
 else if (halign == fa_center)
 {
-    xx = real(SCREEN.WIDTH) / 2;
+    xx = SCREEN_WIDTH / 2;
 }
 
 if (valign == fa_bottom)
 {
-    yy = real(SCREEN.HEIGHT) + 1;
+    yy = SCREEN_HEIGHT + 1;
     ydelta *= -1;
 }
 
@@ -138,10 +138,4 @@ enum InputDelayMode
 {
     Automatic,
     Manual,
-}
-
-enum SCREEN
-{
-    WIDTH = 384,
-    HEIGHT = 216,
 }

@@ -1,3 +1,8 @@
+#macro SUB_PRE_INIT 0
+#macro SUB_INIT 1
+#macro SUB_NAV 2
+#macro SUB_RESET 3
+
 function scrUpdateManualInputDelays()
 {
     if (pfo_get_input_delay_mode() == InputDelayMode.Manual)
@@ -11,30 +16,6 @@ function scrUpdateManualInputDelays()
         }
     }
 }
-
-function scrGetPlayerNames(fromNames, excludingIndex)
-{
-    var names = array_create(array_length(fromNames));
-    var index = 0;
-    for (var clientIndex = 0; clientIndex < array_length(global.onlineClientNames); clientIndex++)
-    {
-        if (clientIndex != excludingIndex)
-        {
-            names[index] = fromNames[clientIndex];
-            selectionClientIndex[index++] = clientIndex;
-        }
-    }
-
-    names[index] = "NONE";
-    selectionClientIndex[index] = -1;
-
-    return names;
-}
-
-SUB_PRE_INIT = 0;
-SUB_INIT = 1;
-SUB_NAV = 2;
-SUB_RESET = 3;
 
 if (!pfo_is_online())
 {
@@ -64,32 +45,27 @@ else if (substate == SUB_INIT)
     drawMenu = true;
     scrMenuCreate("ONLINE SETTINGS", menuSel);
     
-    var playerNames = array_create(array_length(global.onlineClientNames));
-    for (var clientIndex = 0; clientIndex < array_length(global.onlineClientNames); clientIndex++)
+    var playerNames = array_create(array_length(global.onlineSettings.clientNames) + 1);
+    for (var clientIndex = 0; clientIndex < array_length(global.onlineSettings.clientNames); clientIndex++)
     {
-        playerNames[clientIndex] = string_copy(global.onlineClientNames[clientIndex], 1, 15);
+        playerNames[clientIndex] = string_copy(global.onlineSettings.clientNames[clientIndex], 1, 15);
     }
 
-    var playerNames2 = scrGetPlayerNames(playerNames, onlinePlayers[0]);
+    onlinePlayerNoneIndex = array_length(global.onlineSettings.clientNames);
+    playerNames[onlinePlayerNoneIndex] = "NONE";
 
-    var allowPlayerAssignment = true;
-    if (global.currGameID == 14 && global.numPlayers == 2 && pfo_is_online())
+    OP_PLAYER1 = -1;
+    OP_PLAYER2 = -1;
+    OP_AUTO_DELAY_MIN = -1;
+    OP_AUTO_DELAY_MAX = -1;
+    OP_MANUAL_DELAY = -1;
+    OP_MANUAL_DELAY_P1 = -1;
+    OP_MANUAL_DELAY_P2 = -1;
+
+    if (!global.onlineSimultaneousTurns)
     {
-        allowPlayerAssignment = false;
-    }
-
-    OP_PLAYER1 = noone;
-    OP_PLAYER2 = noone;
-    OP_AUTO_DELAY_MIN = noone;
-    OP_AUTO_DELAY_MAX = noone;
-    OP_MANUAL_DELAY = noone;
-    OP_MANUAL_DELAY_P1 = noone;
-    OP_MANUAL_DELAY_P2 = noone;
-
-    if (allowPlayerAssignment)
-    {
-        OP_PLAYER1 = scrMenuItem(TYPE_DUAL, "P1 ASSIGN", onlinePlayers[0], playerNames);
-        OP_PLAYER2 = scrMenuItem(TYPE_DUAL, "P2 ASSIGN", onlinePlayers[1] < 0 ? 1 : 0, playerNames2);
+        OP_PLAYER1 = scrMenuItem(TYPE_DUAL_ONLINE_PLAYER, "P1 ASSIGN", onlinePlayers[0] >= 0 ? onlinePlayers[0] : onlinePlayerNoneIndex, playerNames);
+        OP_PLAYER2 = scrMenuItem(TYPE_DUAL_ONLINE_PLAYER, "P2 ASSIGN", onlinePlayers[1] >= 0 ? onlinePlayers[1] : onlinePlayerNoneIndex, playerNames);
     }
 
     var mode = pfo_get_input_delay_mode();
@@ -99,7 +75,6 @@ else if (substate == SUB_INIT)
     {
         OP_AUTO_DELAY_MIN = scrMenuItem(TYPE_DUAL_INT, "MIN INPUT DELAY", pfo_get_min_automatic_input_delay(), 0, inputDelayLimit);
         OP_AUTO_DELAY_MAX = scrMenuItem(TYPE_DUAL_INT, "MAX INPUT DELAY", pfo_get_max_automatic_input_delay(), 0, inputDelayLimit);
-        scrMenuSpacer(MENU_MEDIUM_SPACER);
     }
     else if (mode == InputDelayMode.Manual)
     {
@@ -112,63 +87,86 @@ else if (substate == SUB_INIT)
             }
         }
 
-        OP_MANUAL_DELAY = scrMenuItem(TYPE_DUAL_INT, "INPUT DELAY", max(manualInputDelays[0], manualInputDelays[1]), 0, inputDelayLimit);
-        OP_MANUAL_DELAY_P1 = scrMenuItem(TYPE_DUAL_INT, "P1 INPUT DELAY", manualInputDelays[0], 0, inputDelayLimit);
-        OP_MANUAL_DELAY_P2 = scrMenuItem(TYPE_DUAL_INT, "P2 INPUT DELAY", manualInputDelays[1], 0, inputDelayLimit);
+        OP_MANUAL_DELAY = scrMenuItem(TYPE_DUAL_INT, "INPUT DELAY", max(manualInputDelays[0], manualInputDelays[1]), 0, inputDelayLimit * 2);
+        OP_MANUAL_DELAY_P1 = scrMenuItem(TYPE_DUAL_INT, "P1 INPUT DELAY", manualInputDelays[0], 0, inputDelayLimit * 2);
+        OP_MANUAL_DELAY_P2 = scrMenuItem(TYPE_DUAL_INT, "P2 INPUT DELAY", manualInputDelays[1], 0, inputDelayLimit * 2);
     }
 
-    scrMenuSpacer(MENU_MEDIUM_SPACER);
-    scrMenuSpacer(MENU_MEDIUM_SPACER);
-    scrMenuSpacer(MENU_MEDIUM_SPACER);
-    scrMenuSpacer(MENU_MEDIUM_SPACER);
+    var lastMenuIndex = menuSelBot;
 
-    if (!allowPlayerAssignment)
+    repeat(14 - lastMenuIndex)
     {
         scrMenuSpacer(MENU_MEDIUM_SPACER);
-        scrMenuSpacer(MENU_MEDIUM_SPACER);
     }
     
-    OP_BACK = scrMenuItem(TYPE_SINGLE, scrString("menu_item_back_to_root"));
+    OP_BACK = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_back_to_root", 0));
     
+    if (menuSel > lastMenuIndex && menuSel != OP_BACK)
+    {
+        menuSel = lastMenuIndex;
+    }
+
     scrSwitchSub(SUB_NAV);
 }
 else if (substate == SUB_NAV)
 {
-    var choice = scrMenuNavigation();
-    
-    if (!localInputDisabled() && keyboard_check_pressed(vk_f1))
-    {
-        pfo_send_command(Command.Reset);
-    }
-
-    if (pfo_receive_command(Command.Reset))
+    if (receiveCommand(Command.Reset))
     {
         scrSfxLibrary(soundSet[currentSoundSet]);
         scrSwitchSub(SUB_RESET);
+        exit;
     }
-    else if (choice == -2)
+
+    var _arg = [ int64(0) ];
+    if (receiveCommand(Command.SetSel, _arg))
+    {
+        var _menuSel = real(_arg[0] & int64(0xf));
+        var _choice = real(_arg[0] >> int64(4));
+
+        var _previousChoice = itemIndex[_menuSel];
+        itemIndex[_menuSel] = _choice;
+
+        onlinePlayers[_menuSel - firstOnlinePlayerMenuIndex] = _choice < onlinePlayerNoneIndex ? _choice : -1;
+
+        if (_choice < onlinePlayerNoneIndex)
+        {
+            for (var _sel = _menuSel + 1; _sel <= lastOnlinePlayerMenuIndex; _sel++)
+            {
+                if (itemIndex[_sel] == _choice)
+                {
+                    itemIndex[_sel] = _previousChoice;
+                    onlinePlayers[_sel - firstOnlinePlayerMenuIndex] = _previousChoice < onlinePlayerNoneIndex ? _previousChoice : -1;
+                }
+            }
+        }
+
+        scrUpdateManualInputDelays();
+    }
+
+    var choice = scrMenuNavigation();
+
+    if (choice == -2)
     {
         scrSfxLibrary(soundSubExit[currentSoundSet]);
         scrSwitchState(statePrev);
+        exit;
     }
-    else if (pressStart)
+    
+    if (pressStart)
     {
         scrSwitchState(STATE_UNPAUSE);
+        exit;
     }
-    else if (choice >= 0)
+
+    if (!localInputDisabled() && keyboard_check_pressed(vk_f1))
+    {
+        sendCommand(Command.Reset);
+    }
+
+    if (choice >= 0)
     {
         switch (menuSel)
         {
-            case OP_PLAYER1:
-                onlinePlayers[0] = itemIndex[OP_PLAYER1];
-                itemValues[OP_PLAYER2] = scrGetPlayerNames(itemValues[OP_PLAYER1], onlinePlayers[0]);
-                // fallthrough;
-            
-            case OP_PLAYER2:
-                onlinePlayers[1] = selectionClientIndex[itemIndex[OP_PLAYER2]];
-                scrUpdateManualInputDelays();
-                break;
-            
             case OP_DELAY_MODE:
                 pfo_set_input_delay_mode(choice);
                 scrSwitchSub(SUB_INIT);
@@ -235,4 +233,5 @@ enum Command
     Back    = 1,
     Unpause = 2,
     Reset   = 3,
+    SetSel  = 4,
 }

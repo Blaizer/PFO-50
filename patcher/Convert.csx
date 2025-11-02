@@ -5,6 +5,10 @@
 var modName = Path.GetFileName(Directory.GetDirectories(GetPatchesDir())[0]);
 var modPrettyName = modName.Replace("-", " ");
 var modVersion = GetModVersion();
+if (modVersion.EndsWith(".0"))
+{
+    modVersion = modVersion.Substring(0, modVersion.Length - 2);
+}
 
 var rootDir = GetRootDir();
 var convertRootDir = Path.Join(GetBuildDir(), $"{modPrettyName} v{modVersion}");

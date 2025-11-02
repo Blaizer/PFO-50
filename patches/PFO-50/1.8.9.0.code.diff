@@ -40,6 +40,15 @@
 +    global.mGameOnlineHUDHAlign[arg0] = 2;
 +    global.mGameOnlineHUDVAlign[arg0] = 0;
  }
+--- original/gml_GlobalScript_scr14_Cleanup.gml
++++ patched/gml_GlobalScript_scr14_Cleanup.gml
+@@ -1,5 +1,6 @@
+ function scr14_Cleanup()
+ {
++    global.onlineSimultaneousTurns = false;
+     with (o14_Game)
+     {
+         if (ds_exists(generalPool, ds_type_list))
 --- original/gml_GlobalScript_scr14_GetSponsee.gml
 +++ patched/gml_GlobalScript_scr14_GetSponsee.gml
 @@ -1,57 +1,28 @@
@@ -158,7 +167,7 @@
 @@ -1,5 +1,9 @@
  function scr14_MessageSet(arg0)
  {
-+    if (numPlayers == 2 && pfo_is_online() && currPlayer != pfo_client_get_player_index())
++    if (numPlayers == 2 && global.onlineSimultaneousTurns && currPlayer != pfo_client_get_player_index())
 +    {
 +        exit;
 +    }
@@ -476,6 +485,38 @@
 -    }
 +    return global.pfo_current_time;
  }
+--- original/gml_GlobalScript_scrDeactivateOutsideView.gml
++++ patched/gml_GlobalScript_scrDeactivateOutsideView.gml
+@@ -1,5 +1,6 @@
+ function scrDeactivateOutsideView(arg0, arg1)
+ {
++    var _spectatorPauseMenuActive = instance_exists(global.onlineSpectatorPauseMenu);
+     var _xv = camera_get_view_x(view_get_camera(0));
+     var _yv = camera_get_view_y(view_get_camera(0));
+     instance_deactivate_all(true);
+@@ -7,4 +8,8 @@
+     instance_activate_object(obj_floor);
+     thresh = 200;
+     scrDeactivateRegion(_xv - arg0 - thresh, _yv - arg1 - thresh, 384 + ((arg0 + thresh) * 2), 216 + ((arg1 + thresh) * 2), false, true);
++    if (_spectatorPauseMenuActive)
++    {
++        instance_activate_object(global.onlineSpectatorPauseMenu);
++    }
+ }
+--- original/gml_GlobalScript_scrDeactivateRegion.gml
++++ patched/gml_GlobalScript_scrDeactivateRegion.gml
+@@ -1,6 +1,11 @@
+ function scrDeactivateRegion(arg0, arg1, arg2, arg3, arg4, arg5)
+ {
++    var _spectatorPauseMenuActive = instance_exists(global.onlineSpectatorPauseMenu);
+     var ret = instance_deactivate_region(arg0 + 1, arg1 + 1, arg2 - 1, arg3 - 1, arg4, arg5);
+     scrActivateCoreObjects();
++    if (_spectatorPauseMenuActive)
++    {
++        instance_activate_object(global.onlineSpectatorPauseMenu);
++    }
+     return ret;
+ }
 --- original/gml_GlobalScript_scrDefineMeta.gml
 +++ patched/gml_GlobalScript_scrDefineMeta.gml
 @@ -28,6 +28,8 @@
@@ -507,6 +548,88 @@
          draw_sprite(sWinIcons, global.GOLD_WIN, arg0 + _winsAddX, _textTop);
          var winString;
          if (goldWins[arg2] < 10)
+--- original/gml_GlobalScript_scrDrawTextInput.gml
++++ patched/gml_GlobalScript_scrDrawTextInput.gml
+@@ -7,6 +7,8 @@
+     var type = arg4;
+     var center = arg5;
+     var makeEven = false;
++    var _xview = camera_get_view_x(view_get_camera(0));
++    xx -= _xview;
+     if (type == 0)
+     {
+         type = global.inputFocus;
+@@ -154,7 +156,7 @@
+         {
+             if (makeEven && center == 3)
+             {
+-                draw_text(xx, yy, " ");
++                draw_text(xx + _xview, yy, " ");
+                 xx += 8;
+                 makeEven = false;
+             }
+@@ -194,7 +196,7 @@
+             }
+             if (code != -1)
+             {
+-                draw_sprite_ext(sVirtualInputs, code, xx, yy, 1, 1, 0, draw_get_color(), 1);
++                draw_sprite_ext(sVirtualInputs, code, xx + _xview, yy, 1, 1, 0, draw_get_color(), 1);
+                 xx += 8;
+             }
+             pos++;
+@@ -205,7 +207,7 @@
+             }
+             if (makeEven && center == 4)
+             {
+-                draw_text(xx, yy, " ");
++                draw_text(xx + _xview, yy, " ");
+                 xx += 8;
+                 makeEven = false;
+             }
+@@ -214,7 +216,7 @@
+         {
+             if (makeEven && center == 3)
+             {
+-                draw_text(xx, yy, " ");
++                draw_text(xx + _xview, yy, " ");
+                 xx += 8;
+                 makeEven = false;
+             }
+@@ -256,7 +258,7 @@
+                 }
+                 if (code != -1)
+                 {
+-                    scrDrawJoyIcon(xx, yy, code, arg3);
++                    scrDrawJoyIcon(xx + _xview, yy, code, arg3);
+                     xx += global.JOY_ICON_WIDTH[scrGetJoyIndex(code)];
+                 }
+             }
+@@ -304,7 +306,7 @@
+                 }
+                 if (code != -1)
+                 {
+-                    scrDrawKeyIcon(xx, yy, code);
++                    scrDrawKeyIcon(xx + _xview, yy, code);
+                     xx += global.KEY_ICON_WIDTH[code];
+                 }
+             }
+@@ -316,14 +318,14 @@
+             }
+             if (makeEven && center == 4)
+             {
+-                draw_text(xx, yy, " ");
++                draw_text(xx + _xview, yy, " ");
+                 xx += 8;
+                 makeEven = false;
+             }
+         }
+         else
+         {
+-            draw_text(xx, yy, char);
++            draw_text(xx + _xview, yy, char);
+             xx += 8;
+         }
+     }
 --- original/gml_GlobalScript_scrFFrame.gml
 +++ patched/gml_GlobalScript_scrFFrame.gml
 @@ -5,6 +5,6 @@
@@ -523,27 +646,28 @@
 @@ -1,9 +1,21 @@
  function scrGetInput(arg0)
  {
+-    var _slot = global.joySlot[arg0];
+-    if (global.playbackMode && is_array(global.inputPlayback) && instance_exists(oGame))
 +    var _getInputType = (argument_count > 1) ? argument[1] : UnknownEnum.Value_0;
 +    if ((_getInputType & UnknownEnum.Value_1) != 0 && pfo_is_online())
-+    {
+     {
 +        arg0 = 0;
 +    }
-     var _slot = global.joySlot[arg0];
--    if (global.playbackMode && is_array(global.inputPlayback) && instance_exists(oGame))
 +    if ((_getInputType & UnknownEnum.Value_2) == 0 && global.playbackMode && is_array(global.inputPlayback) && instance_exists(oGame))
-     {
++    {
 +        if ((_getInputType & UnknownEnum.Value_1) == 0 && pfo_is_online())
 +        {
 +            pressStart = (pfo_remove_extra_input(pfo_player_get_input(arg0)) & UnknownEnum.Value_8192) != 0;
 +        }
 +        else
 +        {
++            var _slot = global.joySlot[arg0];
          pressStart = keyboard_check_pressed(global.keyMap[arg0][global.INP_START]) || gamepad_button_check_pressed(_slot, global.joyMap[arg0][global.INP_START]) || keyboard_check_pressed(vk_escape);
 +        }
          if (pressStart)
          {
              global.inputFrame--;
-@@ -12,6 +24,12 @@
+@@ -12,6 +24,13 @@
          scrPlaybackInputs();
          exit;
      }
@@ -553,10 +677,11 @@
 +    }
 +    else
 +    {
++        var _slot = global.joySlot[arg0];
      holdUp = keyboard_check(global.keyMap[arg0][global.INP_UP]);
      holdDown = keyboard_check(global.keyMap[arg0][global.INP_DOWN]);
      holdLeft = keyboard_check(global.keyMap[arg0][global.INP_LEFT]);
-@@ -144,6 +162,7 @@
+@@ -144,6 +163,7 @@
          fire2released = keyboard_check_released(global.keyMap[arg0][global.INP_FIRE2]) || gamepad_button_check_released(_slot, global.joyMap[arg0][global.INP_FIRE2]) || gamepad_button_check_released(_slot, global.altFire2[arg0]);
      }
      pressStart = keyboard_check_pressed(global.keyMap[arg0][global.INP_START]) || gamepad_button_check_pressed(_slot, global.joyMap[arg0][global.INP_START]) || keyboard_check_pressed(vk_escape);
@@ -564,7 +689,7 @@
      if (holdLeft && holdRight)
      {
          holdLeft = false;
-@@ -183,4 +202,13 @@
+@@ -183,4 +203,13 @@
      {
          global.inputFocus = 2;
      }
@@ -644,11 +769,21 @@
          var _slot = global.joySlot[p];
 --- original/gml_GlobalScript_scrGetOkay.gml
 +++ patched/gml_GlobalScript_scrGetOkay.gml
-@@ -13,7 +13,13 @@
+@@ -2,7 +2,7 @@
+ {
+     if (!instance_exists(oOkay))
+     {
+-        instance_create_depth(0, 0, 0, oOkay);
++        instance_create_depth(0, 0, depth - 1, oOkay);
+         with (oOkay)
+         {
+             if (arg0 != "")
+@@ -13,7 +13,14 @@
              {
                  str = "";
              }
 +            inputMode = (argument_count > 1) ? argument[1] : UnknownEnum.Value_3;
++            menuType = other.menuType;
          }
      }
      return oOkay.okay;
@@ -777,6 +912,15 @@
      if (argument_count == 0 || argument[0] == true)
      {
          for (var p = 0; p <= 1; p++)
+@@ -24,7 +25,7 @@
+             joyTiltAny[p] = 0;
+         }
+     }
+-    if (global.paused)
++    if (object_index == oPauseMenu)
+     {
+         keyboard_clear(vk_enter);
+         keyboard_clear(vk_up);
 --- original/gml_GlobalScript_scrInputClearBoth.gml
 +++ patched/gml_GlobalScript_scrInputClearBoth.gml
 @@ -17,5 +17,6 @@
@@ -786,6 +930,60 @@
 +        bForcePause[p] = false;
      }
  }
+--- original/gml_GlobalScript_scrInputClearButtons.gml
++++ patched/gml_GlobalScript_scrInputClearButtons.gml
+@@ -15,7 +15,7 @@
+     pressLeft = false;
+     pressRight = false;
+     pressStart = false;
+-    if (global.paused)
++    if (object_index == oPauseMenu)
+     {
+         keyboard_clear(vk_enter);
+     }
+--- original/gml_GlobalScript_scrMenuCreate.gml
++++ patched/gml_GlobalScript_scrMenuCreate.gml
+@@ -13,6 +13,7 @@
+     TYPE_INFO_HEADER = 10;
+     TYPE_INFO_CONTENT = 11;
+     TYPE_DUAL_DETECT = 12;
++    TYPE_DUAL_ONLINE_PLAYER = 13;
+     menuHeader = arg0;
+     menuSel = arg1;
+     menuIndex = 0;
+@@ -22,4 +23,6 @@
+     itemValues = false;
+     itemIndex = false;
+     itemSelectable = false;
++    firstOnlinePlayerMenuIndex = -1;
++    lastOnlinePlayerMenuIndex = -1;
+ }
+--- original/gml_GlobalScript_scrMenuItem.gml
++++ patched/gml_GlobalScript_scrMenuItem.gml
+@@ -23,7 +23,7 @@
+         _values[0] = argument[2];
+         itemValues[menuIndex] = _values;
+     }
+-    if (argument[0] == TYPE_DUAL || argument[0] == TYPE_DUAL_CENTER)
++    if (argument[0] == TYPE_DUAL || argument[0] == TYPE_DUAL_CENTER || argument[0] == TYPE_DUAL_ONLINE_PLAYER)
+     {
+         itemName[menuIndex] = argument[1];
+         itemIndex[menuIndex] = argument[2];
+@@ -41,6 +41,14 @@
+             itemValues[menuIndex] = argument[3];
+         }
+         itemSelectable[menuIndex] = true;
++        if (argument[0] == TYPE_DUAL_ONLINE_PLAYER)
++        {
++            if (firstOnlinePlayerMenuIndex == -1)
++            {
++                firstOnlinePlayerMenuIndex = menuIndex;
++            }
++            lastOnlinePlayerMenuIndex = menuIndex;
++        }
+     }
+     if (argument[0] == TYPE_DUAL_KEY || argument[0] == TYPE_DUAL_JOY || argument[0] == TYPE_DUAL_DETECT)
+     {
 --- original/gml_GlobalScript_scrMenuNavigation.gml
 +++ patched/gml_GlobalScript_scrMenuNavigation.gml
 @@ -9,7 +9,8 @@
@@ -879,6 +1077,98 @@
          {
              scrSfxLibrary(soundWarn[currentSoundSet]);
              seekingConfirmation = true;
+@@ -260,5 +261,91 @@
+             return -1;
+         }
+     }
++    else if (itemType[menuSel] == TYPE_DUAL_ONLINE_PLAYER)
++    {
++        var _numItems = array_length(itemValues[menuSel]);
++        var _direction = 0;
++        if (pressRight || fire2pressed)
++        {
++            _direction = 1;
++        }
++        else if (pressLeft)
++        {
++            _direction = -1;
++        }
++        for (var _sel = firstOnlinePlayerMenuIndex; _sel < menuSel; _sel++)
++        {
++            if (itemIndex[_sel] >= (_numItems - 1))
++            {
++                _direction = 0;
++                break;
++            }
++        }
++        if (_direction != 0)
++        {
++            var _newIndex = itemIndex[menuSel];
++            for (var i = 1; i < _numItems; i++)
++            {
++                var _index = (itemIndex[menuSel] + _numItems + (i * _direction)) % _numItems;
++                if (_index < (_numItems - 1))
++                {
++                    var _found = false;
++                    for (var _sel = firstOnlinePlayerMenuIndex; _sel < menuSel; _sel++)
++                    {
++                        if (itemIndex[_sel] == _index)
++                        {
++                            _found = true;
++                            break;
++                        }
++                    }
++                    if (!_found && pfo_client_is_connected(_index))
++                    {
++                        _newIndex = _index;
++                        break;
++                    }
++                }
++                else if (menuSel != firstOnlinePlayerMenuIndex)
++                {
++                    var _found = false;
++                    var _sel = menuSel + 1;
++                    while (_sel <= lastOnlinePlayerMenuIndex)
++                    {
++                        if (itemIndex[_sel] < (_numItems - 1))
++                        {
++                            _found = true;
++                            break;
++                        }
++                        _sel++;
++                    }
++                    if (!_found)
++                    {
++                        _newIndex = _index;
++                        break;
++                    }
++                }
++            }
++            if (_newIndex != itemIndex[menuSel])
++            {
++                if (!localInputDisabled())
++                {
++                    sendCommand(UnknownEnum.Value_4, (int64(menuSel) & UnknownEnum.Value_15) | ((int64(_newIndex) & UnknownEnum.Value_15) << UnknownEnum.Value_4));
++                }
++                if (pressRight)
++                {
++                    arrowRightActive = arrowActiveMax;
++                }
++                else if (pressLeft)
++                {
++                    arrowLeftActive = arrowActiveMax;
++                }
++            }
++        }
++    }
+     return -1;
++}
++
++enum UnknownEnum
++{
++    Value_4 = 4,
++    Value_15 = 15
+ }
 --- original/gml_GlobalScript_scrOpenAccount.gml
 +++ patched/gml_GlobalScript_scrOpenAccount.gml
 @@ -1,11 +1,11 @@
@@ -931,6 +1221,25 @@
      if (audio_exists(global.SFX))
      {
          if (audio_is_playing(global.SFX))
+@@ -21,14 +21,13 @@
+             audio_pause_sound(global.BGM);
+         }
+     }
+-    var pauseMenu = instance_create_depth(room_width + 16, 0, 0, oPauseMenu);
+-    with (pauseMenu)
++    var pauseMenu = instance_create_depth(room_width + 16, 0, -1000, oPauseMenu, 
+     {
+-        player = arg0;
+-        joySlot = global.joySlot[arg0];
+-    }
++        menuType: 0
++    });
+     with (pauseMenu)
+     {
++        player = arg0;
+         instNum = instance_count;
+         for (var i = instNum; i > 0; i--)
+         {
 --- original/gml_GlobalScript_scrRandomize.gml
 +++ patched/gml_GlobalScript_scrRandomize.gml
 @@ -6,7 +6,7 @@
@@ -949,7 +1258,7 @@
      scrWriteConfig("joyTypeP1", global.joyType[0]);
      scrWriteConfig("joyTypeP2", global.joyType[1]);
 -    scrWriteConfig("defaultLanguage", global.LANG_SAVE_ID[global.defaultLanguage]);
-+    scrWriteConfig("defaultLanguage", global.LANG_SAVE_ID[is_array(global.onlineDefaultLanguage) ? global.onlineDefaultLanguage[1] : global.defaultLanguage]);
++    scrWriteConfig("defaultLanguage", global.LANG_SAVE_ID[is_undefined(global.onlineBackupDefaultLanguage) ? global.defaultLanguage : global.onlineBackupDefaultLanguage]);
      scrCloseConfig();
  }
 --- original/gml_GlobalScript_scrSaveGame.gml
@@ -977,19 +1286,30 @@
          _fileTo = "backup\\" + _fileTo;
 --- original/gml_GlobalScript_scrUnpause.gml
 +++ patched/gml_GlobalScript_scrUnpause.gml
-@@ -35,6 +35,14 @@
+@@ -26,6 +26,8 @@
+     }
+     with (oPauseMenu)
+     {
++        if (menuType == 0)
++        {
+         for (var i = 0; i < instNum; i++)
+         {
+             instance_activate_object(instId[i]);
+@@ -35,6 +37,16 @@
          {
              instance_destroy();
          }
-+        if (!is_undefined(onlinePlayers))
-+        {
-+            if (pfo_is_online())
++            if (!is_undefined(onlinePlayers))
 +            {
-+                pfo_set_players(onlinePlayers);
++                scrSetOnlinePlayers(onlinePlayers);
++                onlinePlayers = undefined;
++                with (oLibrary)
++                {
++                    backupOnlinePlayers = undefined;
++                }
 +            }
-+            onlinePlayers = undefined;
-+        }
          instance_destroy();
++        }
      }
  }
 --- original/gml_Object_o01_Game_Alarm_0.gml
@@ -1363,7 +1683,19 @@
  numPlayers = global.numPlayers;
  numHumanPlayers = numPlayers;
  if (numPlayers == 1)
-@@ -238,6 +227,17 @@
+@@ -209,7 +198,11 @@
+     ai[0] = false;
+     ai[1] = false;
+     ai[2] = true;
++    if (pfo_get_client_count() == numPlayers)
++    {
++        global.onlineSimultaneousTurns = true;
+ }
++}
+ else if (numPlayers == 3)
+ {
+     ai[0] = false;
+@@ -238,6 +231,17 @@
      qBet[i] = 0;
      debt[i] = 0;
      result[i] = 0;
@@ -1383,12 +1715,19 @@
  for (var i = 0; i < NUM_PORTRAITS; i++)
 --- original/gml_Object_o14_Game_Draw_0.gml
 +++ patched/gml_Object_o14_Game_Draw_0.gml
-@@ -83,7 +83,7 @@
+@@ -77,13 +77,13 @@
+     draw_set_color(c_black);
+     draw_rectangle(viewx, viewy, viewx + 384, viewy + 216, 0);
+ }
+-else if (state == STATE_TURN_SETUP)
++else if (state == STATE_TURN_SETUP || scr14_OnlineHideInfo())
+ {
+     draw_set_color(c_black);
      draw_rectangle(viewx, viewy, viewx + 384, viewy + 216, 0);
      if (currPlayer <= 2)
      {
 -        if (!ai[currPlayer] && numHumanPlayers > 1)
-+        if (!ai[currPlayer] && numHumanPlayers > 1 && !(numPlayers == 2 && pfo_is_online() && currPlayer == pfo_client_get_player_index()))
++        if (!ai[currPlayer] && numHumanPlayers > 1 && !(numPlayers == 2 && global.onlineSimultaneousTurns && currPlayer == pfo_client_get_player_index()) && !(state == STATE_TURN_SETUP && numPlayers == 2 && !global.onlineSimultaneousTurns && pfo_is_online() && !scr14_OnlineHideInfo()))
          {
              if (portrait[currPlayer] == NUM_PORTRAITS)
              {
@@ -1396,7 +1735,7 @@
              {
                  scrSetFont(global.fontDefault);
                  draw_set_color(c_white);
-+                if (numPlayers == 2 && pfo_is_online())
++                if (numPlayers == 2 && (pfo_is_online() || global.onlineSimultaneousTurns))
 +                {
 +                    draw_text_centered(viewx + 192, viewy + 136, "WAITING FOR PLAYER TO FINISH TURN", 8);
 +                }
@@ -1594,27 +1933,28 @@
  scr14_ChangeState(STATE_TURN_SETUP);
 --- original/gml_Object_o14_Game_Other_12.gml
 +++ patched/gml_Object_o14_Game_Other_12.gml
-@@ -1,10 +1,32 @@
+@@ -1,10 +1,33 @@
  if (substate == 0)
  {
      substate = 1;
-+    var onlineLocalTurn = false;
-+    var onlineRemoteTurn = false;
-+    if (numPlayers == 2 && pfo_is_online() && currPlayer < 2)
++    var onlineFirstHumanTurn = false;
++    var onlineOtherHumanTurn = false;
++    if (numPlayers == 2 && global.onlineSimultaneousTurns && currPlayer < numPlayers)
 +    {
++        var playerIndex = !!pfo_client_get_player_index();
 +        if (turnDone[0] && turnDone[1])
 +        {
 +            currPlayer = 2;
 +        }
-+        else if (!turnDone[pfo_client_get_player_index()])
++        else if (!turnDone[playerIndex])
 +        {
-+            currPlayer = pfo_client_get_player_index();
-+            onlineLocalTurn = true;
++            currPlayer = playerIndex;
++            onlineFirstHumanTurn = true;
 +        }
 +        else
 +        {
-+            currPlayer = (pfo_client_get_player_index() + 1) % 2;
-+            onlineRemoteTurn = true;
++            currPlayer = !playerIndex;
++            onlineOtherHumanTurn = true;
 +        }
 +    }
 +    else
@@ -1624,17 +1964,17 @@
      if (currPlayer >= 3)
      {
 -        if (numHumanPlayers <= 1)
-+        if (numHumanPlayers <= 1 || (numPlayers == 2 && pfo_is_online()))
++        if (numHumanPlayers <= 1 || (numPlayers == 2 && (global.onlineSimultaneousTurns || pfo_is_online())))
          {
              scr14_ChangeState(STATE_RACE_NEWS);
          }
-@@ -18,44 +40,91 @@
+@@ -18,44 +41,91 @@
      {
          visible = false;
      }
 -    numSponsees = scr14_GetSponsee();
 -    scr14_GetStable();
-+    if (!onlineRemoteTurn)
++    if (!onlineOtherHumanTurn)
 +    {
 +        var sponseeCandidates = ds_list_create();
 +        for (var listPos = 0; listPos < NUM_QUIBBLES; listPos++)
@@ -1663,7 +2003,7 @@
 +            }
 +        }
 +        scrShuffle(sponseeCandidates);
-+        if (onlineLocalTurn)
++        if (onlineFirstHumanTurn)
 +        {
 +            var numPlayersNeedingSponsees = 2;
      for (var i = 0; i < 2; i++)
@@ -1702,7 +2042,7 @@
      loanActionTaken = false;
      infoActionTaken = false;
      sponsorActionTaken = false;
-+    if (onlineLocalTurn)
++    if (onlineFirstHumanTurn)
 +    {
 +        infoText = scrIRandomRange(1, 8);
 +    }
@@ -1719,7 +2059,7 @@
 -        cash[currPlayer] = 10;
 -    }
      set_view(1536, 0);
-+    if (!onlineRemoteTurn)
++    if (!onlineOtherHumanTurn)
 +    {
      scr14_SimulateRace();
  }
@@ -1730,12 +2070,30 @@
      exit;
  }
 -if (fire2pressed || numHumanPlayers == 1)
-+if ((numPlayers == 2 && pfo_is_online()) ? (currPlayer == pfo_client_get_player_index()) : (fire2pressed || numHumanPlayers == 1))
++if ((numPlayers == 2 && global.onlineSimultaneousTurns) ? (currPlayer == pfo_client_get_player_index()) : (fire2pressed || numHumanPlayers == 1 || (numPlayers == 2 && pfo_is_online())))
  {
      musicTrig = false;
      scr14_ChangeState(STATE_TURN_MAIN);
 --- original/gml_Object_o14_Game_Other_13.gml
 +++ patched/gml_Object_o14_Game_Other_13.gml
+@@ -1,7 +1,7 @@
+ if (substate == 0)
+ {
+     substate = 1;
+-    scrSfx(sfx_transition02, 10);
++    scr14_Sfx(sfx_transition02, 10);
+     with (o14_Hand)
+     {
+         visible = false;
+@@ -10,7 +10,7 @@
+     {
+         sel = 2;
+         subsel = 0;
+-        scrTransition(6, 32, 0, -1, 1);
++        scrTransition(scr14_OnlineHideInfo() ? -4 : 6, 32, 0, -1, 1);
+     }
+     else if (prevstate == STATE_TURN_INFO)
+     {
 @@ -31,7 +31,7 @@
      {
          sel = 1;
@@ -1745,7 +2103,7 @@
          {
              sel = 2;
          }
-@@ -42,15 +42,7 @@
+@@ -42,20 +42,15 @@
          subsel = 2;
      }
      set_view(384, 0);
@@ -1761,7 +2119,15 @@
  if (scrTransitionDone())
  {
      if (!musicTrig)
-@@ -63,6 +55,8 @@
+     {
++        if (!scr14_OnlineHideInfo())
++        {
+         scrBGM(bgm14_gameplay);
++        }
+         musicTrig = true;
+     }
+     with (o14_Hand)
+@@ -63,6 +58,8 @@
          visible = true;
      }
  }
@@ -1770,7 +2136,7 @@
  var pPos = sel + (subsel * 10);
  if (pressLeft)
  {
-@@ -98,7 +92,7 @@
+@@ -98,7 +95,7 @@
  }
  repeat (2)
  {
@@ -1779,7 +2145,7 @@
      {
          if (sel == 2 && subsel == 2)
          {
-@@ -136,7 +130,7 @@
+@@ -136,7 +133,7 @@
              }
          }
      }
@@ -1788,7 +2154,7 @@
      {
          if (sel == 1 && subsel == 2)
          {
-@@ -178,6 +172,7 @@
+@@ -178,6 +175,7 @@
  if (pPos != (sel + (subsel * 10)))
  {
  }
@@ -1796,7 +2162,7 @@
  if (fire2)
  {
      holdCounter++;
-@@ -196,56 +191,26 @@
+@@ -196,93 +194,62 @@
      holdCounter = 0;
      holdThreshold = 16;
  }
@@ -1810,7 +2176,7 @@
 -        {
 -            scrSfx(sfx_navi04, 30);
 -            qBet[currPlayer] = subsel;
-+            pfo_send_command(UnknownEnum.Value_16, int64(subsel), (numPlayers == 2) ? currPlayer : -1);
++            pfo_send_command(UnknownEnum.Value_16, int64(subsel), global.onlineSimultaneousTurns ? currPlayer : -1);
          }
 -    }
      else if (sel == 1 && subsel == 0)
@@ -1822,7 +2188,7 @@
 -            if (bet[currPlayer] < 10)
 -            {
 -                bet[currPlayer] = 10;
-+            pfo_send_command(UnknownEnum.Value_17, UnknownEnum.Value_0, (numPlayers == 2) ? currPlayer : -1);
++            pfo_send_command(UnknownEnum.Value_17, UnknownEnum.Value_0, global.onlineSimultaneousTurns ? currPlayer : -1);
              }
 -        }
 -    }
@@ -1835,7 +2201,7 @@
 -            if (bet[currPlayer] > scr14_GetCash(currPlayer))
 -            {
 -                bet[currPlayer] = scr14_GetCash(currPlayer);
-+            pfo_send_command(UnknownEnum.Value_18, UnknownEnum.Value_0, (numPlayers == 2) ? currPlayer : -1);
++            pfo_send_command(UnknownEnum.Value_18, UnknownEnum.Value_0, global.onlineSimultaneousTurns ? currPlayer : -1);
              }
 -            if (bet[currPlayer] > maxBet)
 -            {
@@ -1852,28 +2218,58 @@
 -            if (bet[currPlayer] > scr14_GetCash(currPlayer))
 -            {
 -                bet[currPlayer] = scr14_GetCash(currPlayer);
-+            pfo_send_command(UnknownEnum.Value_19, UnknownEnum.Value_0, (numPlayers == 2) ? currPlayer : -1);
++            pfo_send_command(UnknownEnum.Value_19, UnknownEnum.Value_0, global.onlineSimultaneousTurns ? currPlayer : -1);
              }
 -        }
 -    }
      else if (sel == 1 && subsel == 1)
      {
-         scrSfx(soundSelect, 50);
-@@ -278,11 +243,10 @@
+-        scrSfx(soundSelect, 50);
++            scr14_Sfx(soundSelect, 50);
+         scr14_ChangeState(STATE_TURN_INFO);
+         exit;
+     }
+     else if (sel == 2 && subsel == 1)
+     {
+-        scrSfx(soundSelect, 50);
++            scr14_Sfx(soundSelect, 50);
+         scr14_ChangeState(STATE_TURN_THUG);
+         exit;
+     }
+     else if (sel == 3 && subsel == 1)
+     {
+-        scrSfx(soundSelect, 50);
++            scr14_Sfx(soundSelect, 50);
+         scr14_ChangeState(STATE_TURN_LOAN_SHARK);
+         exit;
+     }
+     else if (sel == 1 && subsel == 2)
+     {
+-        scrSfx(soundSelect, 50);
++            scr14_Sfx(soundSelect, 50);
+         scr14_ChangeState(STATE_TURN_SPONSOR);
+         exit;
+     }
+     else if (sel == 2 && subsel == 2)
+     {
+-        scrSfx(soundSelect, 50);
++            scr14_Sfx(soundSelect, 50);
+         scr14_ChangeState(STATE_TURN_STABLE);
+         exit;
      }
      else if (sel == 3 && subsel == 2)
      {
 -        muteBGM();
 -        scr14_ChangeState(STATE_TURN_SETUP);
 -        exit;
-+            pfo_send_command(UnknownEnum.Value_20, UnknownEnum.Value_0, (numPlayers == 2) ? currPlayer : -1);
++            pfo_send_command(UnknownEnum.Value_20, UnknownEnum.Value_0, global.onlineSimultaneousTurns ? currPlayer : -1);
      }
  }
 +}
  if (!instance_exists(o14_Hand))
  {
      exit;
-@@ -298,4 +262,14 @@
+@@ -298,4 +265,14 @@
      o14_Hand.faceLeft = false;
      o14_Hand.x = 608 + (48 * (sel - 1));
      o14_Hand.y = 120 + (32 * subsel);
@@ -1890,7 +2286,12 @@
  }
 --- original/gml_Object_o14_Game_Other_14.gml
 +++ patched/gml_Object_o14_Game_Other_14.gml
-@@ -29,6 +29,8 @@
+@@ -25,10 +25,12 @@
+ {
+     if (tSpeak-- <= 0)
+     {
+-        scrSfx(sfx_speak02a, 70);
++        scr14_Sfx(sfx_speak02a, 70);
          tSpeak = -1;
      }
  }
@@ -1899,7 +2300,16 @@
  var pPos = sel;
  if (!loanActionTaken)
  {
-@@ -84,44 +86,8 @@
+@@ -76,7 +78,7 @@
+ }
+ if (fire1pressed)
+ {
+-    scrSfx(sfx_select08, 40);
++        scr14_Sfx(sfx_select08, 40);
+     scr14_ChangeState(STATE_TURN_MAIN);
+     exit;
+ }
+@@ -84,51 +86,16 @@
  {
      if (sel == 0 && !loanActionTaken)
      {
@@ -1907,7 +2317,7 @@
 -        {
 -            if (debt[currPlayer] == 0)
 -            {
-+            pfo_send_command(UnknownEnum.Value_21, UnknownEnum.Value_0, (numPlayers == 2) ? currPlayer : -1);
++            pfo_send_command(UnknownEnum.Value_21, UnknownEnum.Value_0, global.onlineSimultaneousTurns ? currPlayer : -1);
              }
 -            else if (scr14_GetCash(currPlayer) < debt[currPlayer])
 -            {
@@ -1944,8 +2354,9 @@
 -    }
      else if (sel == 1)
      {
-         scrSfx(sfx_select08, 40);
-@@ -129,6 +95,7 @@
+-        scrSfx(sfx_select08, 40);
++            scr14_Sfx(sfx_select08, 40);
+         scr14_ChangeState(STATE_TURN_MAIN);
          exit;
      }
  }
@@ -1966,6 +2377,55 @@
  }
 --- original/gml_Object_o14_Game_Other_15.gml
 +++ patched/gml_Object_o14_Game_Other_15.gml
+@@ -23,7 +23,7 @@
+     {
+         if (tSpeak-- <= 0)
+         {
+-            scrSfx(sfx_speak01a, 70);
++            scr14_Sfx(sfx_speak01a, 70);
+             tSpeak = -1;
+         }
+     }
+@@ -127,7 +127,7 @@
+     }
+     if (fire1pressed)
+     {
+-        scrSfx(sfx_select08, 40);
++        scr14_Sfx(sfx_select08, 40);
+         scr14_ChangeState(STATE_TURN_MAIN);
+         exit;
+     }
+@@ -137,12 +137,12 @@
+         {
+             if (thugActionID == THUG_POISON && poolIndex >= (ds_list_size(generalPool) - 2))
+             {
+-                scrSfx(soundInactive, 55);
++                scr14_Sfx(soundInactive, 55);
+                 scr14_MessageSet(scrString("thug_poison_unavail_2"));
+             }
+             else if (scr14_GetCash(currPlayer) >= thugActionCost)
+             {
+-                scrSfx(sfx_navi01, 30);
++                scr14_Sfx(sfx_navi01, 30);
+                 if (thugActionID == THUG_ROIDS)
+                 {
+                     scrMessageSet(scrString("thug_steroids_2"));
+@@ -173,13 +173,13 @@
+             }
+             else
+             {
+-                scrSfx(soundInactive, 55);
++                scr14_Sfx(soundInactive, 55);
+                 scr14_MessageSet(scrString("thug_low_cash"));
+             }
+         }
+         else
+         {
+-            scrSfx(sfx_select08, 40);
++            scr14_Sfx(sfx_select08, 40);
+             scr14_ChangeState(STATE_TURN_MAIN);
+             exit;
+         }
 @@ -203,6 +203,8 @@
  }
  else if (substate == 2)
@@ -1975,6 +2435,22 @@
      var pPos = subsel;
      if (pressUp)
      {
+@@ -222,13 +224,13 @@
+     }
+     if (pPos != subsel)
+     {
+-        scrSfx(sfx_navi01, 25);
++            scr14_Sfx(sfx_navi01, 25);
+     }
+     if (fire2pressed)
+     {
+         if (subsel == 3)
+         {
+-            scrSfx(sfx_deselect01, 30);
++                scr14_Sfx(sfx_deselect01, 30);
+             sel = 3;
+             subsel = 1;
+             substate = 1;
 @@ -236,16 +238,10 @@
          }
          else
@@ -1987,7 +2463,7 @@
 -            subsel = 1;
 -            substate = 1;
 -            scr14_MessageSet(scrString("thug_finalize_purchase"));
-+                pfo_send_command(UnknownEnum.Value_22, (int64(thugActionID) << UnknownEnum.Value_2) | (int64(subsel) & UnknownEnum.Value_3), (numPlayers == 2) ? currPlayer : -1);
++                pfo_send_command(UnknownEnum.Value_22, (int64(thugActionID) << UnknownEnum.Value_2) | (int64(subsel) & UnknownEnum.Value_3), global.onlineSimultaneousTurns ? currPlayer : -1);
          }
      }
 +    }
@@ -2021,6 +2497,48 @@
          infoText = scrString("tip") + ":" + global.CARRIAGE_RETURN + global.CARRIAGE_RETURN;
          infoText += scrString("tip_" + string(r));
      }
+@@ -23,7 +23,7 @@
+     {
+         if (tSpeak-- <= 0)
+         {
+-            scrSfx(sfx_speak00a, 70);
++            scr14_Sfx(sfx_speak00a, 70);
+             tSpeak = -1;
+         }
+     }
+@@ -67,7 +67,7 @@
+     }
+     if (fire1pressed)
+     {
+-        scrSfx(sfx_select08, 40);
++        scr14_Sfx(sfx_select08, 40);
+         scr14_ChangeState(STATE_TURN_MAIN);
+         exit;
+     }
+@@ -77,20 +77,20 @@
+         {
+             if (scr14_GetCash(currPlayer) >= INFO_COST)
+             {
+-                scrSfx(sfx_navi01, 30);
++                scr14_Sfx(sfx_navi01, 30);
+                 scrMessageSet(scrString("info_buy_2"));
+                 scrMessageInsertBreaks(256);
+                 substate = 2;
+             }
+             else
+             {
+-                scrSfx(soundInactive, 55);
++                scr14_Sfx(soundInactive, 55);
+                 scr14_MessageSet(scrString("info_low_cash"));
+             }
+         }
+         if (subsel == 1)
+         {
+-            scrSfx(sfx_select08, 40);
++            scr14_Sfx(sfx_select08, 40);
+             scr14_ChangeState(STATE_TURN_MAIN);
+             exit;
+         }
 @@ -114,6 +114,8 @@
  }
  else if (substate == 2)
@@ -2030,7 +2548,21 @@
      var pPos = subsel;
      if (pressUp)
      {
-@@ -145,94 +147,12 @@
+@@ -133,106 +135,24 @@
+     }
+     if (pPos != subsel)
+     {
+-        scrSfx(sfx_navi01, 25);
++            scr14_Sfx(sfx_navi01, 25);
+     }
+     if (fire2pressed)
+     {
+         if (subsel == 3)
+         {
+-            scrSfx(sfx_deselect01, 30);
++                scr14_Sfx(sfx_deselect01, 30);
+             sel = 3;
+             subsel = 1;
              substate = 1;
              scr14_MessageSet(scrString("info_cancel"));
          }
@@ -2059,7 +2591,7 @@
              else
              {
 -                clumsyStr = scrString("very_steady");
-+                pfo_send_command(UnknownEnum.Value_23, int64(subsel), (numPlayers == 2) ? currPlayer : -1);
++                pfo_send_command(UnknownEnum.Value_23, int64(subsel), global.onlineSimultaneousTurns ? currPlayer : -1);
              }
 -            var speedStr;
 -            if (infoQuibble == scr14_GetRanking(RANK_FASTEST))
@@ -2147,7 +2679,12 @@
      {
          numStable++;
      }
-@@ -40,6 +40,8 @@
+@@ -36,10 +36,12 @@
+     {
+         if (tSpeak-- <= 0)
+         {
+-            scrSfx(sfx_speak03a, 70);
++            scr14_Sfx(sfx_speak03a, 70);
              tSpeak = -1;
          }
      }
@@ -2174,6 +2711,15 @@
              scr14_MessageSet(msg);
          }
          else if (numStable == 3)
+@@ -90,7 +92,7 @@
+     }
+     if (fire1pressed)
+     {
+-        scrSfx(sfx_select08, 40);
++            scr14_Sfx(sfx_select08, 40);
+         scr14_ChangeState(STATE_TURN_MAIN);
+         exit;
+     }
 @@ -98,30 +100,16 @@
      {
          if (sel != 3)
@@ -2188,7 +2734,7 @@
 -                scr14_GetStable();
 -                sponsorActionTaken = true;
 -                sel = 3;
-+                pfo_send_command(UnknownEnum.Value_24, int64(sel), (numPlayers == 2) ? currPlayer : -1);
++                pfo_send_command(UnknownEnum.Value_24, int64(sel), global.onlineSimultaneousTurns ? currPlayer : -1);
              }
              else
              {
@@ -2198,7 +2744,8 @@
 -        }
 -        else
 -        {
-             scrSfx(sfx_select08, 40);
+-            scrSfx(sfx_select08, 40);
++                scr14_Sfx(sfx_select08, 40);
              scr14_ChangeState(STATE_TURN_MAIN);
              exit;
          }
@@ -2219,7 +2766,15 @@
  }
 --- original/gml_Object_o14_Game_Other_18.gml
 +++ patched/gml_Object_o14_Game_Other_18.gml
-@@ -18,6 +18,8 @@
+@@ -11,13 +11,15 @@
+ {
+     if (tSpeak-- <= 0)
+     {
+-        scrSfx(sfx_speak04a, 70);
++        scr14_Sfx(sfx_speak04a, 70);
+         tSpeak = -1;
+     }
+ }
  var pPos = sel + (subsel * 10);
  var oldSel = sel;
  var oldSubsel = subsel;
@@ -2293,7 +2848,7 @@
                  {
                      scr14_MessageSet(scrString("trainer_warning"));
                  }
-@@ -113,6 +116,8 @@
+@@ -113,9 +116,11 @@
          }
      }
  }
@@ -2301,7 +2856,11 @@
 +{
  if (fire1pressed)
  {
-     scrSfx(sfx_select08, 40);
+-    scrSfx(sfx_select08, 40);
++        scr14_Sfx(sfx_select08, 40);
+     scr14_ChangeState(STATE_TURN_MAIN);
+     exit;
+ }
 @@ -123,44 +128,16 @@
  {
      if (sel == 0)
@@ -2309,7 +2868,7 @@
 -        if (stableRetired[selQ])
 -        {
 -            scr14_MessageSet(scrString("trainer_retired"));
-+            pfo_send_command(UnknownEnum.Value_25, int64(selQ), (numPlayers == 2) ? currPlayer : -1);
++            pfo_send_command(UnknownEnum.Value_25, int64(selQ), global.onlineSimultaneousTurns ? currPlayer : -1);
          }
 -        else if (scr14_GetCash(currPlayer) >= trainCost && !stable[selQ].trained)
 -        {
@@ -2340,7 +2899,8 @@
 -    }
 -    else
 -    {
-         scrSfx(sfx_select08, 40);
+-        scrSfx(sfx_select08, 40);
++            scr14_Sfx(sfx_select08, 40);
          scr14_ChangeState(STATE_TURN_MAIN);
          exit;
      }
@@ -2406,22 +2966,29 @@
      }
 --- original/gml_Object_o14_Game_Step_0.gml
 +++ patched/gml_Object_o14_Game_Step_0.gml
-@@ -5,6 +5,10 @@
+@@ -5,6 +5,17 @@
      substate = 0;
      stateTimer = 0;
  }
-+if (state >= STATE_TURN_MAIN && state <= STATE_TURN_STABLE && numPlayers == 2 && pfo_is_online() && currPlayer == pfo_client_get_player_index())
++if (state >= STATE_TURN_MAIN && state <= STATE_TURN_STABLE && numPlayers == 2 && currPlayer < numPlayers)
 +{
-+    global.onlineFavoredPlayer = -2;
++    if (!global.onlineSimultaneousTurns)
++    {
++        global.onlineFavoredPlayer = currPlayer;
++    }
++    else if (currPlayer == pfo_client_get_player_index())
++    {
++        global.onlineFavoredPlayer = -2;
++    }
 +}
  if (scrTransitionDone())
  {
      if (state == STATE_GAME_SETUP)
-@@ -13,8 +17,19 @@
+@@ -13,8 +24,19 @@
      }
      else if (state == STATE_TURN_AI || state == STATE_RACE_NEWS || state == STATE_RACE || state == STATE_RACE_RESULTS || state == STATE_GAME_END || state == STATE_GAME_RESULTS || state == STATE_RACE_LOOK_AT_SCREEN)
      {
-+        if (numPlayers == 2 && pfo_is_online())
++        if (numPlayers == 2 && global.onlineSimultaneousTurns)
 +        {
 +            scrGetInputMerged();
 +        }
@@ -2430,36 +2997,27 @@
          scrGetInput(0);
      }
 +    }
-+    else if (numPlayers == 2 && pfo_is_online())
++    else if (numPlayers == 2 && global.onlineSimultaneousTurns)
 +    {
 +        scrGetInput(0, UnknownEnum.Value_1);
 +    }
      else if (numPlayers == 1 || numPlayers == 3 || (numPlayers == 2 && currPlayer == 0))
      {
          scrGetInput(0);
-@@ -84,6 +99,324 @@
+@@ -84,6 +106,315 @@
          event_user(15);
          break;
  }
 +
 +function scr14_CurrentPlayerIsLocal()
 +{
-+    return numPlayers != 2 || !pfo_is_online() || currPlayer == pfo_client_get_player_index();
-+}
-+
-+function scr14_Sfx(arg0, arg1)
-+{
-+    if (numPlayers == 2 && pfo_is_online() && currPlayer != pfo_client_get_player_index())
-+    {
-+        exit;
-+    }
-+    scrSfx(arg0, arg1);
++    return numPlayers != 2 || !global.onlineSimultaneousTurns || currPlayer == pfo_client_get_player_index();
 +}
 +
 +var savedCurrPlayer = currPlayer;
 +var repeatCount = 1;
 +var commandPlayer = -1;
-+if (numPlayers == 2)
++if (global.onlineSimultaneousTurns)
 +{
 +    repeatCount = 2;
 +    currPlayer = 0;
@@ -2520,7 +3078,7 @@
 +    else if (pfo_receive_command(UnknownEnum.Value_20, 0, commandPlayer))
 +    {
 +        turnDone[currPlayer] = true;
-+        if (numPlayers != 2 || !pfo_is_online() || turnDone[pfo_client_get_player_index()])
++        if (numPlayers != 2 || !global.onlineSimultaneousTurns || turnDone[!!pfo_client_get_player_index()])
 +        {
 +            if (state == STATE_TURN_SETUP)
 +            {
@@ -2762,7 +3320,7 @@
  for (var i = 0; i < 3; i++)
  {
      var numRepeats = 1;
-@@ -124,12 +457,44 @@
+@@ -124,12 +455,44 @@
  }
  for (var i = 0; i < 3; i++)
  {
@@ -2810,6 +3368,19 @@
 +    Value_24,
 +    Value_25
  }
+--- original/gml_Object_o14_Hand_Draw_0.gml
++++ patched/gml_Object_o14_Hand_Draw_0.gml
+@@ -1,3 +1,10 @@
++with (o14_Game)
++{
++    if (scr14_OnlineHideInfo())
++    {
++        exit;
++    }
++}
+ if (faceLeft)
+ {
+     draw_sprite_ext(sprite_index, image_index, x + xs + 2, y, -1, 1, 0, c_white, 1);
 --- original/gml_Object_o20_Game_Step_0.gml
 +++ patched/gml_Object_o20_Game_Step_0.gml
 @@ -61,6 +61,17 @@
@@ -3400,7 +3971,7 @@
                      if (loc.resources[k])
                      {
 -                        if (loc.owner == player)
-+                        if ((numPlayers == 2 && hasOnlinePlayers) ? (loc.owner == onlineLocalPlayer || !isAnyOnlineLocalPlayer) : (loc.owner == player))
++                        if ((numPlayers == 2 && isAnyOnlineLocalPlayer) ? (loc.owner == onlineLocalPlayer) : (loc.owner == player))
                          {
                              if (!flicker20)
                              {
@@ -3640,7 +4211,7 @@
      if (stateTimer >= 144 || controller == 3)
 --- original/gml_Object_o50_Game_Other_14.gml
 +++ patched/gml_Object_o50_Game_Other_14.gml
-@@ -372,11 +372,15 @@
+@@ -372,15 +372,19 @@
          {
              controller = 1;
          }
@@ -3657,6 +4228,11 @@
 +        else if ((numPlayers == 1 && player == 2) || (numPlayers == 2 && scr50_IsOnlineRemotePlayer(player)))
          {
              scrMessageSet(scrString("they_attacked"));
+         }
+-        else if (numPlayers == 2 && !fogOfWar)
++        else if (numPlayers == 2 && (!fogOfWar || scr50_HasOnlinePlayers()))
+         {
+             scrMessageSet(scrStringExt("player_attacked", player, 35, 0));
          }
 @@ -391,14 +395,14 @@
      }
@@ -3985,6 +4561,20 @@
          {
              _inLibraryProfile = true;
          }
+@@ -82,10 +82,13 @@
+ var _inGarden = false;
+ with (oPauseMenu)
+ {
++    if (menuType == 0)
++    {
+     _inPauseMenu = true;
+     if (state == STATE_TERMINAL)
+     {
+         _inTerminal = true;
++        }
+     }
+ }
+ if (global.libraryBG == 7 && _profileOpen)
 --- original/gml_Object_oConfirm_Step_1.gml
 +++ patched/gml_Object_oConfirm_Step_1.gml
 @@ -11,11 +11,11 @@
@@ -4003,12 +4593,22 @@
  }
 --- original/gml_Object_oController_Create_0.gml
 +++ patched/gml_Object_oController_Create_0.gml
-@@ -4,4 +4,17 @@
+@@ -4,4 +4,28 @@
      exit;
  }
  depth = -10000;
 -totalTime = 0;
-+global.betaVersion = "v" + extension_get_option_value("PFO", "gameVersion") + " - PFO 50 v" + extension_get_version("PFO");
++var gameVersion = extension_get_option_value("PFO", "gameVersion");
++var extensionVersion = extension_get_version("PFO");
++if (string_ends_with(extensionVersion, ".0"))
++{
++    extensionVersion = string_copy(extensionVersion, 1, string_length(extensionVersion) - 2);
++}
++if (string_ends_with(gameVersion, ".0"))
++{
++    gameVersion = string_copy(gameVersion, 1, string_length(gameVersion) - 2);
++}
++global.betaVersion = "v" + gameVersion + " - PFO 50 v" + extensionVersion;
 +alertMessageText = "";
 +alertMessageTimer = -1;
 +showFps = false;
@@ -4016,11 +4616,12 @@
 +showFrame = false;
 +showDelay = true;
 +prevGame = 0;
-+global.onlineDefaultLanguage = undefined;
-+global.onlineClientNames = undefined;
-+global.onlineRandomizeSeed = undefined;
++global.onlineSettings = undefined;
++global.onlineBackupDefaultLanguage = undefined;
 +global.onlineFavoredPlayer = -1;
 +global.onlineRunUpdate = true;
++global.onlineSimultaneousTurns = false;
++global.onlineSpectatorPauseMenu = -4;
 +pfo_start();
 --- original/gml_Object_oController_Other_3.gml
 +++ patched/gml_Object_oController_Other_3.gml
@@ -4120,8 +4721,8 @@
  }
 +lobbyList = ds_list_create();
 +lobbyUsers = ds_list_create();
-+lobbyStartingGame = false;
-+lobbyListSearchedFirstTime = false;
++backupOnlinePlayers = undefined;
++lastInputFrame = 0;
 --- original/gml_Object_oLibrary_Destroy_0.gml
 +++ patched/gml_Object_oLibrary_Destroy_0.gml
 @@ -8,3 +8,5 @@
@@ -4357,7 +4958,37 @@
          {
 --- original/gml_Object_oLibrary_Other_14.gml
 +++ patched/gml_Object_oLibrary_Other_14.gml
-@@ -71,6 +71,8 @@
+@@ -14,6 +14,29 @@
+ {
+     parallaxCounter += PARALLAX_SPEED;
+ }
++if (pfo_is_online() && lastInputFrame != pfo_get_frame())
++{
++    lastInputFrame = pfo_get_frame();
++    var _player = pfo_client_get_player_index(0);
++    if (_player < 0)
++    {
++        var _count = pfo_get_client_count();
++        backupOnlinePlayers = [];
++        var _newOnlinePlayers = [];
++        for (var i = 0; i < _count; i++)
++        {
++            backupOnlinePlayers[i] = pfo_player_get_client_index(i);
++            _newOnlinePlayers[i] = backupOnlinePlayers[i];
++        }
++        _newOnlinePlayers[0] = 0;
++        scrSetOnlinePlayers(_newOnlinePlayers);
++        scrInputClear();
++    }
++    else
++    {
++        scrGetInput(_player);
++    }
++}
+ if (substate == SUB_INIT)
+ {
+     if (statePrev == STATE_GAMES)
+@@ -71,6 +94,8 @@
      }
      menuSel = profileSelFinal;
      menuSelOrig = 0;
@@ -4366,7 +4997,7 @@
      if (subPrev == SUB_COPYING)
      {
          scrSwitchSub(SUB_COPY_FX);
-@@ -94,18 +96,44 @@
+@@ -94,18 +119,44 @@
  }
  else if (substate == SUB_LOAD)
  {
@@ -4413,7 +5044,7 @@
              if (scrLoadProfile(menuSel + 1))
              {
                  global.goldWins = goldWins[menuSel + 1];
-@@ -216,9 +244,9 @@
+@@ -216,9 +267,9 @@
  else if (substate == SUB_DELETING)
  {
      var filename = string_replace(global.SAVE_FILE, "*", string(menuSel + 1));
@@ -4425,7 +5056,7 @@
      }
      for (var i = 0; i < 22; i++)
      {
-@@ -360,14 +388,15 @@
+@@ -360,14 +411,15 @@
  else if (substate == SUB_COPYING)
  {
      var fileFrom = string_replace(global.SAVE_FILE, "*", string(copyFrom + 1));
@@ -4506,6 +5137,42 @@
      {
          scrPause(1);
      }
+@@ -45,4 +45,9 @@
+ if (global.currFile >= 1 && global.currFile <= global.NUM_PROFILES_ACCESSIBLE)
+ {
+     global.backupTimer++;
++}
++if (state != STATE_PROFILE && !is_undefined(backupOnlinePlayers))
++{
++    scrSetOnlinePlayers(backupOnlinePlayers);
++    backupOnlinePlayers = undefined;
+ }
+--- original/gml_Object_oOkay_Create_0.gml
++++ patched/gml_Object_oOkay_Create_0.gml
+@@ -1,5 +1,6 @@
+ str = "";
+ okay = false;
+ delayInput = true;
++menuType = 0;
++inEndDraw = false;
+ scrInputClear();
+-depth = -1001;
+--- original/gml_Object_oOkay_Draw_0.gml
++++ patched/gml_Object_oOkay_Draw_0.gml
+@@ -1,3 +1,8 @@
++if (menuType == 1 && !inEndDraw)
++{
++    exit;
++}
++var origColor = draw_get_color();
+ var tx = camera_get_view_x(view_get_camera(0)) + 192;
+ var ty = camera_get_view_y(view_get_camera(0)) + 108;
+ scrDrawMenuBorderCentered(64, 256, 64);
+@@ -6,3 +11,4 @@
+ draw_text_centered(tx, ty - 16, string_even(displayText[1], 1), 8);
+ draw_set_color(global.palette[3]);
+ draw_text(tx - 8, ty, scrStringManual("option_ok", 0));
++draw_set_color(origColor);
 --- original/gml_Object_oOkay_Step_0.gml
 +++ patched/gml_Object_oOkay_Step_0.gml
 @@ -5,15 +5,20 @@
@@ -4533,33 +5200,165 @@
 +}
 --- original/gml_Object_oPauseMenu_Create_0.gml
 +++ patched/gml_Object_oPauseMenu_Create_0.gml
-@@ -23,6 +23,7 @@
+@@ -1,13 +1,8 @@
+-if (!global.paused)
++if (!variable_instance_exists(id, "menuType"))
+ {
+     instance_destroy();
+     exit;
+ }
+-if (instance_number(oPauseMenu) > 1)
+-{
+-    instance_destroy();
+-    exit;
+-}
+ STATE_ROOT_LIBRARY = 0;
+ STATE_ROOT_GAME = 1;
+ STATE_KEYCONFIG = 2;
+@@ -23,7 +18,14 @@
  STATE_OPTIONS = 12;
  STATE_GAMEINFO = 13;
  STATE_BUTTON_LAYOUT = 14;
 +STATE_ONLINE = 15;
  scrInitStateMachine();
++if (menuType != 0)
++{
++    state = STATE_ROOT_LIBRARY;
++}
++else
++{
  if (scrInGame())
  {
-@@ -158,3 +159,15 @@
+     state = STATE_ROOT_GAME;
+@@ -115,12 +117,15 @@
+         }
+     }
+ }
++}
+ MENU_WIDTH = 240;
+ MENU_HEIGHT = 160;
+ MENU_SMALL_SPACER = 4;
+ MENU_MEDIUM_SPACER = 12;
+ MENU_BIG_SPACER = 20;
+ scrMenuInit();
++if (menuType == 0)
++{
+ if (global.cherryWins >= 50)
+ {
+     numMoods = global.NUM_BGS;
+@@ -141,6 +146,7 @@
+ {
+     global.libraryBG = 0;
+ }
++}
+ currentSound = -1;
+ currentSoundSet = 0;
+ pauseSoundTrig = false;
+@@ -157,4 +163,56 @@
+ scrInputClear();
  inputListenerTimer = 0;
  padCount = scrGetJoyCount();
- depth = -1000;
-+
-+localInputDisabled = function()
+-depth = -1000;
++if (menuType == 0)
 +{
-+    return player <= 1 && pfo_is_online() && pfo_client_get_player_index() != player;
-+};
-+
-+usingLocalInput = function()
++    localInputDisabled = function()
++    {
++        return player != -1 && pfo_is_online() && pfo_client_get_player_index() != player;
++    };
++    
++    usingLocalInput = function()
++    {
++        return !pfo_is_online() || (state >= STATE_KEYCONFIG && state <= STATE_AUDIO) || (state == STATE_UNPAUSE && statePrev >= STATE_KEYCONFIG && statePrev <= STATE_AUDIO);
++    };
++    
++    sendCommandInProgress = pfo_send_command_in_progress;
++    sendCommand = pfo_send_command;
++    receiveCommand = pfo_receive_command;
++}
++else
 +{
-+    return !pfo_is_online() || (state >= STATE_KEYCONFIG && state <= STATE_AUDIO) || (state == STATE_UNPAUSE && statePrev >= STATE_KEYCONFIG && statePrev <= STATE_AUDIO);
-+};
-+
++    localInputDisabled = function()
++    {
++        return false;
++    };
++    
++    usingLocalInput = function()
++    {
++        return true;
++    };
++    
++    sendCommandInProgress = function()
++    {
++        commandSent = UnknownEnum.Value_0;
++        return false;
++    };
++    
++    sendCommand = function(arg0)
++    {
++        commandSent = arg0;
++    };
++    
++    receiveCommand = function(arg0)
++    {
++        return commandSent == arg0;
++    };
++    
++    commandSent = UnknownEnum.Value_0;
++}
++inEndDraw = false;
 +onlinePlayers = undefined;
++
++enum UnknownEnum
++{
++    Value_0
++}
 --- original/gml_Object_oPauseMenu_Draw_0.gml
 +++ patched/gml_Object_oPauseMenu_Draw_0.gml
-@@ -34,8 +34,17 @@
+@@ -1,8 +1,16 @@
++if (menuType == 1 && !inEndDraw)
++{
++    exit;
++}
+ if (state == STATE_TERMINAL && substate == SUB_INIT)
+ {
+     draw_clear_alpha(c_black, 1);
+     exit;
+ }
++var _origFont = draw_get_font();
++var _origColor = draw_get_color();
++var _origHAlign = draw_get_halign();
++var _origVAlign = draw_get_valign();
+ var _xview = camera_get_view_x(view_get_camera(0));
+ var _yview = camera_get_view_y(view_get_camera(0));
+ var _xTip = _xview + 192;
+@@ -13,8 +21,14 @@
+     var TOP = _yview + 44;
+     var LEFT_TEXT_X = ((_xview + 192) - floor(MENU_WIDTH / 2)) + 16;
+     var RIGHT_TEXT_X = (_xview + 192 + floor(MENU_WIDTH / 2)) - 16;
+-    if (scrInGame())
++    if (menuType == 1)
+     {
++        draw_set_alpha(0.5);
++        draw_rectangle_color(_xview, _yview, _xview + 384, _yview + 216, c_black, c_black, c_black, c_black, 0);
++        draw_set_alpha(1);
++    }
++    else if (scrInGame())
++    {
+         scrFillScreen(0);
+         draw_sprite(sPauseMenuBG, 0, _xview, _yview);
+         draw_sprite(sPauseMenuBG, 1, _xview + 320, _yview);
+@@ -30,12 +44,28 @@
+         draw_sprite(sPauseMenuBG_LX, 1, _xview + 280, _yview);
+     }
+     scrDrawMenuBorderCentered(32, MENU_WIDTH, MENU_HEIGHT);
++    if (menuType == 1)
++    {
++        draw_set_color(c_white);
++    }
++    else
++    {
+     draw_set_color(global.palette[16]);
++    }
      scrSetFont(global.fontTall);
      scrDrawTextCentered(string_even(menuHeader, 3), _xview, _yview + 8, 8, 384);
      scrFontDefault();
@@ -4568,7 +5367,7 @@
      {
 +        scrSetFont(global.fontTall);
 +        draw_set_color(global.palette[0]);
-+        var _textLines = string_line_breaks("PLAYER " + ((pfo_client_get_player_index() == 1) ? "1" : "2") + " CHANGING LOCAL SETTINGS", 20, 2);
++        var _textLines = string_line_breaks("PLAYER " + string(player + 1) + " CHANGING LOCAL SETTINGS", 20, 2);
 +        draw_text_centered(_xview + 192, TOP + 48, _textLines[0], 8);
 +        draw_text_centered(_xview + 192, TOP + 64, _textLines[1], 8);
 +        scrFontDefault();
@@ -4578,7 +5377,7 @@
          var _yPos = TOP;
          for (var i = 0; i < array_length(itemType); i++)
          {
-@@ -128,8 +137,15 @@
+@@ -128,10 +158,17 @@
                  draw_rectangle(_xview + _selBarX, _yPos - 1, _xview + _selBarX + _selBarWidth, _yPos + _selBarHeight, 0);
                  if (_selBarIconID > -1)
                  {
@@ -4592,9 +5391,21 @@
                  }
 +                }
                  draw_set_color(global.palette[3]);
-                 if (itemType[menuSel] == TYPE_DUAL || itemType[menuSel] == TYPE_DUAL_INT || itemType[menuSel] == TYPE_PLAYER || itemType[menuSel] == TYPE_METER || itemType[menuSel] == TYPE_DUAL_CENTER)
+-                if (itemType[menuSel] == TYPE_DUAL || itemType[menuSel] == TYPE_DUAL_INT || itemType[menuSel] == TYPE_PLAYER || itemType[menuSel] == TYPE_METER || itemType[menuSel] == TYPE_DUAL_CENTER)
++                if (itemType[menuSel] == TYPE_DUAL || itemType[menuSel] == TYPE_DUAL_INT || itemType[menuSel] == TYPE_PLAYER || itemType[menuSel] == TYPE_METER || itemType[menuSel] == TYPE_DUAL_CENTER || itemType[menuSel] == TYPE_DUAL_ONLINE_PLAYER)
                  {
-@@ -269,7 +285,14 @@
+                     var _values = itemValues[i];
+                     if (array_length(_values) > 1)
+@@ -184,7 +221,7 @@
+                 }
+                 _yPos += 20;
+             }
+-            else if (itemType[i] == TYPE_DUAL || itemType[i] == TYPE_DUAL_INT)
++            else if (itemType[i] == TYPE_DUAL || itemType[i] == TYPE_DUAL_INT || itemType[i] == TYPE_DUAL_ONLINE_PLAYER)
+             {
+                 draw_text(LEFT_TEXT_X, _yPos, itemName[i]);
+                 var _index = itemIndex[i];
+@@ -269,7 +306,14 @@
              {
                  draw_text(LEFT_TEXT_X, _yPos, itemName[i]);
                  draw_set_halign(fa_right);
@@ -4609,7 +5420,7 @@
                  draw_set_halign(fa_left);
                  _yPos += 12;
              }
-@@ -292,6 +315,8 @@
+@@ -292,39 +336,41 @@
          }
          scrFontDefault();
      }
@@ -4617,8 +5428,49 @@
 +    {
      if (state == STATE_ROOT_LIBRARY || state == STATE_ROOT_GAME)
      {
-         if (scrInGame())
-@@ -334,7 +359,7 @@
+-        if (scrInGame())
++            if (menuType != 1 && scrInGame())
+         {
+             draw_set_color(global.palette[16]);
+         }
+-        scrDrawTextInput(_xTip, _yTip, scrStringVal("menu_tip_confirm", "[2]") + "    " + scrStringVal("menu_tip_back", "[1]"), 0, 0, 2);
++            scrDrawTextInput(_xTip, _yTip, scrStringValManual("menu_tip_confirm", 0, "[2]") + "    " + scrStringValManual("menu_tip_back", 0, "[1]"), 0, 0, 2);
+     }
+     if (state == STATE_OPTIONS)
+     {
+-        if (scrInGame())
++            if (menuType != 1 && scrInGame())
+         {
+             draw_set_color(global.palette[16]);
+         }
+-        scrDrawTextInput(_xTip, _yTip, scrStringVal("menu_tip_confirm", "[2]") + "    " + scrStringVal("menu_tip_back", "[1]"), 0, 0, 2);
++            scrDrawTextInput(_xTip, _yTip, scrStringValManual("menu_tip_confirm", 0, "[2]") + "    " + scrStringValManual("menu_tip_back", 0, "[1]"), 0, 0, 2);
+     }
+     if (state == STATE_VIDEO)
+     {
+         if (!global.ON_STEAM_DECK)
+         {
+-            if (scrInGame())
++                if (menuType != 1 && scrInGame())
+             {
+                 draw_set_color(global.palette[16]);
+             }
+-            scrDrawTextInput(_xTip, _yTip, scrStringVal("menu_tip_restore_defaults", "[F]"), 0, 1, 4);
++                scrDrawTextInput(_xTip, _yTip, scrStringValManual("menu_tip_restore_defaults", 0, "[F]"), 0, 1, 4);
+         }
+         else
+         {
+-            if (scrInGame())
++                if (menuType != 1 && scrInGame())
+             {
+                 draw_set_color(global.palette[16]);
+             }
+-            scrDrawTextInput(_xTip, _yTip, scrStringVal("menu_tip_confirm", "[2]") + "    " + scrStringVal("menu_tip_back", "[1]"), 0, 0, 2);
++                scrDrawTextInput(_xTip, _yTip, scrStringValManual("menu_tip_confirm", 0, "[2]") + "    " + scrStringValManual("menu_tip_back", 0, "[1]"), 0, 0, 2);
+         }
+         if (menuSel == OP_SCALE)
+         {
+@@ -334,93 +380,93 @@
              draw_sprite_ext(sMenuScaleCorner, 0, _xview + 384, _yview + 216, -1, -1, 0, c_white, 1);
          }
      }
@@ -4627,15 +5479,143 @@
      {
          if (!global.ON_STEAM_DECK)
          {
-@@ -440,6 +465,7 @@
+-            if (scrInGame())
++                if (menuType != 1 && scrInGame())
+             {
+                 draw_set_color(global.palette[16]);
+             }
+-            scrDrawTextInput(_xTip, _yTip, scrStringVal("menu_tip_restore_defaults", "[F]"), 0, 1, 4);
++                scrDrawTextInput(_xTip, _yTip, scrStringValManual("menu_tip_restore_defaults", 0, "[F]"), 0, 1, 4);
          }
-         scrDrawTextInput(_xTip, _yTip, scrStringVal("menu_tip_confirm", "[2]") + "    " + scrStringVal("menu_tip_back", "[1]"), 0, 0, 2);
+         else
+         {
+-            if (scrInGame())
++                if (menuType != 1 && scrInGame())
+             {
+                 draw_set_color(global.palette[16]);
+             }
+-            scrDrawTextInput(_xTip, _yTip, scrStringVal("menu_tip_confirm", "[2]") + "    " + scrStringVal("menu_tip_back", "[1]"), 0, 0, 2);
++                scrDrawTextInput(_xTip, _yTip, scrStringValManual("menu_tip_confirm", 0, "[2]") + "    " + scrStringValManual("menu_tip_back", 0, "[1]"), 0, 0, 2);
+         }
+     }
+     if (state == STATE_KEYCONFIG)
+     {
+         if (!global.ON_STEAM_DECK)
+         {
+-            if (scrInGame())
++                if (menuType != 1 && scrInGame())
+             {
+                 draw_set_color(global.palette[16]);
+             }
+-            scrDrawTextInput(_xTip, _yTip - 4, scrStringVal("menu_tip_change_key", "[e]"), 0, 1, 2);
+-            scrDrawTextInput(_xTip, _yTip + 4, scrStringVal("menu_tip_restore_defaults", "[F]"), 0, 1, 4);
++                scrDrawTextInput(_xTip, _yTip - 4, scrStringValManual("menu_tip_change_key", 0, "[e]"), 0, 1, 2);
++                scrDrawTextInput(_xTip, _yTip + 4, scrStringValManual("menu_tip_restore_defaults", 0, "[F]"), 0, 1, 4);
+         }
+         else
+         {
+-            if (scrInGame())
++                if (menuType != 1 && scrInGame())
+             {
+                 draw_set_color(global.palette[16]);
+             }
+-            scrDrawTextInput(_xTip, _yTip, scrStringVal("menu_tip_confirm", "[2]") + "    " + scrStringVal("menu_tip_back", "[1]"), 0, 0, 2);
++                scrDrawTextInput(_xTip, _yTip, scrStringValManual("menu_tip_confirm", 0, "[2]") + "    " + scrStringValManual("menu_tip_back", 0, "[1]"), 0, 0, 2);
+         }
+         if (substate == SUB_GET_KEY)
+         {
+             var tx = _xview + 192;
+             var ty = _yview + 108;
+             scrDrawMenuBorderCentered(80, 288, 48);
+-            scrDrawTextInput(tx, ty - 8, scrStringVal("menu_misc_key_waiting", strInput), 0, 0, 2);
++                scrDrawTextInput(tx, ty - 8, scrStringValManual("menu_misc_key_waiting", 0, strInput), 0, 0, 2);
+         }
+     }
+     if (state == STATE_JOYCONFIG)
+     {
+         if (global.inputFocus == 1)
+         {
+-            if (scrInGame())
++                if (menuType != 1 && scrInGame())
+             {
+                 draw_set_color(global.palette[16]);
+             }
+-            scrDrawTextInput(_xTip, _yTip - 4, scrStringVal("menu_tip_change_button", "[e]"), 0, 1, 2);
+-            scrDrawTextInput(_xTip, _yTip + 4, scrStringVal("menu_tip_restore_defaults", "[F]"), 0, 1, 4);
++                scrDrawTextInput(_xTip, _yTip - 4, scrStringValManual("menu_tip_change_button", 0, "[e]"), 0, 1, 2);
++                scrDrawTextInput(_xTip, _yTip + 4, scrStringValManual("menu_tip_restore_defaults", 0, "[F]"), 0, 1, 4);
+         }
+         else if (global.inputFocus == 2)
+         {
+-            if (scrInGame())
++                if (menuType != 1 && scrInGame())
+             {
+                 draw_set_color(global.palette[16]);
+             }
+-            var _len = string_length(scrString("menu_tip_restore_joy_defaults"));
+-            if (player < 0 || player > 1)
++                var _len = string_length(scrStringManual("menu_tip_restore_joy_defaults", 0));
++                if (player < 0 || player >= array_length(global.joyType))
+             {
+-                draw_text_with_sprites(_xTip - floor((8 * _len) / 2), _yTip, scrString("menu_tip_restore_joy_defaults"), global.JOY_TYPE_SPRITE[global.joyType[0]], 8, global.JOY_TYPE_SPRITE[global.joyType[0]], 9);
++                    draw_text_with_sprites(_xTip - floor((8 * _len) / 2), _yTip, scrStringManual("menu_tip_restore_joy_defaults", 0), global.JOY_TYPE_SPRITE[global.joyType[0]], 8, global.JOY_TYPE_SPRITE[global.joyType[0]], 9);
+             }
+             else
+             {
+-                draw_text_with_sprites(_xTip - floor((8 * _len) / 2), _yTip, scrString("menu_tip_restore_joy_defaults"), global.JOY_TYPE_SPRITE[global.joyType[player]], 8, global.JOY_TYPE_SPRITE[global.joyType[player]], 9);
++                    draw_text_with_sprites(_xTip - floor((8 * _len) / 2), _yTip, scrStringManual("menu_tip_restore_joy_defaults", 0), global.JOY_TYPE_SPRITE[global.joyType[player]], 8, global.JOY_TYPE_SPRITE[global.joyType[player]], 9);
+             }
+         }
+         else
+         {
+-            if (scrInGame())
++                if (menuType != 1 && scrInGame())
+             {
+                 draw_set_color(global.palette[16]);
+             }
+-            scrDrawTextInput(_xTip, _yTip, scrStringVal("menu_tip_confirm", "[2]") + "    " + scrStringVal("menu_tip_back", "[1]"), 0, 0, 2);
++                scrDrawTextInput(_xTip, _yTip, scrStringValManual("menu_tip_confirm", 0, "[2]") + "    " + scrStringValManual("menu_tip_back", 0, "[1]"), 0, 0, 2);
+         }
+         if (substate == SUB_GET_JOY)
+         {
+             var tx = _xview + 192;
+             var ty = _yview + 108;
+             scrDrawMenuBorderCentered(80, 288, 48);
+-            scrDrawTextInput(tx, ty - 8, scrStringVal("menu_misc_joy_waiting", strInput), 0, 0, 2);
++                scrDrawTextInput(tx, ty - 8, scrStringValManual("menu_misc_joy_waiting", 0, strInput), 0, 0, 2);
+         }
+         if (substate == SUB_GET_SLOT)
+         {
+@@ -434,12 +480,13 @@
+     }
+     if (state == STATE_BUTTON_LAYOUT)
+     {
+-        if (scrInGame())
++            if (menuType != 1 && scrInGame())
+         {
+             draw_set_color(global.palette[16]);
+         }
+-        scrDrawTextInput(_xTip, _yTip, scrStringVal("menu_tip_confirm", "[2]") + "    " + scrStringVal("menu_tip_back", "[1]"), 0, 0, 2);
++            scrDrawTextInput(_xTip, _yTip, scrStringValManual("menu_tip_confirm", 0, "[2]") + "    " + scrStringValManual("menu_tip_back", 0, "[1]"), 0, 0, 2);
      }
 +    }
      if (state == STATE_MILESTONES)
      {
          var MILES_GAP = 32;
-@@ -496,10 +522,13 @@
+@@ -485,21 +532,24 @@
+             }
+         }
+         draw_set_color(c_white);
+-        draw_text_centered(_xTip, _yTip, scrStringVal("menu_misc_attained", milestonesAchieved, global.ACH_TOTAL), 8);
++        draw_text_centered(_xTip, _yTip, scrStringValManual("menu_misc_attained", 0, milestonesAchieved, global.ACH_TOTAL), 8);
+     }
+     if (state == STATE_GAMEINFO)
+     {
+         var _infoY = 0;
+         for (var i = 0; i <= (array_length(ctrlContent) - 1); i++)
+         {
+-            scrDrawTextInput(LEFT_TEXT_X, TOP + _infoY, ctrlContent[i], player, 0, 0);
++            scrDrawTextInput(LEFT_TEXT_X, TOP + _infoY, ctrlContent[i], max(0, player), 0, 0);
              _infoY += 8;
          }
      }
@@ -4643,26 +5623,144 @@
 +    {
      if (state == STATE_PROFILESET)
      {
-         scrDrawTextInput(_xTip, _yTip, scrStringVal("menu_tip_confirm", "[2]") + "    " + scrStringVal("menu_tip_back", "[1]"), 0, 0, 2);
+-        scrDrawTextInput(_xTip, _yTip, scrStringVal("menu_tip_confirm", "[2]") + "    " + scrStringVal("menu_tip_back", "[1]"), 0, 0, 2);
++            scrDrawTextInput(_xTip, _yTip, scrStringValManual("menu_tip_confirm", 0, "[2]") + "    " + scrStringValManual("menu_tip_back", 0, "[1]"), 0, 0, 2);
      }
 +    }
      if (state == STATE_NAME)
      {
          if (global.language == global.LANG_JAPANESE)
-@@ -593,7 +622,10 @@
+@@ -593,9 +643,12 @@
              draw_sprite(sMenuHand, 0, ((_xview + tx) - 24) + (charSpaceH * nameSelX), _yview + ty + 1 + (16 * nameSelY));
          }
          scrFontDefault();
+-        scrDrawTextInput(_xTip, _yTip, scrStringVal("menu_tip_cancel", "[1]"), 0, 0, 2);
 +        if (!localInputDisabled())
 +        {
-         scrDrawTextInput(_xTip, _yTip, scrStringVal("menu_tip_cancel", "[1]"), 0, 0, 2);
-+        }
++            scrDrawTextInput(_xTip, _yTip, scrStringValManual("menu_tip_cancel", 0, "[1]"), 0, 0, 2);
      }
  }
++}
  if (state == STATE_TERMINAL)
+ {
+     scrFillScreen(0);
+@@ -635,24 +688,24 @@
+             {
+                 if (global.currGameID == 49 && global.cheatID == 3)
+                 {
+-                    draw_text(_x, _y, "[ " + scrStringManual("game_internal_name_color_racer", 0) + scrString("term_info_file_extension") + " ]");
++                    draw_text(_x, _y, "[ " + scrStringManual("game_internal_name_color_racer", 0) + scrStringManual("term_info_file_extension", 0) + " ]");
+                 }
+                 else if (global.currGameID == 3 && global.cheatID == 2)
+                 {
+-                    draw_text(_x, _y, "[ " + scrStringManual("game_internal_name_hover", 0) + scrString("term_info_file_extension") + " ]");
++                    draw_text(_x, _y, "[ " + scrStringManual("game_internal_name_hover", 0) + scrStringManual("term_info_file_extension", 0) + " ]");
+                 }
+                 else if (global.currGameID == 35 && global.cheatID == 3)
+                 {
+-                    draw_text(_x, _y, "[ " + scrStringManual("game_internal_name_godsblood", 0) + scrString("term_info_file_extension") + " ]");
++                    draw_text(_x, _y, "[ " + scrStringManual("game_internal_name_godsblood", 0) + scrStringManual("term_info_file_extension", 0) + " ]");
+                 }
+                 else
+                 {
+-                    draw_text(_x, _y, "[ " + scrStringManual("game_internal_name_" + string(global.currGameID), 0) + scrString("term_info_file_extension") + " ]");
++                    draw_text(_x, _y, "[ " + scrStringManual("game_internal_name_" + string(global.currGameID), 0) + scrStringManual("term_info_file_extension", 0) + " ]");
+                 }
+             }
+             else
+             {
+-                draw_text(_x, _y, "[ " + scrStringManual("game_internal_name_0", 0) + scrString("term_info_file_extension") + " ]");
++                draw_text(_x, _y, "[ " + scrStringManual("game_internal_name_0", 0) + scrStringManual("term_info_file_extension", 0) + " ]");
+             }
+         }
+         var _currPage = memoryOutput[pageNum];
+@@ -737,3 +790,7 @@
+         draw_sprite(sMenuHand, 0, ((_xview + tx) - 24) + (charSpaceH * termSelX), _yview + ty + 1 + (16 * termSelY));
+     }
+ }
++scrSetFont(_origFont);
++draw_set_color(_origColor);
++draw_set_halign(_origHAlign);
++draw_set_valign(_origVAlign);
 --- original/gml_Object_oPauseMenu_Other_10.gml
 +++ patched/gml_Object_oPauseMenu_Other_10.gml
-@@ -82,6 +82,16 @@
+@@ -13,13 +13,13 @@
+         pauseSoundTrig = true;
+     }
+     drawMenu = true;
+-    scrMenuCreate(scrString("menu_head_root"), 0);
+-    if (profileOpen)
++    scrMenuCreate(scrStringManual("menu_head_root", 0), 0);
++    if (profileOpen && menuType == 0)
+     {
+         if (!global.arcadeCabinetMode || global.arcadeCabinetConfig)
+         {
+-            OP_OPTIONS = scrMenuItem(TYPE_SINGLE, scrString("menu_item_options"));
+-            OP_PROSET = scrMenuItem(TYPE_SINGLE, scrString("menu_item_profile_settings"));
++            OP_OPTIONS = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_options", 0));
++            OP_PROSET = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_profile_settings", 0));
+         }
+         else
+         {
+@@ -28,31 +28,48 @@
+             scrMenuSpacer(MENU_BIG_SPACER);
+             scrMenuSpacer(MENU_BIG_SPACER);
+         }
+-        OP_TERMINAL = scrMenuItem(TYPE_SINGLE, scrString("menu_item_ufo_terminal"));
++        OP_TERMINAL = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_ufo_terminal", 0));
+         scrMenuSpacer(MENU_BIG_SPACER);
+-        OP_LIBRARY = scrMenuItem(TYPE_SINGLE, scrString("menu_item_back_to_library"));
++        var _hideSwitchProfile = pfo_is_online() && pfo_player_get_client_index(player) != 0;
++        if (!global.arcadeCabinetMode && _hideSwitchProfile)
++        {
++            OP_PROFILE = -1;
++            scrMenuSpacer(MENU_BIG_SPACER);
++        }
++        OP_LIBRARY = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_back_to_library", 0));
+         if (!global.arcadeCabinetMode)
+         {
+-            OP_PROFILE = scrMenuItem(TYPE_SINGLE, scrString("menu_item_switch_profile"));
++            if (!_hideSwitchProfile)
++            {
++                OP_PROFILE = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_switch_profile", 0));
+         }
++        }
+         else
+         {
+             OP_PROFILE = -1;
+             scrMenuSpacer(MENU_BIG_SPACER);
+         }
+-        OP_QUIT = scrMenuItem(TYPE_SINGLE_CONFIRM, scrString("menu_item_quit"), scrString("menu_item_quit_confirm"));
++        OP_QUIT = scrMenuItem(TYPE_SINGLE_CONFIRM, scrStringManual("menu_item_quit", 0), scrStringManual("menu_item_quit_confirm", 0));
+         OP_LANGUAGE = -1;
+         OP_MILESTONES = -1;
+     }
+     else
+     {
+-        OP_OPTIONS = scrMenuItem(TYPE_SINGLE, scrString("menu_item_options"));
+-        OP_MILESTONES = scrMenuItem(TYPE_SINGLE, scrString("menu_item_view_milestones"));
+-        OP_LANGUAGE = scrMenuItem(TYPE_SINGLE, scrString("menu_item_change_language"));
++        OP_OPTIONS = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_options", 0));
++        OP_MILESTONES = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_view_milestones", 0));
++        if (menuType == 0)
++        {
++            OP_LANGUAGE = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_change_language", 0));
++        }
++        else
++        {
++            OP_LANGUAGE = -1;
+         scrMenuSpacer(MENU_BIG_SPACER);
++        }
+         scrMenuSpacer(MENU_BIG_SPACER);
+-        OP_LIBRARY = scrMenuItem(TYPE_SINGLE, scrString("menu_item_resume"));
+-        OP_QUIT = scrMenuItem(TYPE_SINGLE_CONFIRM, scrString("menu_item_quit"), scrString("menu_item_quit_confirm"));
++        scrMenuSpacer(MENU_BIG_SPACER);
++        OP_LIBRARY = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_resume", 0));
++        OP_QUIT = scrMenuItem(TYPE_SINGLE_CONFIRM, scrStringManual("menu_item_quit", 0), scrStringManual("menu_item_quit_confirm", 0));
+         OP_PROSET = -1;
+         OP_PROFILE = -1;
+         OP_TERMINAL = -1;
+@@ -82,6 +99,16 @@
  }
  else if (substate == SUB_NAV)
  {
@@ -4673,28 +5771,19 @@
 +    }
 +    else
 +    {
-+        itemName[OP_QUIT] = scrString("menu_item_quit");
-+        itemValues[OP_QUIT][0] = scrString("menu_item_quit_confirm");
++        itemName[OP_QUIT] = scrStringManual("menu_item_quit", 0);
++        itemValues[OP_QUIT][0] = scrStringManual("menu_item_quit_confirm", 0);
 +    }
      var choice = scrMenuNavigation();
      if (choice == -2)
      {
-@@ -134,7 +144,23 @@
+@@ -134,7 +161,14 @@
                  }
                  break;
              case OP_QUIT:
 +                if (pfo_is_online())
 +                {
-+                    scrUnpause();
-+                    scrCloseProfile();
-+                    pfo_reset();
-+                    scrOnlineCleanup();
-+                    with (oLibrary)
-+                    {
-+                        scrSfxLibrary(soundTitleConfirm);
-+                        scrSwitchState(STATE_LOGO);
-+                        event_perform(ev_step, ev_step_begin);
-+                    }
++                    scrOnlineCleanup(true);
 +                }
 +                else
 +                {
@@ -4703,13 +5792,72 @@
                  break;
          }
      }
+--- original/gml_Object_oPauseMenu_Other_11.gml
++++ patched/gml_Object_oPauseMenu_Other_11.gml
+@@ -8,11 +8,11 @@
+         pauseSoundTrig = true;
+     }
+     drawMenu = true;
+-    scrMenuCreate(scrString("menu_head_root"), 0);
++    scrMenuCreate(scrStringManual("menu_head_root", 0), 0);
+     if (!global.arcadeCabinetMode || global.arcadeCabinetConfig)
+     {
+-        OP_OPTIONS = scrMenuItem(TYPE_SINGLE, scrString("menu_item_options"));
+-        OP_GAMEINFO = scrMenuItem(TYPE_SINGLE, scrString("menu_head_game_info"));
++        OP_OPTIONS = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_options", 0));
++        OP_GAMEINFO = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_head_game_info", 0));
+         OP_PROSET = -1;
+     }
+     else
+@@ -23,11 +23,11 @@
+         scrMenuSpacer(MENU_BIG_SPACER);
+         scrMenuSpacer(MENU_BIG_SPACER);
+     }
+-    OP_TERMINAL = scrMenuItem(TYPE_SINGLE, scrString("menu_item_ufo_terminal"));
++    OP_TERMINAL = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_ufo_terminal", 0));
+     scrMenuSpacer(MENU_BIG_SPACER);
+-    OP_RESUME = scrMenuItem(TYPE_SINGLE, scrString("menu_item_resume_game"));
+-    OP_RESET = scrMenuItem(TYPE_SINGLE_CONFIRM, scrString("menu_item_reset"), scrString("menu_item_reset_confirm"));
+-    OP_LIBRARY = scrMenuItem(TYPE_SINGLE_CONFIRM, scrString("menu_item_back_to_library"), scrString("menu_item_back_to_library_confirm"));
++    OP_RESUME = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_resume_game", 0));
++    OP_RESET = scrMenuItem(TYPE_SINGLE_CONFIRM, scrStringManual("menu_item_reset", 0), scrStringManual("menu_item_reset_confirm", 0));
++    OP_LIBRARY = scrMenuItem(TYPE_SINGLE_CONFIRM, scrStringManual("menu_item_back_to_library", 0), scrStringManual("menu_item_back_to_library_confirm", 0));
+     menuSel = OP_RESUME;
+     if (statePrev == STATE_TERMINAL)
+     {
 --- original/gml_Object_oPauseMenu_Other_12.gml
 +++ patched/gml_Object_oPauseMenu_Other_12.gml
-@@ -36,32 +36,33 @@
+@@ -20,48 +20,49 @@
+ else if (substate == SUB_INIT)
+ {
+     drawMenu = true;
+-    scrMenuCreate(scrString("menu_head_keyboard_config"), menuSel);
+-    OP_PLAYER = scrMenuItem(TYPE_PLAYER, scrString("menu_item_player"), currPlayer);
+-    OP_UP = scrMenuItem(TYPE_DUAL_KEY, scrString("menu_item_up"), 0, keyMap[currPlayer][global.INP_UP]);
+-    OP_DOWN = scrMenuItem(TYPE_DUAL_KEY, scrString("menu_item_down"), 0, keyMap[currPlayer][global.INP_DOWN]);
+-    OP_LEFT = scrMenuItem(TYPE_DUAL_KEY, scrString("menu_item_left"), 0, keyMap[currPlayer][global.INP_LEFT]);
+-    OP_RIGHT = scrMenuItem(TYPE_DUAL_KEY, scrString("menu_item_right"), 0, keyMap[currPlayer][global.INP_RIGHT]);
+-    OP_FIRE1 = scrMenuItem(TYPE_DUAL_KEY, scrStringVal("menu_item_fire1", "{1}"), 0, keyMap[currPlayer][global.INP_FIRE1]);
+-    OP_FIRE2 = scrMenuItem(TYPE_DUAL_KEY, scrStringVal("menu_item_fire2", "{2}"), 0, keyMap[currPlayer][global.INP_FIRE2]);
+-    OP_START = scrMenuItem(TYPE_DUAL_KEY, scrString("menu_item_start"), 0, keyMap[currPlayer][global.INP_START]);
++    scrMenuCreate(scrStringManual("menu_head_keyboard_config", 0), menuSel);
++    OP_PLAYER = scrMenuItem(TYPE_PLAYER, scrStringManual("menu_item_player", 0), currPlayer);
++    OP_UP = scrMenuItem(TYPE_DUAL_KEY, scrStringManual("menu_item_up", 0), 0, keyMap[currPlayer][global.INP_UP]);
++    OP_DOWN = scrMenuItem(TYPE_DUAL_KEY, scrStringManual("menu_item_down", 0), 0, keyMap[currPlayer][global.INP_DOWN]);
++    OP_LEFT = scrMenuItem(TYPE_DUAL_KEY, scrStringManual("menu_item_left", 0), 0, keyMap[currPlayer][global.INP_LEFT]);
++    OP_RIGHT = scrMenuItem(TYPE_DUAL_KEY, scrStringManual("menu_item_right", 0), 0, keyMap[currPlayer][global.INP_RIGHT]);
++    OP_FIRE1 = scrMenuItem(TYPE_DUAL_KEY, scrStringValManual("menu_item_fire1", 0, "{1}"), 0, keyMap[currPlayer][global.INP_FIRE1]);
++    OP_FIRE2 = scrMenuItem(TYPE_DUAL_KEY, scrStringValManual("menu_item_fire2", 0, "{2}"), 0, keyMap[currPlayer][global.INP_FIRE2]);
++    OP_START = scrMenuItem(TYPE_DUAL_KEY, scrStringManual("menu_item_start", 0), 0, keyMap[currPlayer][global.INP_START]);
+     scrMenuSpacer(MENU_MEDIUM_SPACER);
+     scrMenuSpacer(MENU_MEDIUM_SPACER);
+-    OP_BACK = scrMenuItem(TYPE_SINGLE, scrString("menu_item_back_to_settings"));
++    OP_BACK = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_back_to_settings", 0));
+     scrSwitchSub(SUB_NAV);
  }
  else if (substate == SUB_NAV)
  {
-+    if (!pfo_send_command_in_progress() && !localInputDisabled())
++    if (!sendCommandInProgress() && !localInputDisabled())
 +    {
      var choice = scrMenuNavigation();
      if (choice == -2)
@@ -4717,14 +5865,14 @@
 -        scrSfxLibrary(soundSubExit[currentSoundSet]);
 -        scrSwitchState(statePrev);
 -        exit;
-+            pfo_send_command(UnknownEnum.Value_1);
++            sendCommand(UnknownEnum.Value_1);
      }
 -    if (pressStart)
 +        else if (pressStart)
      {
 -        scrSwitchState(STATE_UNPAUSE);
 -        exit;
-+            pfo_send_command(UnknownEnum.Value_2);
++            sendCommand(UnknownEnum.Value_2);
      }
 -    if (keyboard_check_pressed(vk_f1))
 +        else if (keyboard_check_pressed(vk_f1))
@@ -4752,18 +5900,18 @@
                  scrSwitchSub(SUB_GET_KEY);
                  break;
              case OP_BACK:
-+                    pfo_send_command(UnknownEnum.Value_1);
++                    sendCommand(UnknownEnum.Value_1);
 +                    break;
 +            }
 +        }
 +    }
-+    if (pfo_receive_command(UnknownEnum.Value_1))
++    if (receiveCommand(UnknownEnum.Value_1))
 +    {
                  scrSfxLibrary(soundSubExit[currentSoundSet]);
                  scrSwitchState(statePrev);
 -                break;
          }
-+    else if (pfo_receive_command(UnknownEnum.Value_2))
++    else if (receiveCommand(UnknownEnum.Value_2))
 +    {
 +        scrSwitchState(STATE_UNPAUSE);
      }
@@ -4782,30 +5930,77 @@
  }
 --- original/gml_Object_oPauseMenu_Other_13.gml
 +++ patched/gml_Object_oPauseMenu_Other_13.gml
-@@ -75,6 +75,8 @@
+@@ -36,23 +36,23 @@
+     gamepadConnect[0] = gamepad_is_connected(global.joySlot[0]);
+     gamepadConnect[1] = gamepad_is_connected(global.joySlot[1]);
+     drawMenu = true;
+-    scrMenuCreate(scrString("menu_head_joypad_config"), menuSel);
+-    OP_PLAYER = scrMenuItem(TYPE_PLAYER, scrString("menu_item_player"), currPlayer);
++    scrMenuCreate(scrStringManual("menu_head_joypad_config", 0), menuSel);
++    OP_PLAYER = scrMenuItem(TYPE_PLAYER, scrStringManual("menu_item_player", 0), currPlayer);
+     if (gamepadConnect[currPlayer])
+     {
+-        OP_SLOT = scrMenuItem(TYPE_DUAL_DETECT, scrString("menu_item_joypad_pairing"), 0, scrStringVal("menu_op_pad_num", global.joySlot[currPlayer]));
+-        OP_CONTROLLER = scrMenuItem(TYPE_DUAL, scrString("menu_item_controller_type"), global.joyType[currPlayer], global.JOY_TYPE_NAME);
+-        OP_UP = scrMenuItem(TYPE_DUAL_JOY, scrString("menu_item_up"), 0, joyMap[currPlayer][global.INP_UP]);
+-        OP_DOWN = scrMenuItem(TYPE_DUAL_JOY, scrString("menu_item_down"), 0, joyMap[currPlayer][global.INP_DOWN]);
+-        OP_LEFT = scrMenuItem(TYPE_DUAL_JOY, scrString("menu_item_left"), 0, joyMap[currPlayer][global.INP_LEFT]);
+-        OP_RIGHT = scrMenuItem(TYPE_DUAL_JOY, scrString("menu_item_right"), 0, joyMap[currPlayer][global.INP_RIGHT]);
+-        OP_FIRE1 = scrMenuItem(TYPE_DUAL_JOY, scrStringVal("menu_item_fire1", "{1}"), 0, joyMap[currPlayer][global.INP_FIRE1]);
+-        OP_FIRE2 = scrMenuItem(TYPE_DUAL_JOY, scrStringVal("menu_item_fire2", "{2}"), 0, joyMap[currPlayer][global.INP_FIRE2]);
+-        OP_START = scrMenuItem(TYPE_DUAL_JOY, scrString("menu_item_start"), 0, joyMap[currPlayer][global.INP_START]);
++        OP_SLOT = scrMenuItem(TYPE_DUAL_DETECT, scrStringManual("menu_item_joypad_pairing", 0), 0, scrStringValManual("menu_op_pad_num", 0, global.joySlot[currPlayer]));
++        OP_CONTROLLER = scrMenuItem(TYPE_DUAL, scrStringManual("menu_item_controller_type", 0), global.joyType[currPlayer], global.JOY_TYPE_NAME);
++        OP_UP = scrMenuItem(TYPE_DUAL_JOY, scrStringManual("menu_item_up", 0), 0, joyMap[currPlayer][global.INP_UP]);
++        OP_DOWN = scrMenuItem(TYPE_DUAL_JOY, scrStringManual("menu_item_down", 0), 0, joyMap[currPlayer][global.INP_DOWN]);
++        OP_LEFT = scrMenuItem(TYPE_DUAL_JOY, scrStringManual("menu_item_left", 0), 0, joyMap[currPlayer][global.INP_LEFT]);
++        OP_RIGHT = scrMenuItem(TYPE_DUAL_JOY, scrStringManual("menu_item_right", 0), 0, joyMap[currPlayer][global.INP_RIGHT]);
++        OP_FIRE1 = scrMenuItem(TYPE_DUAL_JOY, scrStringValManual("menu_item_fire1", 0, "{1}"), 0, joyMap[currPlayer][global.INP_FIRE1]);
++        OP_FIRE2 = scrMenuItem(TYPE_DUAL_JOY, scrStringValManual("menu_item_fire2", 0, "{2}"), 0, joyMap[currPlayer][global.INP_FIRE2]);
++        OP_START = scrMenuItem(TYPE_DUAL_JOY, scrStringManual("menu_item_start", 0), 0, joyMap[currPlayer][global.INP_START]);
+     }
+     else
+     {
+-        OP_SLOT = scrMenuItem(TYPE_DUAL_DETECT, scrString("menu_item_joypad_pairing"), 0, "NONE");
++        OP_SLOT = scrMenuItem(TYPE_DUAL_DETECT, scrStringManual("menu_item_joypad_pairing", 0), 0, "NONE");
+         scrMenuSpacer(MENU_MEDIUM_SPACER);
+         scrMenuSpacer(MENU_MEDIUM_SPACER);
+         scrMenuSpacer(MENU_MEDIUM_SPACER);
+@@ -70,39 +70,39 @@
+         OP_FIRE2 = -1;
+         OP_START = -1;
+     }
+-    OP_BACK = scrMenuItem(TYPE_SINGLE, scrString("menu_item_back_to_settings"));
++    OP_BACK = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_back_to_settings", 0));
+     scrSwitchSub(SUB_NAV);
  }
  else if (substate == SUB_NAV)
  {
-+    if (!pfo_send_command_in_progress() && !localInputDisabled())
++    if (!sendCommandInProgress() && !localInputDisabled())
 +    {
      if (scrGetJoyCount() != padCount)
      {
          scrFixJoyDisconnect();
-@@ -86,21 +88,19 @@
+-        player = 2;
+-        joySlot = global.joySlot[0];
++            player = -1;
+         scrSwitchSub(SUB_INIT);
+         exit;
+     }
      var choice = scrMenuNavigation();
      if (choice == -2)
      {
 -        scrSfxLibrary(soundSubExit[currentSoundSet]);
 -        scrSwitchState(statePrev);
 -        exit;
-+            pfo_send_command(UnknownEnum.Value_1);
++            sendCommand(UnknownEnum.Value_1);
      }
 -    if (pressStart)
 +        else if (pressStart)
      {
 -        scrSwitchState(STATE_UNPAUSE);
 -        exit;
-+            pfo_send_command(UnknownEnum.Value_2);
++            sendCommand(UnknownEnum.Value_2);
      }
 -    if (keyboard_check_pressed(vk_f1))
 +        else if (keyboard_check_pressed(vk_f1))
@@ -4814,12 +6009,16 @@
          scrSwitchSub(SUB_RESET);
 -        exit;
      }
+-    if (gamepad_button_check(joySlot, gp_shoulderl) && gamepad_button_check(joySlot, gp_shoulderr))
 +        else
-+        {
-     if (gamepad_button_check(joySlot, gp_shoulderl) && gamepad_button_check(joySlot, gp_shoulderr))
      {
++            var _joySlot = global.joySlot[max(0, player)];
++            if (gamepad_button_check(_joySlot, gp_shoulderl) && gamepad_button_check(_joySlot, gp_shoulderr))
++            {
          resetCounter++;
-@@ -114,16 +114,18 @@
+     }
+     else
+@@ -114,20 +114,22 @@
          resetCounter = 0;
          scrSfxLibrary(soundSet[currentSoundSet]);
          scrSwitchSub(SUB_RESET);
@@ -4840,29 +6039,47 @@
                  break;
              case OP_SLOT:
                  scrSfxLibrary(soundPrime[currentSoundSet]);
+-                strInput = scrStringVal("menu_misc_joy_assign", currPlayer + 1);
++                        strInput = scrStringValManual("menu_misc_joy_assign", 0, currPlayer + 1);
+                 scrSwitchSub(SUB_GET_SLOT);
+                 break;
+             case OP_CONTROLLER:
 @@ -147,10 +149,20 @@
                  scrSwitchSub(SUB_GET_JOY);
                  break;
              case OP_BACK:
-+                        pfo_send_command(UnknownEnum.Value_1);
++                        sendCommand(UnknownEnum.Value_1);
 +                        break;
 +                }
 +            }
 +        }
 +    }
-+    if (pfo_receive_command(UnknownEnum.Value_1))
++    if (receiveCommand(UnknownEnum.Value_1))
 +    {
                  scrSfxLibrary(soundSubExit[currentSoundSet]);
                  scrSwitchState(statePrev);
 -                break;
          }
-+    else if (pfo_receive_command(UnknownEnum.Value_2))
++    else if (receiveCommand(UnknownEnum.Value_2))
 +    {
 +        scrSwitchState(STATE_UNPAUSE);
      }
  }
  else if (substate == SUB_GET_JOY)
-@@ -375,4 +387,10 @@
+@@ -363,11 +375,7 @@
+             {
+                 global.joySlot[!currPlayer] = _oldSlot;
+             }
+-            if (player != 2)
+-            {
+-                player = 2;
+-                joySlot = global.joySlot[0];
+-            }
++            player = -1;
+             stateCounter = 2;
+         }
+     }
+@@ -375,4 +383,10 @@
      {
          scrSwitchSub(SUB_INIT);
      }
@@ -4875,11 +6092,40 @@
  }
 --- original/gml_Object_oPauseMenu_Other_14.gml
 +++ patched/gml_Object_oPauseMenu_Other_14.gml
-@@ -37,30 +37,27 @@
+@@ -7,7 +7,7 @@
+ {
+     prevFullScreen = window_get_fullscreen();
+     drawMenu = true;
+-    scrMenuCreate(scrString("menu_head_video_settings"), 0);
++    scrMenuCreate(scrStringManual("menu_head_video_settings", 0), 0);
+     delayLenShort = 8;
+     delayLenLong = 22;
+     delayCenterWindow = 20;
+@@ -21,9 +21,9 @@
+     {
+         _dispIndex = 0;
+     }
+-    OP_DISPLAY = scrMenuItem(TYPE_DUAL, scrString("menu_item_display"), _dispIndex, scrString("menu_op_windowed"), scrString("menu_op_fullscreen"), scrString("menu_op_borderless"));
+-    OP_SCALE = scrMenuItem(TYPE_DUAL_INT, scrString("menu_item_scale"), global.scale - 1, 1, (global.scaleFill <= global.scaleMax) ? global.scaleMax : (global.scaleMax + 1), scrString("menu_op_scale_fill"));
+-    OP_CRT = scrMenuItem(TYPE_DUAL, scrString("menu_item_crt"), global.scanlines, scrString("menu_op_off"), scrString("menu_op_crt_half"), scrString("menu_op_crt_full"));
++    OP_DISPLAY = scrMenuItem(TYPE_DUAL, scrStringManual("menu_item_display", 0), _dispIndex, scrStringManual("menu_op_windowed", 0), scrStringManual("menu_op_fullscreen", 0), scrStringManual("menu_op_borderless", 0));
++    OP_SCALE = scrMenuItem(TYPE_DUAL_INT, scrStringManual("menu_item_scale", 0), global.scale - 1, 1, (global.scaleFill <= global.scaleMax) ? global.scaleMax : (global.scaleMax + 1), scrStringManual("menu_op_scale_fill", 0));
++    OP_CRT = scrMenuItem(TYPE_DUAL, scrStringManual("menu_item_crt", 0), global.scanlines, scrStringManual("menu_op_off", 0), scrStringManual("menu_op_crt_half", 0), scrStringManual("menu_op_crt_full", 0));
+     scrMenuSpacer(MENU_MEDIUM_SPACER);
+     scrMenuSpacer(MENU_MEDIUM_SPACER);
+     scrMenuSpacer(MENU_MEDIUM_SPACER);
+@@ -31,36 +31,33 @@
+     scrMenuSpacer(MENU_MEDIUM_SPACER);
+     scrMenuSpacer(MENU_MEDIUM_SPACER);
+     scrMenuSpacer(MENU_MEDIUM_SPACER);
+-    OP_BACK = scrMenuItem(TYPE_SINGLE, scrString("menu_item_back_to_settings"));
++    OP_BACK = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_back_to_settings", 0));
+     menuSel = OP_DISPLAY;
+     scrSwitchSub(SUB_NAV);
  }
  else if (substate == SUB_NAV)
  {
-+    if (!pfo_send_command_in_progress() && !localInputDisabled())
++    if (!sendCommandInProgress() && !localInputDisabled())
 +    {
      var choice = scrMenuNavigation();
      if (prevFullScreen != window_get_fullscreen())
@@ -4893,14 +6139,14 @@
 -        scrSfxLibrary(soundSubExit[currentSoundSet]);
 -        scrSwitchState(statePrev);
 -        exit;
-+            pfo_send_command(UnknownEnum.Value_1);
++            sendCommand(UnknownEnum.Value_1);
      }
 -    if (pressStart)
 +        else if (pressStart)
      {
 -        scrSwitchState(STATE_UNPAUSE);
 -        exit;
-+            pfo_send_command(UnknownEnum.Value_2);
++            sendCommand(UnknownEnum.Value_2);
      }
 -    if (keyboard_check_pressed(vk_f1))
 +        else if (keyboard_check_pressed(vk_f1))
@@ -4918,18 +6164,18 @@
                  scrSwitchSub(SUB_DELAY);
                  break;
              case OP_BACK:
-+                    pfo_send_command(UnknownEnum.Value_1);
++                    sendCommand(UnknownEnum.Value_1);
 +                    break;
 +            }
 +        }
 +    }
-+    if (pfo_receive_command(UnknownEnum.Value_1))
++    if (receiveCommand(UnknownEnum.Value_1))
 +    {
                  scrSfxLibrary(soundSubExit[currentSoundSet]);
                  scrSwitchState(statePrev);
 -                break;
          }
-+    else if (pfo_receive_command(UnknownEnum.Value_2))
++    else if (receiveCommand(UnknownEnum.Value_2))
 +    {
 +        scrSwitchState(STATE_UNPAUSE);
      }
@@ -4948,11 +6194,32 @@
  }
 --- original/gml_Object_oPauseMenu_Other_15.gml
 +++ patched/gml_Object_oPauseMenu_Other_15.gml
-@@ -21,25 +21,23 @@
+@@ -5,10 +5,10 @@
+ if (substate == SUB_INIT)
+ {
+     drawMenu = true;
+-    scrMenuCreate(scrString("menu_head_audio_settings"), 0);
+-    OP_SOUND = scrMenuItem(TYPE_DUAL, scrString("menu_item_sound"), global.AUDIO_SFX_TOGGLE, scrString("menu_op_off"), scrString("menu_op_on"));
+-    OP_MUSIC = scrMenuItem(TYPE_DUAL, scrString("menu_item_music"), global.AUDIO_BGM_TOGGLE, scrString("menu_op_off"), scrString("menu_op_on"));
+-    OP_VOLUME = scrMenuItem(TYPE_METER, scrString("menu_item_volume"), global.AUDIO_VOLUME * 10, 0, 10);
++    scrMenuCreate(scrStringManual("menu_head_audio_settings", 0), 0);
++    OP_SOUND = scrMenuItem(TYPE_DUAL, scrStringManual("menu_item_sound", 0), global.AUDIO_SFX_TOGGLE, scrStringManual("menu_op_off", 0), scrStringManual("menu_op_on", 0));
++    OP_MUSIC = scrMenuItem(TYPE_DUAL, scrStringManual("menu_item_music", 0), global.AUDIO_BGM_TOGGLE, scrStringManual("menu_op_off", 0), scrStringManual("menu_op_on", 0));
++    OP_VOLUME = scrMenuItem(TYPE_METER, scrStringManual("menu_item_volume", 0), global.AUDIO_VOLUME * 10, 0, 10);
+     scrMenuSpacer(MENU_MEDIUM_SPACER);
+     scrMenuSpacer(MENU_MEDIUM_SPACER);
+     scrMenuSpacer(MENU_MEDIUM_SPACER);
+@@ -16,30 +16,28 @@
+     scrMenuSpacer(MENU_MEDIUM_SPACER);
+     scrMenuSpacer(MENU_MEDIUM_SPACER);
+     scrMenuSpacer(MENU_MEDIUM_SPACER);
+-    OP_BACK = scrMenuItem(TYPE_SINGLE, scrString("menu_item_back_to_settings"));
++    OP_BACK = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_back_to_settings", 0));
+     scrSwitchSub(SUB_NAV);
  }
  else if (substate == SUB_NAV)
  {
-+    if (!pfo_send_command_in_progress() && !localInputDisabled())
++    if (!sendCommandInProgress() && !localInputDisabled())
 +    {
      var choice = scrMenuNavigation();
      if (choice == -2)
@@ -4960,14 +6227,14 @@
 -        scrSfxLibrary(soundSubExit[currentSoundSet]);
 -        scrSwitchState(statePrev);
 -        exit;
-+            pfo_send_command(UnknownEnum.Value_1);
++            sendCommand(UnknownEnum.Value_1);
      }
 -    if (pressStart)
 +        else if (pressStart)
      {
 -        scrSwitchState(STATE_UNPAUSE);
 -        exit;
-+            pfo_send_command(UnknownEnum.Value_2);
++            sendCommand(UnknownEnum.Value_2);
      }
 -    if (keyboard_check_pressed(vk_f1))
 +        else if (keyboard_check_pressed(vk_f1))
@@ -4985,18 +6252,18 @@
                  }
                  break;
              case OP_BACK:
-+                    pfo_send_command(UnknownEnum.Value_1);
++                    sendCommand(UnknownEnum.Value_1);
 +                    break;
 +            }
 +        }
 +    }
-+    if (pfo_receive_command(UnknownEnum.Value_1))
++    if (receiveCommand(UnknownEnum.Value_1))
 +    {
                  scrSfxLibrary(soundSubExit[currentSoundSet]);
                  scrSwitchState(statePrev);
 -                break;
          }
-+    else if (pfo_receive_command(UnknownEnum.Value_2))
++    else if (receiveCommand(UnknownEnum.Value_2))
 +    {
 +        scrSwitchState(STATE_UNPAUSE);
      }
@@ -5012,6 +6279,21 @@
 +{
 +    Value_1 = 1,
 +    Value_2
+ }
+--- original/gml_Object_oPauseMenu_Other_17.gml
++++ patched/gml_Object_oPauseMenu_Other_17.gml
+@@ -1,5 +1,12 @@
+ stateCounter++;
+ if (stateCounter == 2)
+ {
++    if (menuType == 0)
++    {
+     scrUnpause();
++    }
++    else
++    {
++        instance_destroy();
++    }
  }
 --- original/gml_Object_oPauseMenu_Other_19.gml
 +++ patched/gml_Object_oPauseMenu_Other_19.gml
@@ -5034,33 +6316,91 @@
 +{
 +    Value_0
  }
+--- original/gml_Object_oPauseMenu_Other_20.gml
++++ patched/gml_Object_oPauseMenu_Other_20.gml
+@@ -19,7 +19,7 @@
+ }
+ else if (substate == SUB_INIT_MENU)
+ {
+-    scrMenuCreate(scrString("menu_head_milestones"), 0);
++    scrMenuCreate(scrStringManual("menu_head_milestones", 0), 0);
+     scrMenuSpacer(MENU_MEDIUM_SPACER);
+     scrMenuSpacer(MENU_MEDIUM_SPACER);
+     scrMenuSpacer(MENU_MEDIUM_SPACER);
+@@ -37,8 +37,8 @@
+             pageArray[i] = "0" + pageArray[i];
+         }
+     }
+-    OP_PAGE = scrMenuItem(TYPE_DUAL_CENTER, scrString("menu_item_page"), 0, pageArray);
+-    OP_BACK = scrMenuItem(TYPE_SINGLE, scrString("menu_item_back_to_root"));
++    OP_PAGE = scrMenuItem(TYPE_DUAL_CENTER, scrStringManual("menu_item_page", 0), 0, pageArray);
++    OP_BACK = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_back_to_root", 0));
+     menuSel = OP_PAGE;
+     scrSwitchSub(SUB_NAV);
+ }
 --- original/gml_Object_oPauseMenu_Other_22.gml
 +++ patched/gml_Object_oPauseMenu_Other_22.gml
-@@ -4,12 +4,23 @@
+@@ -3,16 +3,30 @@
+ if (substate == SUB_INIT)
  {
      drawMenu = true;
-     scrMenuCreate(scrString("menu_head_options"), 0);
-+    if (pfo_is_online())
+-    scrMenuCreate(scrString("menu_head_options"), 0);
+-    OP_KEYCONFIG = scrMenuItem(TYPE_SINGLE, scrString("menu_item_keyboard_config"));
+-    OP_JOYCONFIG = scrMenuItem(TYPE_SINGLE, scrString("menu_item_joypad_config"));
+-    OP_VIDEO = scrMenuItem(TYPE_SINGLE, scrString("menu_item_video_settings"));
+-    OP_AUDIO = scrMenuItem(TYPE_SINGLE, scrString("menu_item_audio_settings"));
++    if (statePrev != STATE_OPTIONS)
++    {
++        menuSel = 0;
++    }
++    scrMenuCreate(scrStringManual("menu_head_options", 0), menuSel);
++    if (menuType == 0 && pfo_is_online())
 +    {
 +        OP_ONLINE = scrMenuItem(TYPE_SINGLE, "ONLINE SETTINGS");
 +    }
 +    else
 +    {
-+        OP_ONLINE = -4;
++        OP_ONLINE = -1;
 +    }
-     OP_KEYCONFIG = scrMenuItem(TYPE_SINGLE, scrString("menu_item_keyboard_config"));
-     OP_JOYCONFIG = scrMenuItem(TYPE_SINGLE, scrString("menu_item_joypad_config"));
-     OP_VIDEO = scrMenuItem(TYPE_SINGLE, scrString("menu_item_video_settings"));
-     OP_AUDIO = scrMenuItem(TYPE_SINGLE, scrString("menu_item_audio_settings"));
++    OP_KEYCONFIG = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_keyboard_config", 0));
++    OP_JOYCONFIG = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_joypad_config", 0));
++    OP_VIDEO = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_video_settings", 0));
++    OP_AUDIO = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_audio_settings", 0));
      scrMenuSpacer(MENU_BIG_SPACER);
-+    if (!pfo_is_online())
++    if (OP_ONLINE == -1)
 +    {
      scrMenuSpacer(MENU_BIG_SPACER);
+-    OP_BACK = scrMenuItem(TYPE_SINGLE, scrString("menu_item_back_to_root"));
 +    }
-     OP_BACK = scrMenuItem(TYPE_SINGLE, scrString("menu_item_back_to_root"));
++    OP_BACK = scrMenuItem(TYPE_SINGLE, scrStringManual("menu_item_back_to_root", 0));
      OP_BUTTON_LAYOUT = -1;
-     menuSel = 0;
-@@ -60,6 +71,10 @@
+-    menuSel = 0;
+     if (statePrev == STATE_KEYCONFIG)
+     {
+         menuSel = OP_KEYCONFIG;
+@@ -37,11 +51,20 @@
+ }
+ else if (substate == SUB_NAV)
+ {
++    if (OP_ONLINE != -1 && !pfo_is_online())
++    {
++        if (menuSel > OP_ONLINE && menuSel <= OP_AUDIO)
++        {
++            menuSel--;
++        }
++        statePrev = STATE_OPTIONS;
++        scrSwitchSub(SUB_INIT);
++    }
+     var choice = scrMenuNavigation();
+     if (choice == -2)
+     {
+         scrSfxLibrary(soundSubExit[currentSoundSet]);
+-        if (scrInGame())
++        if (scrInGame() && menuType == 0)
+         {
+             scrSwitchState(STATE_ROOT_GAME);
+         }
+@@ -60,6 +83,10 @@
      {
          switch (menuSel)
          {
@@ -5071,21 +6411,32 @@
              case OP_KEYCONFIG:
                  scrSwitchState(STATE_KEYCONFIG);
                  scrSfxLibrary(soundSubEnter[currentSoundSet]);
+@@ -82,7 +109,7 @@
+                 break;
+             case OP_BACK:
+                 scrSfxLibrary(soundSubExit[currentSoundSet]);
+-                if (scrInGame())
++                if (scrInGame() && menuType == 0)
+                 {
+                     scrSwitchState(STATE_ROOT_GAME);
+                 }
 --- original/gml_Object_oPauseMenu_Step_1.gml
 +++ patched/gml_Object_oPauseMenu_Step_1.gml
-@@ -1,19 +1,36 @@
+@@ -1,19 +1,35 @@
 -if (state != STATE_JOYCONFIG && (inputListenerTimer++ % 30) == 0 && scrGetJoyCount() != padCount)
 +if (!localInputDisabled() && state != STATE_JOYCONFIG && (inputListenerTimer++ % 30) == 0 && scrGetJoyCount() != padCount)
  {
      scrFixJoyDisconnect();
-     player = 2;
-     joySlot = global.joySlot[0];
+-    player = 2;
+-    joySlot = global.joySlot[0];
++    player = -1;
  }
+-if (player <= 1)
 +if (usingLocalInput())
-+{
- if (player <= 1)
  {
 -    scrGetInput(player);
++    if (player != -1)
++    {
 +        scrGetInput(player, UnknownEnum.Value_3);
  }
  else
@@ -5093,17 +6444,18 @@
 -    scrGetInputMerged();
 +        scrGetInputMerged(UnknownEnum.Value_3);
  }
+-if (global.crashToTerminal)
 +}
-+else if (player <= 1)
-+{
++else if (player != -1)
+ {
 +    scrGetInput(player, UnknownEnum.Value_2);
 +}
 +else
 +{
 +    scrGetInput(pfo_client_get_player_index(), UnknownEnum.Value_2);
 +}
- if (global.crashToTerminal)
- {
++if (menuType == 0 && global.crashToTerminal)
++{
      state = STATE_TERMINAL;
  }
  scrRunStateMachine();

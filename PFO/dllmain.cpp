@@ -6,7 +6,7 @@
 #include "YYRValue.h"
 #define YYEXPORT __declspec(dllexport)
 
-#pragma warning(default: 4365)
+//#pragma warning(default: 4365)
 #pragma warning(default: 4388)
 #pragma warning(default: 4800)
 //#pragma warning(default: 4820)
@@ -15,7 +15,7 @@
 
 YYRunnerInterface* g_pYYRunnerInterface;
 
-static char g_TempBuffer[8192];
+static char g_TempBuffer[0x2000];
 
 #if !defined(NDEBUG) || 1
 #define breakpoint() (IsDebuggerPresent() && (__debugbreak(), false))
@@ -25,18 +25,18 @@ static char g_TempBuffer[8192];
 #define assert(a) __assume(a)
 #endif
 
-#define countof(a) static_cast<intptr_t>(sizeof(a) / sizeof((a)[0]))
-#define ssizeof(a) static_cast<intptr_t>(sizeof(a))
+#define countof(a) static_cast<ptrdiff_t>(sizeof(a) / sizeof((a)[0]))
+#define ssizeof(a) static_cast<ptrdiff_t>(sizeof(a))
 
 template<typename T>
 FORCEINLINE static constexpr T min(T a, T b)
 {
-    return (a < b) ? a : b;
+    return a < b ? a : b;
 }
 template<typename T>
 FORCEINLINE static constexpr T max(T a, T b)
 {
-    return (a > b) ? a : b;
+    return a > b ? a : b;
 }
 
 static void trace(const char* format, ...)
@@ -112,11 +112,13 @@ namespace
     constexpr int64 c_TimeBeforeResendingMessage = 1'000'000 / 60;
     constexpr int64 c_WaitForInputsDelayTime = 1'000'000 / 60;
 
+    constexpr int c_ClientLimit = 8;
+    constexpr int c_PlayerLimit = c_ClientLimit;
     constexpr int c_TargetFPS = 60;
     constexpr int c_MaxInputDelay = 20;
     constexpr int c_SamplesNeededBeforeRaisingDelay = 60 * 15;
     constexpr int c_SamplesNeededBeforeLoweringDelay = 60 * 40;
-    constexpr int c_PercentSamplesWithinDelayToMaintainDelay = 92;
+    constexpr int c_PercentSamplesWithinDelayToMaintainDelay = 91;
     constexpr int c_PercentSamplesBelowDelayToLowerDelay = 99;
     constexpr int c_PingDelayCalculationSafetyMargin = 30;
     constexpr int c_FavoredModeExtraInputDelay = 2;
@@ -124,18 +126,36 @@ namespace
     constexpr int c_FramesToRunBehindUpperLimit = 70;
     constexpr int c_FramesToRunBehindLowerLimit = 40;
 
+    constexpr int c_CatchupThresholds[] =
+    {
+        10,
+        30,
+        50,
+    };
+    constexpr double c_CatchupThresholdSpeeds[] =
+    {
+        1.0,
+        1.1,
+        1.2,
+    };
+
     YYRunnerInterface g_RunnerInterface;
 
+    ISteamUser* g_SteamUser;
     ISteamFriends* g_SteamFriends;
     ISteamMatchmaking* g_SteamMatchmaking;
     ISteamNetworkingSockets* g_SteamNetworkingSockets;
     ISteamNetworkingUtils* g_SteamNetworkingUtils;
 
-    double g_GameSpeedFPS = 0.0;
-    double g_GameSpeedMicroseconds = 0.0;
+    uint8* g_ChecksumRingBuffer;
+    constexpr int c_ChecksumRingBufferSize = 0x20000;
 
-    int g_GmlChecksumBuffer1;
-    int g_GmlChecksumBuffer2;
+    double g_BaseGameSpeedFPS = 0.0;
+    double g_FinalGameSpeedFPS = 0.0;
+
+    int g_GMLChecksumBufferMaxSize;
+    int g_GMLChecksumBuffer1;
+    int g_GMLChecksumBuffer2;
 
     int g_gml_file_exists;
     int g_gml_buffer_load;
@@ -145,6 +165,7 @@ namespace
     int g_gml_buffer_seek;
     int g_gml_file_copy;
     int g_gml_game_set_speed;
+    int g_gml_display_reset;
 
     int g_gml_Script_onlineStateChangedCallback;
     int g_gml_Script_getInputCallback;
@@ -165,7 +186,7 @@ namespace
 
     struct SizeGetter
     {
-        size_t m_Size = 0;
+        int m_Size = 0;
 
         template<typename T>
         constexpr void Write(const T& value)
@@ -173,7 +194,7 @@ namespace
             m_Size += sizeof(T);
         }
 
-        constexpr void Write(const void* buffer, size_t size)
+        constexpr void Write(const void* buffer, int size)
         {
             m_Size += size;
         }
@@ -182,21 +203,21 @@ namespace
     struct Writer
     {
         uint8* m_Buffer;
-        size_t m_Size;
-        size_t m_Offset = 0;
+        int m_Size;
+        int m_Offset = 0;
 
         Writer() = delete;
-        Writer(uint8* buffer, size_t size) : m_Buffer(buffer), m_Size(size) {}
+        Writer(uint8* buffer, int size) : m_Buffer(buffer), m_Size(size) {}
 
         template<typename T>
         void Write(const T& value)
         {
-            assert(m_Offset + sizeof(T) <= m_Size);
+            assert(m_Offset + ssizeof(T) <= m_Size);
             memcpy(m_Buffer + m_Offset, &value, sizeof(T));
             m_Offset += sizeof(T);
         }
 
-        void Write(const void* buffer, size_t size)
+        void Write(const void* buffer, int size)
         {
             assert(m_Offset + size <= m_Size);
             memcpy(m_Buffer + m_Offset, buffer, size);
@@ -207,21 +228,21 @@ namespace
     struct Reader
     {
         const uint8* m_Buffer;
-        size_t m_Size;
-        size_t m_Offset = 0;
+        int m_Size;
+        int m_Offset = 0;
 
         Reader() = delete;
-        Reader(const uint8* buffer, size_t size) : m_Buffer(buffer), m_Size(size) {}
+        Reader(const uint8* buffer, int size) : m_Buffer(buffer), m_Size(size) {}
 
         template<typename T>
         void Write(T& value)
         {
-            assert(m_Offset + sizeof(T) <= m_Size);
+            assert(m_Offset + ssizeof(T) <= m_Size);
             memcpy(&value, m_Buffer + m_Offset, sizeof(T));
             m_Offset += sizeof(T);
         }
 
-        void Write(void* buffer, size_t size)
+        void Write(void* buffer, int size)
         {
             assert(m_Offset + size <= m_Size);
             memcpy(buffer, m_Buffer + m_Offset, size);
@@ -230,19 +251,31 @@ namespace
     };
 
     template<typename T>
-    concept HasSetName = requires(T t) {
-        { t.SetName(static_cast<const char*>("name")) };
-        { t.SetName(static_cast<const char*>("name"), 0, static_cast<const char*>("iName")) };
+    concept HasAnnotation = requires(T t)
+    {
+        { t.WriteField(static_cast<const char*>("name")) };
+    };
+
+    template<typename T>
+    concept HasFullAnnotation = HasAnnotation<T> and requires(T t)
+    {
+        { t.BeginStruct() };
+        { t.EndStruct() };
+        { t.BeginArray() };
+        { t.EndArray() };
     };
 
     struct StringWriter
     {
         char* m_String;
-        size_t m_Size;
-        size_t m_Offset = 0;
+        int m_Size;
+        int m_Offset = 0;
+        int m_Depth = 0;
+        bool m_HasValue = false;
+        bool m_InArrayAtDepth[43] = {};
 
         StringWriter() = delete;
-        StringWriter(char* str, size_t count) : m_String(str), m_Size(count) {}
+        StringWriter(char* str, int count) : m_String(str), m_Size(count) {}
 
         template<typename T>
         void Write(const T& value)
@@ -250,58 +283,69 @@ namespace
             const char* fmt;
             if constexpr (std::is_same<T, double>::value)
             {
-                fmt = "%f\n";
+                fmt = "%f";
             }
             else
             {
-                fmt = "%d\n";
+                fmt = "%d";
             }
 
+            if (m_HasValue)
+            {
+                m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, ", ");
+            }
+            m_HasValue = true;
             m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, fmt, value);
         }
 
-        void SetName(const char* name, int i = 0, const char* iName = nullptr)
+        void WriteField(const char* name)
         {
-            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, "  ");
-            m_Offset += WriteName(m_String + m_Offset, m_Size - m_Offset, name, i, iName);
-            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, ": ");
+            if (m_HasValue)
+            {
+                m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, ", ");
+            }
+            m_HasValue = false;
+            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, "%s: ", name);
         }
 
-        static int WriteName(char* str, size_t count, const char* name, int i, const char* iName)
+        void BeginStruct()
         {
-            constexpr char prefix[] = "m_";
-            constexpr size_t prefixLength = countof(prefix) - 1;
-            if (strncmp(name, prefix, prefixLength) == 0)
+            if (m_HasValue)
             {
-                name += prefixLength;
+                m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, ", ");
             }
-
-            if (iName == nullptr)
+            if (m_InArrayAtDepth[m_Depth])
             {
-                return sprintf_s(str, count, "%s", name);
+                m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, "\n");
             }
-            else
+            m_InArrayAtDepth[++m_Depth] = false;
+            m_HasValue = false;
+            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, "{ ");
+        }
+
+        void EndStruct()
+        {
+            m_Depth--;
+            m_HasValue = true;
+            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, " }");
+        }
+
+        void BeginArray()
+        {
+            m_InArrayAtDepth[++m_Depth] = true;
+            if (m_HasValue)
             {
-                auto p = name;
-                size_t iNameLength = strlen(iName);
-
-                while (true)
-                {
-                    p = strstr(p, "[");
-                    if (p == nullptr)
-                    {
-                        break;
-                    }
-
-                    p++;
-                    if (strncmp(p, iName, iNameLength) == 0)
-                    {
-                        return sprintf_s(str, count, "%.*s%d%s", narrow_cast<uint32>(p - name), name, i, p + iNameLength);
-                    }
-                }
+                m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, ", ");
             }
+            m_HasValue = false;
+            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, "[ ");
+        }
 
-            assert(false);
+        void EndArray()
+        {
+            m_Depth--;
+            m_HasValue = true;
+            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, " ]");
         }
     };
 
@@ -311,10 +355,8 @@ namespace
         const uint8* m_Buffer1;
         const uint8* m_Buffer2;
         const char* m_Name = nullptr;
-        const char* m_IteratorName = nullptr;
-        size_t m_Size;
-        size_t m_Offset = 0;
-        int m_Iterator = 0;
+        int m_Size;
+        int m_Offset = 0;
 
         Differ() = delete;
         Differ(Reader& reader1, Reader& reader2) : m_Buffer1(reader1.m_Buffer), m_Buffer2(reader2.m_Buffer), m_Size(reader1.m_Size)
@@ -325,17 +367,15 @@ namespace
         template<typename T>
         void Write(const T& value)
         {
-            assert(m_Offset + sizeof(T) <= m_Size);
+            assert(m_Offset + ssizeof(T) <= m_Size);
 
             if (memcmp(m_Buffer1 + m_Offset, m_Buffer2 + m_Offset, sizeof(T)) != 0)
             {
                 char* str = g_TempBuffer;
-                size_t offset = 0;
-                constexpr size_t size = countof(g_TempBuffer);
+                int offset = 0;
+                constexpr int size = countof(g_TempBuffer);
 
-                offset += sprintf_s(str + offset, size - offset, "Desync detected!\n\nDifference in PFO value: ");
-                offset += StringWriter::WriteName(str + offset, size - offset, m_Name, m_Iterator, m_IteratorName);
-                offset += sprintf_s(str + offset, size - offset, "\n\nOurs:\n");
+                offset += sprintf_s(str + offset, size - offset, "Desync detected!\n\nDifference in Session value: %s\n\nOurs: ", m_Name);
 
                 auto& diff1 = *new TDiffable();
                 auto& diff2 = *new TDiffable();
@@ -349,13 +389,15 @@ namespace
                 diff1.Serialize(nameWriter1);
                 offset += nameWriter1.m_Offset;
 
-                offset += sprintf_s(str + offset, size - offset, "\nTheirs:\n");
+                offset += sprintf_s(str + offset, size - offset, "\n\nTheirs: ");
 
                 StringWriter nameWriter2(str + offset, size - offset);
                 diff2.Serialize(nameWriter2);
                 offset += nameWriter2.m_Offset;
 
-                ReleaseConsoleOutput(g_TempBuffer);
+                offset += sprintf_s(str + offset, size - offset, "\n");
+
+                ReleaseConsoleOutput("%s", g_TempBuffer);
                 ShowMessage(g_TempBuffer);
 
                 breakpoint();
@@ -367,11 +409,9 @@ namespace
             m_Offset += sizeof(T);
         }
 
-        constexpr void SetName(const char* name, int i = 0, const char* iName = nullptr)
+        void WriteField(const char* name)
         {
             m_Name = name;
-            m_Iterator = i;
-            m_IteratorName = iName;
         }
     };
 
@@ -465,22 +505,11 @@ namespace
 
     struct ChecksumBuffer
     {
+        uint64 m_BufferOffset = 0;
         uint32 m_Frame = 0;
         uint32 m_Checksum = 0;
         int m_SessionBufferSize = 0;
-        int m_GmlBufferSize = 0;
-        bool m_HasBuffer = false;
-        uint8 m_SessionBuffer[76] = {};
-        uint8 m_GmlBuffer[96] = {};
-
-        constexpr void Reset()
-        {
-            m_Frame = 0;
-            m_Checksum = 0;
-            m_SessionBufferSize = 0;
-            m_GmlBufferSize = 0;
-            m_HasBuffer = false;
-        }
+        int m_GMLBufferSize = 0;
 
         template<typename T>
         constexpr void Serialize(T& writer)
@@ -488,90 +517,8 @@ namespace
             writer.Write(m_Frame);
             writer.Write(m_Checksum);
             writer.Write(m_SessionBufferSize);
-            writer.Write(m_GmlBufferSize);
-            writer.Write(m_SessionBuffer, m_SessionBufferSize);
-            writer.Write(m_GmlBuffer, m_GmlBufferSize);
-        }
-    };
-
-    ChecksumBuffer g_tempChecksumBuffer;
-
-    template<int NSampleCount, int NBucketCount>
-    struct Histogram
-    {
-        int m_SampleCount = 0;
-        int m_SampleHead = 0;
-        int m_Samples[NSampleCount] = {};
-        int m_Buckets[NBucketCount] = {};
-
-        void AddSample(int sample)
-        {
-            if (m_SampleCount >= countof(m_Samples))
-            {
-                int oldSample = m_Samples[m_SampleHead];
-                assert(m_Buckets[oldSample] > 0);
-                m_Buckets[oldSample]--;
-            }
-            else
-            {
-                m_SampleCount++;
-            }
-
-            if (sample < 0)
-            {
-                sample = 0;
-            }
-            else if (sample >= countof(m_Buckets))
-            {
-                sample = countof(m_Buckets) - 1;
-            }
-
-            m_Samples[m_SampleHead++] = sample;
-            if (m_SampleHead >= countof(m_Samples))
-            {
-                m_SampleHead = 0;
-            }
-
-            m_Buckets[sample]++;
-        }
-
-        int CalculatePercentile(int percentile)
-        {
-            assert(percentile >= 0 && percentile <= 100);
-            assert(m_SampleCount > 0);
-
-            int target = m_SampleCount * percentile / 100;
-            int cumulative = 0;
-
-            for (int i = 0; i < countof(m_Buckets); i++)
-            {
-                if (m_Buckets[i] > 0)
-                {
-                    cumulative += m_Buckets[i];
-                    if (cumulative >= target)
-                    {
-                        return i;
-                    }
-                }
-            }
-
-            assert(false);
-        }
-
-        void CalculateDistributionAt(int sample, int* belowPercent, int* belowOrEqualPercent)
-        {
-            assert(sample < countof(m_Buckets));
-            assert(m_SampleCount > 0);
-
-            int total = 0;
-            for (int i = 0; i <= sample; i++)
-            {
-                total += m_Buckets[i];
-            }
-            int belowTotal = total - m_Buckets[sample];
-
-            *belowOrEqualPercent = (total * 100 + 50) / m_SampleCount;
-            *belowPercent = (belowTotal * 100 + 50) / m_SampleCount;
+            writer.Write(m_GMLBufferSize);
+            writer.Write(g_ChecksumRingBuffer + (m_BufferOffset & (c_ChecksumRingBufferSize - 1)), m_SessionBufferSize + m_GMLBufferSize);
         }
     };
 
@@ -584,27 +531,31 @@ namespace
 
     struct ClientData
     {
+        uint64 m_SteamID = 0;
         int64 m_LastSentTime = 0;
         int64 m_LastSentMessageNumber = 0;
         int64 m_LastReceivedMessageNumber = 0;
         int64 m_LastAcknowledgedMessageNumber = 0;
         int64 m_PreviousFrameLastAcknowledgedMessageNumber = 0;
         int64 m_PreviousFrameSampleRTT = 0;
-        MessageSendInfo m_MessageSendData[512];
+        MessageSendInfo m_MessageSendData[128] = { { .m_MessageNumber = 1 } };
+        ChecksumBuffer m_ChecksumData[256];
         HSteamNetConnection m_ConnectSocket = k_HSteamNetConnection_Invalid;
         uint32 m_LastInputFrame = 0;
         uint32 m_LastAcknowledgedInputFrame = 0;
         uint32 m_LastSentFrame = 0;
-        uint32 m_LastReceivedChecksumFrame = 0;
+        uint32 m_LastReceivedFrame = 0;
         int m_InputDelay = 0;
         int m_AutomaticInputDelay = 0;
         PlayerData m_PlayerData;
-        AutomaticInputDelayChange m_AutomaticInputDelayChanges[countof(m_PlayerData.m_InputBuffer)];
-        Histogram<c_SamplesNeededBeforeRaisingDelay, c_MaxInputDelay + 1> m_RaiseDelayHistogram;
-        Histogram<c_SamplesNeededBeforeLoweringDelay, c_MaxInputDelay + 1> m_LowerDelayHistogram;
-        ChecksumBuffer m_ChecksumData[256] = { { .m_Frame = 1 } };
+        AutomaticInputDelayChange m_AutomaticInputDelayChanges[countof(m_PlayerData.m_InputBuffer)] = { { .m_InputFrame = 1 } };
+        int m_SampleCount = 0;
+        int m_SampleHead = 0;
+        int m_RaiseDelayHistogram[c_MaxInputDelay + 1] = {};
+        int m_LowerDelayHistogram[c_MaxInputDelay + 1] = {};
+        uint8 m_Samples[c_SamplesNeededBeforeLoweringDelay] = {};
         bool m_HasReceivedUnacknowledgedInputFrames = false;
-        bool m_IsRunningTooFarBehind;
+        bool m_IsRunningTooFarBehind = false;
     };
 
     enum class EFileStatus
@@ -716,27 +667,79 @@ namespace
 
         static consteval int GetMaxSize()
         {
-            SizeGetter size;
             Message message;
-            ChecksumBuffer checksumBuffer;
-            checksumBuffer.m_SessionBufferSize = sizeof(checksumBuffer.m_SessionBuffer);
-            checksumBuffer.m_GmlBufferSize = sizeof(checksumBuffer.m_GmlBuffer);
-            message.m_InputFrameCount = countof(message.m_Inputs);
 
+            message.m_InputFrameCount = countof(message.m_Inputs);
             for (int i = 0; i < countof(message.m_AutomaticInputDelayChanges); i++)
             {
                 message.m_AutomaticInputDelayChanges[i].m_InputFrameIndex = 0xff;
             }
 
+            SizeGetter size;
             message.Serialize(size);
             return size.m_Size;
         }
     };
 
+    template<int N>
+    int CalculatePercentile(int(&buckets)[N], int sampleCount, int percentile)
+    {
+        assert(percentile >= 0 && percentile <= 100);
+        assert(sampleCount > 0);
+
+        int target = sampleCount * percentile / 100;
+        int cumulative = 0;
+
+        for (int i = 0; i < countof(buckets); i++)
+        {
+            if (buckets[i] > 0)
+            {
+                cumulative += buckets[i];
+                if (cumulative >= target)
+                {
+                    return i;
+                }
+            }
+        }
+
+        assert(false);
+    }
+
+    template<int N>
+    void CalculateDistributionAt(int(&buckets)[N], int sampleCount, int sample, int* belowPercent, int* belowOrEqualPercent)
+    {
+        assert(sample < countof(buckets));
+        assert(sampleCount > 0);
+
+        int total = 0;
+        for (int i = 0; i <= sample; i++)
+        {
+            total += buckets[i];
+        }
+        int belowTotal = total - buckets[sample];
+
+        *belowOrEqualPercent = (total * 100 + 50) / sampleCount;
+        *belowPercent = (belowTotal * 100 + 50) / sampleCount;
+    }
+
+    void SetPowersaveEnabled(bool savePower)
+    {
+        if (savePower)
+        {
+            SetThreadExecutionState(ES_CONTINUOUS);
+        }
+        else
+        {
+            SetThreadExecutionState(ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED | ES_CONTINUOUS);
+        }
+    }
+
     struct Session
     {
-        ClientData m_ClientData[2];
-        int m_PlayerIndexToClientIndexMap[2] = { -1, -1 };
+        uint64 m_ChecksumRingBufferHead = c_ChecksumRingBufferSize;
+        uint64 m_TempChecksumRingBufferHead = 0;
+        ClientData m_ClientData[c_ClientLimit];
+        int m_PlayerIndexToClientIndexMap[c_PlayerLimit];
         FileData m_FileData[32];
 
         HSteamListenSocket m_ListenSocket = k_HSteamListenSocket_Invalid;
@@ -744,7 +747,8 @@ namespace
         EOnlineState m_OnlineState = {};
         uint32 m_Frame = 0;
         uint32 m_LastSentChecksumFrame = 0;
-        int m_ClientIndex = 0;
+        int m_ClientIndex = -1;
+        int m_ClientCount = 0;
         int m_AssignedClientsCount = 0;
         int m_PreviousFrameAssignedClientsCount = 0;
 
@@ -754,12 +758,103 @@ namespace
         int m_InputDelayFavoredClientIndex = -1;
         int m_MinAutomaticInputDelay = 0;
         int m_MaxAutomaticInputDelay = c_MaxInputDelay;
+        int m_CatchupState = 0;
 
-        void Update(CInstance* instance, bool advanceFrame)
+        constexpr Session() : m_PlayerIndexToClientIndexMap{}
+        {
+            for (int i = 0; i < countof(m_PlayerIndexToClientIndexMap); i++)
+            {
+                m_PlayerIndexToClientIndexMap[i] = -1;
+            }
+        }
+
+        template<typename T>
+        constexpr void Serialize(T& writer)
+        {
+#define BEGIN_STRUCT(...) __VA_OPT__(if constexpr (HasAnnotation<T>) { writer.WriteField(__VA_ARGS__); }) if constexpr (HasFullAnnotation<T>) { writer.BeginStruct(); }
+#define END_STRUCT() if constexpr (HasFullAnnotation<T>) { writer.EndStruct(); }
+#define BEGIN_ARRAY(...) __VA_OPT__(if constexpr (HasAnnotation<T>) { writer.WriteField(__VA_ARGS__); }) if constexpr (HasFullAnnotation<T>) { writer.BeginArray(); }
+#define END_ARRAY() if constexpr (HasFullAnnotation<T>) { writer.EndArray(); }
+#define WRITE(val, ...) __VA_OPT__(if constexpr (HasAnnotation<T>) { writer.WriteField(__VA_ARGS__); }) writer.Write(val);
+
+            BEGIN_STRUCT()
+            {
+                WRITE(m_Frame, "Frame");
+                WRITE(m_ClientCount, "ClientCount");
+                WRITE(m_InputDelayMode, "InputDelayMode");
+                WRITE(m_InputDelayFavoredClientIndex, "InputDelayFavoredClientIndex");
+                WRITE(m_MinAutomaticInputDelay, "MinAutomaticInputDelay");
+                WRITE(m_MaxAutomaticInputDelay, "MaxAutomaticInputDelay");
+
+                BEGIN_ARRAY("PlayerIndexToClientIndexMap")
+                {
+                    for (int i = 0; i < countof(m_PlayerIndexToClientIndexMap); i++)
+                    {
+                        WRITE(m_PlayerIndexToClientIndexMap[i]);
+                    }
+                }
+                END_ARRAY()
+
+                BEGIN_ARRAY("ClientData")
+                {
+                    for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
+                    {
+                        BEGIN_STRUCT()
+                        {
+                            WRITE(m_ClientData[clientIndex].m_InputDelay, "InputDelay");
+                            WRITE(m_ClientData[clientIndex].m_AutomaticInputDelay, "AutomaticInputDelay");
+
+                            auto& clientData = m_ClientData[clientIndex];
+                            auto& playerData = clientData.m_PlayerData;
+
+                            BEGIN_ARRAY("InputBuffer")
+                            {
+                                for (int i = 0; i < 2; i++)
+                                {
+                                    int frame = (m_Frame - i) & (countof(playerData.m_InputBuffer) - 1);
+                                    WRITE(playerData.m_InputBuffer[frame]);
+                                }
+                            }
+                            END_ARRAY()
+
+                            BEGIN_STRUCT("AutomaticInputDelayChanges")
+                            {
+                                int frame = (m_Frame) & (countof(clientData.m_AutomaticInputDelayChanges) - 1);
+                                WRITE(clientData.m_AutomaticInputDelayChanges[frame].m_InputFrame, "InputFrame");
+                                WRITE(clientData.m_AutomaticInputDelayChanges[frame].m_InputDelay, "InputDelay");
+                            }
+                            END_STRUCT()
+                        }
+                        END_STRUCT()
+                    }
+                }
+                END_ARRAY()
+            }
+            END_STRUCT()
+
+#undef BEGIN_STRUCT
+#undef END_STRUCT
+#undef BEGIN_ARRAY
+#undef END_ARRAY
+#undef WRITE
+        }
+
+        static consteval int GetMaxSize()
+        {
+            Session session;
+            session.m_ClientCount = countof(m_ClientData);
+
+            SizeGetter size;
+            session.Serialize(size);
+            return size.m_Size;
+        }
+
+        bool Update(CInstance* instance, bool advanceFrame)
         {
             if (m_OnlineState == EOnlineState::StartingGame)
             {
                 m_OnlineState = EOnlineState::InGame;
+                SetPowersaveEnabled(false);
 
                 {
                     RValue result = {};
@@ -776,64 +871,13 @@ namespace
                     m_Frame++;
                 }
 
-                // write checksum
-                {
-                    ChecksumBuffer* pChecksumBuffer;
-                    if (advanceFrame)
-                    {
-                        auto& myClientData = m_ClientData[m_ClientIndex];
-                        pChecksumBuffer = &myClientData.m_ChecksumData[m_Frame & (countof(myClientData.m_ChecksumData) - 1)];
-                    }
-                    else
-                    {
-                        pChecksumBuffer = &g_tempChecksumBuffer;
-                    }
-
-                    auto& checksumBuffer = *pChecksumBuffer;
-                    checksumBuffer.Reset();
-                    checksumBuffer.m_Frame = m_Frame;
-                    checksumBuffer.m_HasBuffer = true;
-
-                    {
-                        Writer writer(checksumBuffer.m_SessionBuffer, sizeof(checksumBuffer.m_SessionBuffer));
-                        Serialize(writer);
-                        checksumBuffer.m_SessionBufferSize = writer.m_Offset;
-                    }
-
-                    {
-                        auto ibuffer = BufferGetFromGML(g_GmlChecksumBuffer1);
-                        assert(ibuffer != nullptr);
-
-                        buffer_seek(instance, g_GmlChecksumBuffer1, 0, 0);
-
-                        {
-                            RValue result = {};
-                            RValue arg;
-                            init_buffer(arg, g_GmlChecksumBuffer1);
-                            Script_Perform(g_gml_Script_getChecksumCallback, instance, instance, 1, &result, &arg);
-                        }
-
-                        int dataSize = BufferTELL(ibuffer);
-                        assert(dataSize <= ssizeof(checksumBuffer.m_GmlBuffer));
-                        uint8* data = BufferGet(ibuffer);
-
-                        checksumBuffer.m_GmlBufferSize = dataSize;
-                        memcpy(checksumBuffer.m_GmlBuffer, data, checksumBuffer.m_GmlBufferSize);
-                    }
-
-                    checksumBuffer.m_Checksum = hash_fnv1a32(checksumBuffer.m_SessionBuffer, checksumBuffer.m_SessionBufferSize);
-                    checksumBuffer.m_Checksum = hash_fnv1a32(checksumBuffer.m_GmlBuffer, checksumBuffer.m_GmlBufferSize, checksumBuffer.m_Checksum);
-
-                    CheckChecksum(checksumBuffer, instance);
-                }
-
                 // handle unasigned players
                 if (advanceFrame)
                 {
                     auto& myClientData = m_ClientData[m_ClientIndex];
                     auto& myPlayerData = myClientData.m_PlayerData;
 
-                    for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+                    for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
                     {
                         auto& clientData = m_ClientData[clientIndex];
                         auto& playerData = clientData.m_PlayerData;
@@ -945,7 +989,7 @@ namespace
                     {
                         SteamNetworkingMessage_t* netMessages[1000];
 
-                        for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+                        for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
                         {
                             auto& clientData = m_ClientData[clientIndex];
                             auto& playerData = clientData.m_PlayerData;
@@ -959,9 +1003,7 @@ namespace
                                 {
                                     auto netMessage = netMessages[netMessageIndex];
 
-                                    switch (netMessage->m_idxLane)
-                                    {
-                                    case 0:
+                                    if ((netMessage->m_nFlags & k_nSteamNetworkingSend_Reliable) == 0)
                                     {
                                         assert(netMessage->m_cbSize <= Message::GetMaxSize());
 
@@ -1004,16 +1046,17 @@ namespace
 
                                         if (checksumBuffer.m_Frame < checksumFrame)
                                         {
-                                            if (checksumFrame > clientData.m_LastReceivedChecksumFrame)
+                                            // adding 1 because the checksum frame sent is always 1 frame behind the frame the client is actually on
+                                            if (clientData.m_LastReceivedFrame < checksumFrame + 1)
                                             {
-                                                clientData.m_LastReceivedChecksumFrame = checksumFrame;
+                                                clientData.m_LastReceivedFrame = checksumFrame + 1;
                                             }
 
-                                            checksumBuffer.Reset();
+                                            reset(checksumBuffer);
                                             checksumBuffer.m_Frame = checksumFrame;
                                             checksumBuffer.m_Checksum = message.m_Checksum;
 
-                                            CheckChecksum(checksumBuffer, instance);
+                                            CheckChecksum(checksumBuffer, clientIndex, instance);
                                         }
 
                                         assert(message.m_InputFrameCount <= countof(message.m_Inputs));
@@ -1077,11 +1120,10 @@ namespace
                                                 //trace("Received frame: %u, but it wasn't newer than last received frame: %u\n", lastFrame, playerData.m_TailInputFrame);
                                             }
                                         }
-                                    } break;
-                                    case 1:
+                                    }
+                                    else
                                     {
                                         ReceiveReliableMessage(netMessage, clientIndex, instance);
-                                    } break;
                                     }
                                 }
                             }
@@ -1099,7 +1141,7 @@ namespace
                         auto& myClientData = m_ClientData[m_ClientIndex];
                         auto& myPlayerData = myClientData.m_PlayerData;
 
-                        for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+                        for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
                         {
                             auto& clientData = m_ClientData[clientIndex];
 
@@ -1117,7 +1159,7 @@ namespace
                                 //}
 
                                 // we can't have the client run too far behind, or the inputs we're sending them will roll off the end of the input buffer
-                                int countSinceChecksumFrame = static_cast<int>(myClientData.m_LastInputFrame - clientData.m_LastReceivedChecksumFrame);
+                                int countSinceChecksumFrame = static_cast<int>(myClientData.m_LastInputFrame - clientData.m_LastReceivedFrame);
                                 if (countSinceChecksumFrame > c_FramesToRunBehindUpperLimit)
                                 {
                                     clientData.m_IsRunningTooFarBehind = true;
@@ -1161,27 +1203,34 @@ namespace
                                     assert(count <= countof(message.m_Inputs));
                                     message.m_InputFrameCount = static_cast<uint8>(count);
 
-                                    auto& checksumBuffer = myClientData.m_ChecksumData[m_Frame & (countof(myClientData.m_ChecksumData) - 1)];
-                                    assert(checksumBuffer.m_Frame == m_Frame);
-                                    int checksumFrameDelta = static_cast<int>(m_Frame - first);
+                                    uint32 checksumFrame = m_Frame - 1;
+                                    auto& checksumBuffer = myClientData.m_ChecksumData[checksumFrame & (countof(myClientData.m_ChecksumData) - 1)];
+                                    assert(checksumBuffer.m_Frame == checksumFrame);
+                                    int checksumFrameDelta = static_cast<int>(checksumFrame - first);
                                     message.m_ChecksumFrameDelta = narrow_cast<int8>(checksumFrameDelta);
                                     message.m_Checksum = checksumBuffer.m_Checksum;
 
                                     {
                                         int delayChangeIndex = 0;
-                                        for (int i = 0; i < count; i++)
+
+                                        if (count > 0)
                                         {
-                                            uint32 frame = i + first;
+                                            assert(myPlayerData.m_TailInputFrame - first < countof(myPlayerData.m_InputBuffer));
+                                            assert(first + count - 1 <= myPlayerData.m_TailInputFrame);
 
-                                            assert(frame <= myPlayerData.m_TailInputFrame);
-                                            message.m_Inputs[i] = myPlayerData.m_InputBuffer[frame & (countof(myPlayerData.m_InputBuffer) - 1)];
-
-                                            auto& delayChange = myClientData.m_AutomaticInputDelayChanges[frame & (countof(myClientData.m_AutomaticInputDelayChanges) - 1)];
-                                            if (delayChange.m_InputFrame == frame)
+                                            for (int i = 0; i < count; i++)
                                             {
-                                                auto& messageDelayChange = message.m_AutomaticInputDelayChanges[delayChangeIndex++];
-                                                messageDelayChange.m_InputFrameIndex = static_cast<uint8>(i | (1 << c_MessageInputCountBits));
-                                                messageDelayChange.m_InputDelay = static_cast<uint8>(delayChange.m_InputDelay);
+                                                uint32 frame = i + first;
+
+                                                message.m_Inputs[i] = myPlayerData.m_InputBuffer[frame & (countof(myPlayerData.m_InputBuffer) - 1)];
+
+                                                auto& delayChange = myClientData.m_AutomaticInputDelayChanges[frame & (countof(myClientData.m_AutomaticInputDelayChanges) - 1)];
+                                                if (delayChange.m_InputFrame == frame)
+                                                {
+                                                    auto& messageDelayChange = message.m_AutomaticInputDelayChanges[delayChangeIndex++];
+                                                    messageDelayChange.m_InputFrameIndex = static_cast<uint8>(i | (1 << c_MessageInputCountBits));
+                                                    messageDelayChange.m_InputDelay = static_cast<uint8>(delayChange.m_InputDelay);
+                                                }
                                             }
                                         }
 
@@ -1214,7 +1263,7 @@ namespace
                         {
                             int64 time = g_SteamNetworkingUtils->GetLocalTimestamp();
                             int64 outResults[countof(netMessages)];
-                            
+
                             g_SteamNetworkingSockets->SendMessages(messageCount, netMessages, outResults);
                             for (int i = 0; i < countof(netMessages); i++)
                             {
@@ -1240,46 +1289,63 @@ namespace
                         }
                     }
 
-                    for (int i = 0; i < countof(m_ClientData); i++)
-                    {
-                        if (m_ClientData[i].m_PlayerData.m_TailInputFrame < m_Frame)
-                        {
-                            canMoveToNextFrame = false;
-                            break;
-                        }
-                    }
-
-                    if (!advanceFrame || canMoveToNextFrame)
+                    if (!advanceFrame)
                     {
                         break;
                     }
 
-                    if (firstTime)
+                    for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
                     {
-                        firstTime = false;
-                        Timing_Sleep(1'000 * 4);
-                        //trace("Doing little wait\n");
-                    }
-                    else
-                    {
-                        Timing_Sleep(c_WaitForInputsDelayTime);
-                        //trace("SLOWING DOWN!\n");
-
-                        MSG msg;
-                        while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE))
+                        auto& clientData = m_ClientData[clientIndex];
+                        if (clientData.m_PlayerData.m_TailInputFrame < m_Frame)
                         {
-                            TranslateMessage(&msg);
-                            DispatchMessageW(&msg);
+                            canMoveToNextFrame = false;
 
-                            if (msg.message == WM_QUIT || msg.message == WM_CLOSE)
+                            // disconnect if a disconnected client is preventing us from moving to the next frame
+                            if (clientData.m_ConnectSocket == k_HSteamNetConnection_Invalid)
                             {
-                                PostMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
-                                m_OnlineState = EOnlineState::Quitting;
-                                break;
+                                assert(clientIndex != m_ClientIndex);
+                                assert(clientData.m_PlayerData.m_PlayerIndex >= 0);
+                                ReleaseConsoleOutput("Ran out of input from disconnected client %d (player %d): Disconnecting\n", clientIndex, clientData.m_PlayerData.m_PlayerIndex);
+                                m_OnlineState = EOnlineState::Disconnecting;
                             }
                         }
+                    }
 
-                        SteamAPI_RunCallbacks();
+                    if (canMoveToNextFrame)
+                    {
+                        break;
+                    }
+
+                    if (m_OnlineState == EOnlineState::InGame)
+                    {
+                        if (firstTime)
+                        {
+                            firstTime = false;
+                            Timing_Sleep(1'000 * 4);
+                            //trace("Doing little wait\n");
+                        }
+                        else
+                        {
+                            Timing_Sleep(c_WaitForInputsDelayTime);
+                            //trace("SLOWING DOWN!\n");
+
+                            MSG msg;
+                            while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE))
+                            {
+                                TranslateMessage(&msg);
+                                DispatchMessageW(&msg);
+
+                                if (msg.message == WM_QUIT || msg.message == WM_CLOSE)
+                                {
+                                    PostMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
+                                    m_OnlineState = EOnlineState::Quitting;
+                                    break;
+                                }
+                            }
+
+                            SteamAPI_RunCallbacks();
+                        }
                     }
 
                     if (m_OnlineState != EOnlineState::InGame)
@@ -1288,145 +1354,310 @@ namespace
                         break;
                     }
                 }
+            }
 
-                if (m_OnlineState == EOnlineState::InGame)
+            if (m_OnlineState == EOnlineState::InGame)
+            {
+                // update automatic input delay
+                if (advanceFrame)
                 {
-                    // update automatic input delay
-                    if (advanceFrame)
+                    // process automatic input delay changes for this frame
+                    for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
                     {
-                        // process automatic input delay changes for this frame
-                        for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+                        auto& clientData = m_ClientData[clientIndex];
+                        auto& delayChange = clientData.m_AutomaticInputDelayChanges[m_Frame & (countof(clientData.m_AutomaticInputDelayChanges) - 1)];
+                        if (delayChange.m_InputFrame == m_Frame)
+                        {
+                            clientData.m_AutomaticInputDelay = delayChange.m_InputDelay;
+                            //trace("Set Automatic Input Delay for client %d on frame %u, delay: %d\n", clientIndex, m_Frame, clientData.m_AutomaticInputDelay);
+                        }
+                    }
+
+                    // make sure our requested input delay is up to date, so we can always request a change if it's different from this
+                    if (m_Frame >= m_RequestedAutomaticInputDelayFrame)
+                    {
+                        auto& myClientData = m_ClientData[m_ClientIndex];
+                        m_RequestedAutomaticInputDelay = myClientData.m_AutomaticInputDelay;
+                    }
+
+                    UpdateInputDelay();
+                }
+
+                // calculate new automatic input delay
+                if (advanceFrame)
+                {
+                    int newDelay = 0;
+                    bool hasDelay = false;
+
+                    for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
+                    {
+                        auto& clientData = m_ClientData[clientIndex];
+                        if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
+                        {
+                            int64 rtt = 0;
+
+                            // for all acked messages since last frame, get the max time since one was acknowledged
+                            int64 first = clientData.m_PreviousFrameLastAcknowledgedMessageNumber;
+                            int64 last = clientData.m_LastAcknowledgedMessageNumber;
+                            int64 acknowledgeTime = 0;
+                            for (int64 i = last; i > first; i--)
+                            {
+                                auto& messageInfo = clientData.m_MessageSendData[i & (countof(clientData.m_MessageSendData) - 1)];
+                                if (messageInfo.m_MessageNumber == i)
+                                {
+                                    // if the message hasn't been acked, we just use the ack time of the one after it that got acked
+                                    if (messageInfo.m_MessageAcknowledgeTime != 0)
+                                    {
+                                        acknowledgeTime = messageInfo.m_MessageAcknowledgeTime;
+                                    }
+
+                                    assert(acknowledgeTime != 0);
+                                    rtt = max(rtt, acknowledgeTime - messageInfo.m_MessageSendTime);
+                                }
+                            }
+
+                            // no acks since last frame, so just use last sample rtt
+                            if (rtt == 0)
+                            {
+                                rtt = clientData.m_PreviousFrameSampleRTT;
+                            }
+
+                            // use the current time since the first non-acked message if that's greater
+                            int64 firstNonAcked = clientData.m_LastAcknowledgedMessageNumber + 1;
+                            auto& messageInfo = clientData.m_MessageSendData[firstNonAcked & (countof(clientData.m_MessageSendData) - 1)];
+                            if (messageInfo.m_MessageNumber == firstNonAcked)
+                            {
+                                rtt = max(rtt, g_SteamNetworkingUtils->GetLocalTimestamp() - messageInfo.m_MessageSendTime);
+                            }
+
+                            // add the sample
+                            if (rtt != 0 && m_AssignedClientsCount > 0 && m_PreviousFrameAssignedClientsCount > 0)
+                            {
+                                assert(rtt > 0);
+                                rtt = min(rtt, static_cast<int64>(INT32_MAX));
+
+                                int delay = static_cast<int>((rtt * c_TargetFPS + 1'000'000 - 1) / 1'000'000);
+                                delay = (delay + 1) / 2;
+                                uint8 sample = static_cast<uint8>(min(delay, c_MaxInputDelay));
+
+                                assert(sample < countof(clientData.m_LowerDelayHistogram));
+
+                                clientData.m_RaiseDelayHistogram[sample]++;
+                                clientData.m_LowerDelayHistogram[sample]++;
+
+                                if (clientData.m_SampleCount >= c_SamplesNeededBeforeRaisingDelay)
+                                {
+                                    int tail = clientData.m_SampleHead - c_SamplesNeededBeforeRaisingDelay;
+                                    if (tail < 0)
+                                    {
+                                        tail += countof(clientData.m_Samples);
+                                    }
+                                    int oldSample = clientData.m_Samples[tail];
+                                    assert(clientData.m_RaiseDelayHistogram[oldSample] > 0);
+                                    clientData.m_RaiseDelayHistogram[oldSample]--;
+                                }
+
+                                if (clientData.m_SampleCount >= countof(clientData.m_Samples))
+                                {
+                                    int oldSample = clientData.m_Samples[clientData.m_SampleHead];
+                                    assert(clientData.m_LowerDelayHistogram[oldSample] > 0);
+                                    clientData.m_LowerDelayHistogram[oldSample]--;
+                                }
+                                else
+                                {
+                                    clientData.m_SampleCount++;
+                                }
+
+                                clientData.m_Samples[clientData.m_SampleHead++] = sample;
+                                if (clientData.m_SampleHead >= countof(clientData.m_Samples))
+                                {
+                                    clientData.m_SampleHead = 0;
+                                }
+
+                                //trace("Added sample: %d, %d\n", static_cast<int>(rtt), sample);
+                            }
+
+                            m_PreviousFrameAssignedClientsCount = m_AssignedClientsCount;
+                            clientData.m_PreviousFrameLastAcknowledgedMessageNumber = clientData.m_LastAcknowledgedMessageNumber;
+                            clientData.m_PreviousFrameSampleRTT = rtt;
+
+                            if (clientData.m_PlayerData.m_PlayerIndex >= 0)
+                            {
+                                // prints out some useful info while testing
+                                //if (clientData.m_SampleCount >= c_SamplesNeededBeforeRaisingDelay)
+                                //{
+                                //    int raiseBelowPercent;
+                                //    int raiseBelowOrEqualPercent;
+                                //    int lowerBelowPercent;
+                                //    int lowerBelowOrEqualPercent;
+                                //    CalculateDistributionAt(clientData.m_RaiseDelayHistogram, c_SamplesNeededBeforeRaisingDelay, m_RequestedAutomaticInputDelay, &raiseBelowPercent, &raiseBelowOrEqualPercent);
+                                //    CalculateDistributionAt(clientData.m_LowerDelayHistogram, clientData.m_SampleCount, m_RequestedAutomaticInputDelay, &lowerBelowPercent, &lowerBelowOrEqualPercent);
+                                //    int raiseMedianDelay = CalculatePercentile(clientData.m_RaiseDelayHistogram, c_SamplesNeededBeforeRaisingDelay, 50);
+                                //    int lowerMedianDelay = CalculatePercentile(clientData.m_LowerDelayHistogram, clientData.m_SampleCount, 50);
+
+                                //    trace("Raise median: %d, current:%d, <%d%%, <=%d%%, >%d%% | Lower median: %d, current:%d, <%d%%, <=%d%%, >%d%%\n", raiseMedianDelay, m_RequestedAutomaticInputDelay, raiseBelowPercent, raiseBelowOrEqualPercent, 100 - raiseBelowOrEqualPercent, lowerMedianDelay, m_RequestedAutomaticInputDelay, lowerBelowPercent, lowerBelowOrEqualPercent, 100 - lowerBelowOrEqualPercent);
+                                //}
+
+                                if (clientData.m_SampleCount >= c_SamplesNeededBeforeRaisingDelay)
+                                {
+                                    int raiseDelay = CalculatePercentile(clientData.m_RaiseDelayHistogram, c_SamplesNeededBeforeRaisingDelay, c_PercentSamplesWithinDelayToMaintainDelay);
+                                    if (raiseDelay >= m_RequestedAutomaticInputDelay)
+                                    {
+                                        newDelay = max(newDelay, raiseDelay);
+                                        hasDelay = true;
+                                    }
+                                }
+
+                                if (newDelay < m_RequestedAutomaticInputDelay && clientData.m_SampleCount >= c_SamplesNeededBeforeLoweringDelay)
+                                {
+                                    int lowerDelay = CalculatePercentile(clientData.m_LowerDelayHistogram, clientData.m_SampleCount, c_PercentSamplesBelowDelayToLowerDelay);
+                                    if (lowerDelay <= m_RequestedAutomaticInputDelay)
+                                    {
+                                        newDelay = max(newDelay, lowerDelay);
+                                        hasDelay = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (hasDelay)
+                    {
+                        RequestAutomaticInputDelayChange(newDelay);
+                    }
+                }
+
+                // apply gamespeed catchup if we're running too far behind
+                if (advanceFrame)
+                {
+                    int catchupState = 0;
+
+                    if (m_ClientData[m_ClientIndex].m_PlayerData.m_PlayerIndex < 0 && m_AssignedClientsCount > 0)
+                    {
+                        uint32 lastFrame = UINT32_MAX;
+                        for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
                         {
                             auto& clientData = m_ClientData[clientIndex];
-                            auto& delayChange = clientData.m_AutomaticInputDelayChanges[m_Frame & (countof(clientData.m_AutomaticInputDelayChanges) - 1)];
-                            if (delayChange.m_InputFrame == m_Frame)
+                            if (clientData.m_PlayerData.m_PlayerIndex >= 0)
                             {
-                                clientData.m_AutomaticInputDelay = delayChange.m_InputDelay;
-                                //trace("Set Automatic Input Delay for client %d on frame %u, delay: %d\n", clientIndex, m_Frame, clientData.m_AutomaticInputDelay);
+                                lastFrame = min(lastFrame, clientData.m_LastInputFrame);
                             }
                         }
 
-                        // make sure our requested input delay is up to date, so we can always request a change if it's different from this
-                        if (m_Frame >= m_RequestedAutomaticInputDelayFrame)
+                        int framesBehind = static_cast<int>(lastFrame - m_Frame);
+
+                        catchupState = m_CatchupState;
+                        switch (catchupState)
                         {
-                            auto& myClientData = m_ClientData[m_ClientIndex];
-                            m_RequestedAutomaticInputDelay = myClientData.m_AutomaticInputDelay;
+                        case 0:
+                        {
+                            if (framesBehind >= c_CatchupThresholds[2])
+                            {
+                                catchupState = 2;
+                            }
+                            else if (framesBehind >= c_CatchupThresholds[1])
+                            {
+                                catchupState = 1;
+                            }
+                        } break;
+                        case 1:
+                        {
+                            if (framesBehind <= c_CatchupThresholds[0])
+                            {
+                                catchupState = 0;
+                            }
+                            else if (framesBehind >= c_CatchupThresholds[2])
+                            {
+                                catchupState = 2;
+                            }
+                        } break;
+                        case 2:
+                        {
+                            if (framesBehind <= c_CatchupThresholds[0])
+                            {
+                                catchupState = 0;
+                            }
+                            else if (framesBehind <= c_CatchupThresholds[1])
+                            {
+                                catchupState = 1;
+                            }
+                        } break;
+                        default:
+                            assert(false);
                         }
 
-                        UpdateInputDelay();
+                        //trace("Frames behind: %d, Catchup state: %d\n", framesBehind, catchupState);
                     }
 
-                    // calculate new automatic input delay
+                    if (m_CatchupState != catchupState)
+                    {
+                        m_CatchupState = catchupState;
+                        SetSpeed(g_BaseGameSpeedFPS, instance);
+                    }
+                }
+
+                // write checksum
+                {
+                    ChecksumBuffer* pChecksumBuffer;
+                    ChecksumBuffer tempChecksumBuffer;
+                    uint64 checksumRingBufferHead = m_ChecksumRingBufferHead;
+
                     if (advanceFrame)
                     {
-                        int newDelay = 0;
-                        bool hasDelay = false;
-
-                        for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
-                        {
-                            auto& clientData = m_ClientData[clientIndex];
-                            if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
-                            {
-                                int64 rtt = 0;
-
-                                // for all acked messages since last frame, get the max time since one was acknowledged
-                                int64 first = clientData.m_PreviousFrameLastAcknowledgedMessageNumber;
-                                int64 last = clientData.m_LastAcknowledgedMessageNumber;
-                                int64 acknowledgeTime = 0;
-                                for (int64 i = last; i > first; i--)
-                                {
-                                    auto& messageInfo = clientData.m_MessageSendData[i & (countof(clientData.m_MessageSendData) - 1)];
-                                    if (messageInfo.m_MessageNumber == i)
-                                    {
-                                        // if the message hasn't been acked, we just use the ack time of the one after it that got acked
-                                        if (messageInfo.m_MessageAcknowledgeTime != 0)
-                                        {
-                                            acknowledgeTime = messageInfo.m_MessageAcknowledgeTime;
-                                        }
-
-                                        assert(acknowledgeTime != 0);
-                                        rtt = max(rtt, acknowledgeTime - messageInfo.m_MessageSendTime);
-                                    }
-                                }
-
-                                // no acks since last frame, so just use last sample rtt
-                                if (rtt == 0)
-                                {
-                                    rtt = clientData.m_PreviousFrameSampleRTT;
-                                }
-
-                                // use the current time since the first non-acked message if that's greater
-                                int64 firstNonAcked = clientData.m_LastAcknowledgedMessageNumber + 1;
-                                auto& messageInfo = clientData.m_MessageSendData[firstNonAcked & (countof(clientData.m_MessageSendData) - 1)];
-                                if (messageInfo.m_MessageNumber == firstNonAcked)
-                                {
-                                    rtt = max(rtt, g_SteamNetworkingUtils->GetLocalTimestamp() - messageInfo.m_MessageSendTime);
-                                }
-
-                                // add the sample
-                                if (rtt != 0 && m_AssignedClientsCount > 0 && m_PreviousFrameAssignedClientsCount)
-                                {
-                                    assert(rtt > 0);
-                                    rtt = min(rtt, static_cast<int64>(INT32_MAX));
-
-                                    int delay = static_cast<int>((rtt * c_TargetFPS + 1'000'000 - 1) / 1'000'000);
-                                    delay = (delay + 1) / 2;
-
-                                    clientData.m_RaiseDelayHistogram.AddSample(delay);
-                                    clientData.m_LowerDelayHistogram.AddSample(delay);
-
-                                    //trace("Added sample: %d, %d\n", static_cast<int>(rtt), delay);
-                                }
-
-                                m_PreviousFrameAssignedClientsCount = m_AssignedClientsCount;
-                                clientData.m_PreviousFrameLastAcknowledgedMessageNumber = clientData.m_LastAcknowledgedMessageNumber;
-                                clientData.m_PreviousFrameSampleRTT = rtt;
-
-                                if (clientData.m_PlayerData.m_PlayerIndex >= 0)
-                                {
-                                    // prints out some useful info while testing
-                                    //if (clientData.m_RaiseDelayHistogram.m_SampleCount >= c_SamplesNeededBeforeRaisingDelay)
-                                    //{
-                                    //    int raiseBelowPercent;
-                                    //    int raiseBelowOrEqualPercent;
-                                    //    int lowerBelowPercent;
-                                    //    int lowerBelowOrEqualPercent;
-                                    //    clientData.m_RaiseDelayHistogram.CalculateDistributionAt(m_RequestedAutomaticInputDelay, &raiseBelowPercent, &raiseBelowOrEqualPercent);
-                                    //    clientData.m_LowerDelayHistogram.CalculateDistributionAt(m_RequestedAutomaticInputDelay, &lowerBelowPercent, &lowerBelowOrEqualPercent);
-                                    //    int raiseMedianDelay = clientData.m_RaiseDelayHistogram.CalculatePercentile(50);
-                                    //    int lowerMedianDelay = clientData.m_LowerDelayHistogram.CalculatePercentile(50);
-
-                                    //    trace("Raise median: %d, current:%d, <%d%%, <=%d%%, >%d%% | Lower median: %d, current:%d, <%d%%, <=%d%%, >%d%%\n", raiseMedianDelay, m_RequestedAutomaticInputDelay, raiseBelowPercent, raiseBelowOrEqualPercent, 100 - raiseBelowOrEqualPercent, lowerMedianDelay, m_RequestedAutomaticInputDelay, lowerBelowPercent, lowerBelowOrEqualPercent, 100 - lowerBelowOrEqualPercent);
-                                    //}
-
-                                    if (clientData.m_RaiseDelayHistogram.m_SampleCount >= c_SamplesNeededBeforeRaisingDelay)
-                                    {
-                                        int raiseDelay = clientData.m_RaiseDelayHistogram.CalculatePercentile(c_PercentSamplesWithinDelayToMaintainDelay);
-                                        if (raiseDelay >= m_RequestedAutomaticInputDelay)
-                                        {
-                                            newDelay = max(newDelay, raiseDelay);
-                                            hasDelay = true;
-                                        }
-                                    }
-
-                                    if (newDelay < m_RequestedAutomaticInputDelay && clientData.m_LowerDelayHistogram.m_SampleCount >= c_SamplesNeededBeforeLoweringDelay)
-                                    {
-                                        int lowerDelay = clientData.m_LowerDelayHistogram.CalculatePercentile(c_PercentSamplesBelowDelayToLowerDelay);
-                                        if (lowerDelay <= m_RequestedAutomaticInputDelay)
-                                        {
-                                            newDelay = max(newDelay, lowerDelay);
-                                            hasDelay = true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if (hasDelay)
-                        {
-                            RequestAutomaticInputDelayChange(newDelay);
-                        }
+                        auto& myClientData = m_ClientData[m_ClientIndex];
+                        pChecksumBuffer = &myClientData.m_ChecksumData[m_Frame & (countof(myClientData.m_ChecksumData) - 1)];
                     }
+                    else
+                    {
+                        pChecksumBuffer = &tempChecksumBuffer;
+                    }
+
+                    auto& checksumBuffer = *pChecksumBuffer;
+                    reset(checksumBuffer);
+                    checksumBuffer.m_Frame = m_Frame;
+                    checksumBuffer.m_BufferOffset = checksumRingBufferHead;
+
+                    {
+                        Writer writer(g_ChecksumRingBuffer + (checksumRingBufferHead & (c_ChecksumRingBufferSize - 1)), GetMaxSize());
+                        Serialize(writer);
+                        checksumBuffer.m_SessionBufferSize = writer.m_Offset;
+                        checksumRingBufferHead += writer.m_Offset;
+                    }
+
+                    {
+                        auto ibuffer = BufferGetFromGML(g_GMLChecksumBuffer1);
+                        assert(ibuffer != nullptr);
+
+                        buffer_seek(instance, g_GMLChecksumBuffer1, 0, 0);
+
+                        {
+                            RValue result = {};
+                            RValue arg;
+                            init_buffer(arg, g_GMLChecksumBuffer1);
+                            Script_Perform(g_gml_Script_getChecksumCallback, instance, instance, 1, &result, &arg);
+                        }
+
+                        int dataSize = BufferTELL(ibuffer);
+                        assert(dataSize <= g_GMLChecksumBufferMaxSize);
+                        uint8* data = BufferGet(ibuffer);
+
+                        memcpy(g_ChecksumRingBuffer + (checksumRingBufferHead & (c_ChecksumRingBufferSize - 1)), data, dataSize);
+                        checksumBuffer.m_GMLBufferSize = dataSize;
+                        checksumRingBufferHead += dataSize;
+                    }
+
+                    if (advanceFrame)
+                    {
+                        m_ChecksumRingBufferHead = checksumRingBufferHead;
+                    }
+                    else
+                    {
+                        m_TempChecksumRingBufferHead = max(m_TempChecksumRingBufferHead, checksumRingBufferHead);
+                    }
+
+                    checksumBuffer.m_Checksum = hash_fnv1a32(g_ChecksumRingBuffer + (checksumBuffer.m_BufferOffset & (c_ChecksumRingBufferSize - 1)), checksumBuffer.m_SessionBufferSize + checksumBuffer.m_GMLBufferSize);
+
+                    CheckChecksum(checksumBuffer, m_ClientIndex, instance);
                 }
             }
 
@@ -1439,34 +1670,14 @@ namespace
                     Script_Perform(g_gml_Script_onlineStateChangedCallback, instance, instance, 1, &result, &arg);
                 }
 
-                Reset();
-
-                {
-                    RValue result = {};
-                    RValue arg;
-                    init_int64(arg, 0);
-                    Script_Perform(g_gml_Script_onlineStateChangedCallback, instance, instance, 1, &result, &arg);
-                }
+                assert(m_OnlineState == EOnlineState::Offline);
             }
+
+            return true;
         }
 
-        void Reset()
+        void Close()
         {
-            for (int i = 0; i < countof(m_FileData); i++)
-            {
-                auto& fileData = m_FileData[i];
-                if (fileData.m_Filename != nullptr)
-                {
-                    YYFree(fileData.m_Filename);
-                    fileData.m_Filename = nullptr;
-                }
-                if (fileData.m_Data != nullptr)
-                {
-                    YYFree(fileData.m_Data);
-                    fileData.m_Data = nullptr;
-                }
-            }
-
             for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
             {
                 auto& clientData = m_ClientData[clientIndex];
@@ -1482,59 +1693,31 @@ namespace
                 g_SteamNetworkingSockets->CloseListenSocket(m_ListenSocket);
                 m_ListenSocket = k_HSteamListenSocket_Invalid;
             }
+        }
+
+        void Reset(CInstance* instance)
+        {
+            Close();
+
+            for (int i = 0; i < countof(m_FileData); i++)
+            {
+                auto& fileData = m_FileData[i];
+                if (fileData.m_Filename != nullptr)
+                {
+                    YYFree(fileData.m_Filename);
+                    fileData.m_Filename = nullptr;
+                }
+                if (fileData.m_Data != nullptr)
+                {
+                    YYFree(fileData.m_Data);
+                    fileData.m_Data = nullptr;
+                }
+            }
 
             reset(*this);
-        }
 
-        template<typename T>
-        constexpr void Serialize(T& writer)
-        {
-#define WRITE_NAMED(val) if constexpr (HasSetName<T>) { writer.SetName(#val); } writer.Write(val);
-#define WRITE_NAMED_INDEX(val, i) if constexpr (HasSetName<T>) { writer.SetName(#val, i, #i); } writer.Write(val);
-
-            WRITE_NAMED(m_Frame);
-            WRITE_NAMED(m_InputDelayMode);
-            WRITE_NAMED(m_InputDelayFavoredClientIndex);
-            WRITE_NAMED(m_MinAutomaticInputDelay);
-            WRITE_NAMED(m_MaxAutomaticInputDelay);
-
-            for (int i = 0; i < countof(m_PlayerIndexToClientIndexMap); i++)
-            {
-                WRITE_NAMED_INDEX(m_PlayerIndexToClientIndexMap[i], i);
-            }
-
-            for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
-            {
-                WRITE_NAMED_INDEX(m_ClientData[clientIndex].m_InputDelay, clientIndex);
-                WRITE_NAMED_INDEX(m_ClientData[clientIndex].m_AutomaticInputDelay, clientIndex);
-
-                auto& clientData = m_ClientData[clientIndex];
-                auto& playerData = clientData.m_PlayerData;
-
-                for (int i = 0; i < 2; i++)
-                {
-                    int frame = (m_Frame - i - 1) & (countof(playerData.m_InputBuffer) - 1);
-                    WRITE_NAMED_INDEX(playerData.m_InputBuffer[frame], frame);
-                }
-
-                for (int i = 0; i < 1; i++)
-                {
-                    int frame = (m_Frame - i - 1) & (countof(clientData.m_AutomaticInputDelayChanges) - 1);
-                    WRITE_NAMED_INDEX(clientData.m_AutomaticInputDelayChanges[frame].m_InputFrame, frame);
-                    WRITE_NAMED_INDEX(clientData.m_AutomaticInputDelayChanges[frame].m_InputDelay, frame);
-                }
-            }
-
-#undef WRITE_NAMED
-#undef WRITE_NAMED_INDEX
-        }
-
-        static consteval int GetMaxSize()
-        {
-            SizeGetter size;
-            Session session;
-            session.Serialize(size);
-            return size.m_Size;
+            SetPowersaveEnabled(true);
+            SetSpeed(g_BaseGameSpeedFPS, instance);
         }
 
         InputFlags_t PlayerGetInput(CInstance* instance, int playerIndex)
@@ -1555,11 +1738,11 @@ namespace
             return in;
         }
 
-        void CheckChecksum(ChecksumBuffer& a, CInstance* instance)
+        void CheckChecksum(ChecksumBuffer& a, int aClientIndex, CInstance* instance)
         {
-            for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+            for (int bClientIndex = 0; bClientIndex < m_ClientCount; bClientIndex++)
             {
-                auto& clientData = m_ClientData[clientIndex];
+                auto& clientData = m_ClientData[bClientIndex];
                 auto& b = clientData.m_ChecksumData[a.m_Frame & (countof(clientData.m_ChecksumData) - 1)];
 
                 if (a.m_Frame == b.m_Frame && a.m_Checksum != b.m_Checksum)
@@ -1575,24 +1758,20 @@ namespace
                             ReliableMessage reliableMessage;
                             reliableMessage.m_Type = EReliableMessageType::ChecksumBuffer;
                             reliableMessage.m_Frame = mine.m_Frame;
-                            SendReliableMessage(reliableMessage, instance, nullptr, &mine);
+                            SendReliableMessage(reliableMessage, instance, nullptr, 0, &mine);
                             m_LastSentChecksumFrame = mine.m_Frame;
                         }
                     }
 
-                    if (a.m_HasBuffer && b.m_HasBuffer)
+                    if (a.m_BufferOffset != 0 && b.m_BufferOffset != 0)
                     {
-                        auto& myClientData = m_ClientData[m_ClientIndex];
-                        auto startPtr = myClientData.m_ChecksumData;
-                        auto endPtr = startPtr + countof(myClientData.m_ChecksumData);
-
-                        if (&b >= startPtr && &b < endPtr)
+                        if (bClientIndex == m_ClientIndex)
                         {
-                            DiffChecksums(b, a, instance);
+                            DiffChecksums(b, bClientIndex, a, aClientIndex, instance);
                         }
                         else
                         {
-                            DiffChecksums(a, b, instance);
+                            DiffChecksums(a, aClientIndex, b, bClientIndex, instance);
                         }
 
                         // we quit when a checksum failure happens, could change this in the future
@@ -1603,35 +1782,51 @@ namespace
             }
         }
 
-        void DiffChecksums(ChecksumBuffer& a, ChecksumBuffer& b, CInstance* instance)
+        void DiffChecksums(ChecksumBuffer& a, int aClientIndex, ChecksumBuffer& b, int bClientIndex, CInstance* instance)
         {
+            ReleaseConsoleOutput("Diffing checksums (frame=%u): Ours (client=%d), Theirs (client=%d)\n", a.m_Frame, aClientIndex, bClientIndex);
+
+            assert(max(m_ChecksumRingBufferHead, m_TempChecksumRingBufferHead) - a.m_BufferOffset <= c_ChecksumRingBufferSize);
+            assert(max(m_ChecksumRingBufferHead, m_TempChecksumRingBufferHead) - b.m_BufferOffset <= c_ChecksumRingBufferSize);
+
+            bool diffInSession = false;
+            bool diffInGML = false;
+
             // compare pfo checksum
-            if (a.m_SessionBufferSize != b.m_SessionBufferSize || memcmp(a.m_SessionBuffer, b.m_SessionBuffer, a.m_SessionBufferSize) != 0)
+            uint8* aSessionBuffer = g_ChecksumRingBuffer + (a.m_BufferOffset & (c_ChecksumRingBufferSize - 1));
+            uint8* bSessionBuffer = g_ChecksumRingBuffer + (b.m_BufferOffset & (c_ChecksumRingBufferSize - 1));
+            if (a.m_SessionBufferSize != b.m_SessionBufferSize || memcmp(aSessionBuffer, bSessionBuffer, a.m_SessionBufferSize) != 0)
             {
-                Reader readerA(a.m_SessionBuffer, a.m_SessionBufferSize);
-                Reader readerB(b.m_SessionBuffer, b.m_SessionBufferSize);
+                diffInSession = true;
+                Reader readerA(aSessionBuffer, a.m_SessionBufferSize);
+                Reader readerB(bSessionBuffer, b.m_SessionBufferSize);
 
                 Differ<Session> differ(readerA, readerB);
                 Serialize(differ);
             }
 
             // compare gml checksum
-            if (a.m_GmlBufferSize != b.m_GmlBufferSize || memcmp(a.m_GmlBuffer, b.m_GmlBuffer, a.m_GmlBufferSize) != 0)
+            uint8* aGMLBuffer = aSessionBuffer + a.m_SessionBufferSize;
+            uint8* bGMLBuffer = bSessionBuffer + b.m_SessionBufferSize;
+            if (a.m_GMLBufferSize != b.m_GMLBufferSize || memcmp(aGMLBuffer, bGMLBuffer, a.m_GMLBufferSize) != 0)
             {
-                BufferWriteContent(g_GmlChecksumBuffer1, 0, a.m_GmlBuffer, a.m_GmlBufferSize);
-                BufferWriteContent(g_GmlChecksumBuffer2, 0, b.m_GmlBuffer, b.m_GmlBufferSize);
+                diffInGML = true;
+                BufferWriteContent(g_GMLChecksumBuffer1, 0, aGMLBuffer, a.m_GMLBufferSize);
+                BufferWriteContent(g_GMLChecksumBuffer2, 0, bGMLBuffer, b.m_GMLBufferSize);
 
-                buffer_seek(instance, g_GmlChecksumBuffer1, 0, 0);
-                buffer_seek(instance, g_GmlChecksumBuffer2, 0, 0);
+                buffer_seek(instance, g_GMLChecksumBuffer1, 0, 0);
+                buffer_seek(instance, g_GMLChecksumBuffer2, 0, 0);
 
                 {
                     RValue result = {};
                     RValue arg[2];
-                    init_buffer(arg[0], g_GmlChecksumBuffer1);
-                    init_buffer(arg[1], g_GmlChecksumBuffer2);
+                    init_buffer(arg[0], g_GMLChecksumBuffer1);
+                    init_buffer(arg[1], g_GMLChecksumBuffer2);
                     Script_Perform(g_gml_Script_getChecksumCallback, instance, instance, countof(arg), &result, arg);
                 }
             }
+
+            assert(diffInSession || diffInGML);
         }
 
         void OnNetConnectionStatusChanged(SteamNetConnectionStatusChangedCallback_t* pParam)
@@ -1653,12 +1848,21 @@ namespace
                     g_SteamNetworkingSockets->CloseConnection(hConn, info.m_eEndReason, info.m_szEndDebug, false);
                 }
 
-                for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+                for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
                 {
                     auto& clientData = m_ClientData[clientIndex];
                     if (clientData.m_ConnectSocket == hConn)
                     {
                         clientData.m_ConnectSocket = k_HSteamNetConnection_Invalid;
+
+                        {
+                            auto map = CreateDsMap(0, 0);
+                            DsMapAddDouble(map, "type", 2);
+                            DsMapAddDouble(map, "success", info.m_eState == k_ESteamNetworkingConnectionState_ClosedByPeer);
+                            DsMapAddDouble(map, "reason", info.m_eEndReason);
+                            DsMapAddInt64(map, "steam_id", static_cast<int64>(clientData.m_SteamID));
+                            CreateAsyncEventWithDSMap(map, 68);
+                        }
                     }
                 }
 
@@ -1669,13 +1873,26 @@ namespace
                     {
                         ReleaseConsoleOutput("Let's try to reconnect!\n");
                         //m_OnlineState = EOnlineState::Reconnecting;
-                        m_OnlineState = EOnlineState::Disconnecting;
                     }
                 }
-                else
+
+                // disconnect if we're the last player in the session
+                if (m_OnlineState == EOnlineState::InGame)
                 {
-                    if (m_OnlineState == EOnlineState::InGame)
+                    int connectedCount = 0;
+
+                    for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
                     {
+                        auto& clientData = m_ClientData[clientIndex];
+                        if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
+                        {
+                            connectedCount++;
+                        }
+                    }
+
+                    if (connectedCount == 0)
+                    {
+                        ReleaseConsoleOutput("No more clients connected: Disconnecting\n");
                         m_OnlineState = EOnlineState::Disconnecting;
                     }
                 }
@@ -1685,23 +1902,41 @@ namespace
                 eOldState == k_ESteamNetworkingConnectionState_None &&
                 info.m_eState == k_ESteamNetworkingConnectionState_Connecting)
             {
-                if (m_OnlineState == EOnlineState::Offline || m_OnlineState == EOnlineState::InGame)
+                if (m_OnlineState <= EOnlineState::InGame && m_ClientCount > 0)
                 {
-                    if (m_ClientData[1].m_ConnectSocket != k_HSteamNetConnection_Invalid)
+                    bool found = false;
+
+                    // accept connections from clients after us
+                    for (int clientIndex = m_ClientIndex + 1; clientIndex < m_ClientCount; clientIndex++)
                     {
-                        g_SteamNetworkingSockets->CloseConnection(m_ClientData[1].m_ConnectSocket, k_ESteamNetConnectionEnd_AppException_Generic + 2, "New connection received", false);
-                        m_ClientData[1].m_ConnectSocket = k_HSteamNetConnection_Invalid;
+                        auto& clientData = m_ClientData[clientIndex];
+                        if (info.m_identityRemote.GetSteamID64() == clientData.m_SteamID)
+                        {
+                            if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
+                            {
+                                g_SteamNetworkingSockets->CloseConnection(clientData.m_ConnectSocket, k_ESteamNetConnectionEnd_AppException_Generic + 2, "New connection received", false);
+                                clientData.m_ConnectSocket = k_HSteamNetConnection_Invalid;
+                            }
+
+                            EResult res = g_SteamNetworkingSockets->AcceptConnection(hConn);
+                            if (res == k_EResultOK)
+                            {
+                                AddConnection(clientData, hConn);
+                            }
+                            else
+                            {
+                                g_SteamNetworkingSockets->CloseConnection(hConn, k_ESteamNetConnectionEnd_AppException_Generic, "Failed to accept connection", false);
+                                YYError("AcceptConnection returned %d", res);
+                            }
+
+                            found = true;
+                            break;
+                        }
                     }
 
-                    EResult res = g_SteamNetworkingSockets->AcceptConnection(hConn);
-                    if (res == k_EResultOK)
+                    if (!found)
                     {
-                        AddConnection(1, hConn);
-                    }
-                    else
-                    {
-                        g_SteamNetworkingSockets->CloseConnection(hConn, k_ESteamNetConnectionEnd_AppException_Generic, "Failed to accept connection", false);
-                        YYError("AcceptConnection returned %d", res);
+                        g_SteamNetworkingSockets->CloseConnection(hConn, k_ESteamNetConnectionEnd_AppException_Generic + 3, "Not accepting connections from this SteamID", false);
                     }
                 }
                 else
@@ -1712,28 +1947,109 @@ namespace
 
             if (info.m_eState == k_ESteamNetworkingConnectionState_Connected)
             {
-                if (m_OnlineState == EOnlineState::Offline)
+                if (m_OnlineState == EOnlineState::Offline && m_ClientCount > 0)
                 {
-                    m_OnlineState = EOnlineState::StartingGame;
+                    bool allClientsConnected = true;
+                    SteamNetConnectionRealTimeStatus_t status;
+
+                    for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
+                    {
+                        if (clientIndex != m_ClientIndex)
+                        {
+                            auto& clientData = m_ClientData[clientIndex];
+                            if (clientData.m_ConnectSocket == k_HSteamNetConnection_Invalid
+                                || g_SteamNetworkingSockets->GetConnectionRealTimeStatus(clientData.m_ConnectSocket, &status, 0, nullptr) != k_EResultOK
+                                || status.m_eState != k_ESteamNetworkingConnectionState_Connected)
+                            {
+                                allClientsConnected = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (allClientsConnected)
+                    {
+                        m_OnlineState = EOnlineState::StartingGame;
+                    }
                 }
             }
         }
 
-        void AddConnection(int playerIndex, HSteamNetConnection hConn)
+        void AddConnection(ClientData& clientData, HSteamNetConnection hConn)
         {
-            assert(m_ClientData[playerIndex].m_ConnectSocket == k_HSteamNetConnection_Invalid);
+            assert(clientData.m_ConnectSocket == k_HSteamNetConnection_Invalid);
 
             constexpr int lanePriorities[] = { 1, 1 }; // lowest number drains first
             constexpr uint16 laneWeights[] = { 1, 1 }; // higher number means more relative bandwidth
             g_SteamNetworkingSockets->ConfigureConnectionLanes(hConn, countof(lanePriorities), lanePriorities, laneWeights);
-            m_ClientData[playerIndex].m_ConnectSocket = hConn;
+            clientData.m_ConnectSocket = hConn;
         }
 
-        void Quit()
+        void SetClients(CSteamID (&steamIDs)[countof(m_ClientData)], int clientCount)
         {
-            if (m_OnlineState >= EOnlineState::InGame)
+            assert(clientCount >= 2 && clientCount <= countof(steamIDs));
+            assert(m_ClientIndex == -1 && m_ClientCount == 0);
+            auto mySteamID = g_SteamUser->GetSteamID();
+
+            for (int clientIndex = 0; clientIndex < clientCount; clientIndex++)
             {
-                m_OnlineState = EOnlineState::Quitting;
+                auto steamID = steamIDs[clientIndex];
+                assert(steamID.IsValid());
+
+                if (steamID == mySteamID)
+                {
+                    assert(m_ClientIndex == -1);
+                    m_ClientIndex = clientIndex;
+                }
+                else
+                {
+                    // make sure each SteamID is unique
+                    for (int i = 0; i < clientIndex; i++)
+                    {
+                        assert(steamID != steamIDs[i]);
+                    }
+                }
+
+                auto& clientData = m_ClientData[clientIndex];
+                clientData.m_SteamID = steamID.ConvertToUint64();
+            }
+
+            assert(m_ClientIndex >= 0);
+            m_ClientCount = clientCount;
+
+            // create a listen socket for connecting to all clients after us
+            if (m_ClientIndex < m_ClientCount - 1)
+            {
+                assert(m_ListenSocket == k_HSteamListenSocket_Invalid);
+
+                m_ListenSocket = g_SteamNetworkingSockets->CreateListenSocketP2P(0, 0, nullptr);
+                if (m_ListenSocket == k_HSteamListenSocket_Invalid)
+                {
+                    YYError("Listen socket invalid");
+                }
+            }
+        }
+
+        void Connect()
+        {
+            assert(m_ClientIndex >= 0);
+
+            // connect to all clients before us
+            for (int clientIndex = 0; clientIndex < m_ClientIndex; clientIndex++)
+            {
+                auto& clientData = m_ClientData[clientIndex];
+                SteamNetworkingIdentity identity;
+                identity.SetSteamID64(clientData.m_SteamID);
+
+                auto hConn = g_SteamNetworkingSockets->ConnectP2P(identity, 0, 0, nullptr);
+                if (hConn != k_HSteamNetConnection_Invalid)
+                {
+                    AddConnection(clientData, hConn);
+                }
+                else
+                {
+                    YYError("Connect socket invalid");
+                }
             }
         }
 
@@ -1742,7 +2058,7 @@ namespace
             int anyAssignedClient = -1;
             int oldClientToPlayerIndexMap[countof(m_ClientData)];
 
-            for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+            for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
             {
                 auto& playerData = m_ClientData[clientIndex].m_PlayerData;
                 oldClientToPlayerIndexMap[clientIndex] = playerData.m_PlayerIndex;
@@ -1752,19 +2068,20 @@ namespace
             for (int playerIndex = countof(map) - 1; playerIndex >= 0; playerIndex--)
             {
                 int clientIndex = map[playerIndex];
-                assert(clientIndex >= -1 && clientIndex < countof(m_ClientData));
-                m_PlayerIndexToClientIndexMap[playerIndex] = clientIndex;
+                assert(clientIndex >= -1 && clientIndex < m_ClientCount);
                 if (clientIndex >= 0)
                 {
-                    anyAssignedClient = clientIndex;
                     auto& playerData = m_ClientData[clientIndex].m_PlayerData;
+                    assert(playerData.m_PlayerIndex < 0);
                     playerData.m_PlayerIndex = playerIndex;
+                    anyAssignedClient = clientIndex;
                 }
+                m_PlayerIndexToClientIndexMap[playerIndex] = clientIndex;
             }
 
             bool changedPlayerAssignment = false;
             m_AssignedClientsCount = 0;
-            for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+            for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
             {
                 auto& clientData = m_ClientData[clientIndex];
                 auto& playerData = clientData.m_PlayerData;
@@ -1814,7 +2131,7 @@ namespace
                 int automaticInputDelay = 0;
                 if (m_AssignedClientsCount > 1)
                 {
-                    for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+                    for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
                     {
                         auto& clientData = m_ClientData[clientIndex];
                         if (clientData.m_PlayerData.m_PlayerIndex >= 0)
@@ -1825,7 +2142,7 @@ namespace
                 }
 
                 // set input delay based on the current favored player
-                for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+                for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
                 {
                     int delay = 0;
                     int maxDelay = m_MaxAutomaticInputDelay;
@@ -1867,14 +2184,14 @@ namespace
                 {
                     if (delay < 0)
                     {
-                        for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+                        for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
                         {
                             auto& clientData = m_ClientData[clientIndex];
                             if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid && clientData.m_PlayerData.m_PlayerIndex >= 0)
                             {
-                                if (clientData.m_RaiseDelayHistogram.m_SampleCount >= c_SamplesNeededBeforeRaisingDelay)
+                                if (clientData.m_SampleCount >= c_SamplesNeededBeforeRaisingDelay)
                                 {
-                                    int newDelay = clientData.m_RaiseDelayHistogram.CalculatePercentile(c_PercentSamplesWithinDelayToMaintainDelay);
+                                    int newDelay = CalculatePercentile(clientData.m_RaiseDelayHistogram, c_SamplesNeededBeforeRaisingDelay, c_PercentSamplesWithinDelayToMaintainDelay);
                                     delay = max(delay, newDelay);
                                 }
                             }
@@ -1882,14 +2199,14 @@ namespace
 
                         if (delay < 0)
                         {
-                            for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
+                            SteamNetConnectionRealTimeStatus_t status;
+
+                            for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
                             {
                                 auto& clientData = m_ClientData[clientIndex];
                                 if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid && clientData.m_PlayerData.m_PlayerIndex >= 0)
                                 {
-                                    SteamNetConnectionRealTimeStatus_t status;
-                                    g_SteamNetworkingSockets->GetConnectionRealTimeStatus(clientData.m_ConnectSocket, &status, 0, nullptr);
-                                    if (status.m_nPing >= 0)
+                                    if (g_SteamNetworkingSockets->GetConnectionRealTimeStatus(clientData.m_ConnectSocket, &status, 0, nullptr) == k_EResultOK && status.m_nPing >= 0)
                                     {
                                         int newDelay = ((status.m_nPing + c_PingDelayCalculationSafetyMargin) * c_TargetFPS + 1000 - 1) / 1000;
                                         newDelay = (newDelay + 1) / 2;
@@ -1919,6 +2236,36 @@ namespace
                         //trace("Requested Automatic Input Delay Change on frame: %u, delay: %d\n", inputFrame, delay);
                     }
                 }
+            }
+        }
+
+        void SetSpeed(double speed, CInstance* instance)
+        {
+            g_BaseGameSpeedFPS = speed;
+
+            assert(m_CatchupState >= 0 && m_CatchupState < countof(c_CatchupThresholdSpeeds));
+            speed *= c_CatchupThresholdSpeeds[m_CatchupState];
+
+            if (g_FinalGameSpeedFPS != speed)
+            {
+                bool oldVsync = g_FinalGameSpeedFPS <= 60.0;
+                bool newVsync = speed <= 60;
+                g_FinalGameSpeedFPS = speed;
+
+                if (oldVsync != newVsync)
+                {
+                    RValue result = {};
+                    RValue args[2];
+                    init_real(args[0], 0.0);
+                    init_bool(args[1], newVsync);
+                    Script_Perform(g_gml_display_reset, instance, instance, countof(args), &result, args);
+                }
+
+                RValue result = {};
+                RValue args[2];
+                init_real(args[0], speed);
+                init_real(args[1], 0.0);
+                Script_Perform(g_gml_game_set_speed, instance, instance, countof(args), &result, args);
             }
         }
 
@@ -1977,6 +2324,146 @@ namespace
             return ret;
         }
 
+        void SendReliableMessage(ReliableMessage& reliableMessage, CInstance* instance, void* data, int dataSize, ChecksumBuffer* checksumBuffer = nullptr)
+        {
+            int messageRetryCount = -1;
+            int messageSize = 0;
+            bool messageSent[countof(m_ClientData)] = {};
+
+            while (m_OnlineState == EOnlineState::InGame && messageRetryCount != 0)
+            {
+                if (messageRetryCount > 0)
+                {
+                    Timing_Sleep(1'000'000 / 2);
+                }
+
+                messageRetryCount = 0;
+                int messageCount = 0;
+                SteamNetworkingMessage_t* netMessages[countof(m_ClientData) - 1];
+                int netMessageToClientIndexMap[countof(netMessages)];
+
+                for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
+                {
+                    auto& clientData = m_ClientData[clientIndex];
+                    if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid && !messageSent[clientIndex])
+                    {
+                        netMessageToClientIndexMap[messageCount] = clientIndex;
+                        auto netMessage = netMessages[messageCount++] = g_SteamNetworkingUtils->AllocateMessage(k_cbMaxSteamNetworkingSocketsMessageSizeSend);
+
+                        Writer writer(static_cast<uint8*>(netMessage->m_pData), netMessage->m_cbSize);
+
+                        if (reliableMessage.m_Type == EReliableMessageType::File)
+                        {
+                            reliableMessage.Serialize(writer);
+                            writer.Write(data, dataSize);
+                        }
+                        else if (reliableMessage.m_Type == EReliableMessageType::FileDoesNotExist)
+                        {
+                            reliableMessage.Serialize(writer);
+                        }
+                        else if (reliableMessage.m_Type == EReliableMessageType::ChecksumBuffer)
+                        {
+                            reliableMessage.Serialize(writer);
+                            checksumBuffer->Serialize(writer);
+                        }
+                        else
+                        {
+                            assert(false);
+                        }
+
+                        netMessage->m_conn = clientData.m_ConnectSocket;
+                        netMessage->m_cbSize = writer.m_Offset;
+                        netMessage->m_nFlags = k_nSteamNetworkingSend_Reliable;
+                        netMessage->m_idxLane = 1;
+
+                        messageSize = netMessage->m_cbSize;
+                    }
+                }
+
+                if (messageCount > 0)
+                {
+                    int64 outResults[countof(netMessages)];
+
+                    g_SteamNetworkingSockets->SendMessages(messageCount, netMessages, outResults);
+                    for (int i = 0; i < countof(netMessages); i++)
+                    {
+                        netMessages[i] = nullptr;
+                    }
+
+                    for (int i = 0; i < messageCount; i++)
+                    {
+                        int64 result = outResults[i];
+                        assert(!messageSent[netMessageToClientIndexMap[i]]);
+
+                        if (result > 0)
+                        {
+                            ReleaseConsoleOutput("SendReliableMessage (size = %d) succeeded\n", messageSize);
+                            messageSent[netMessageToClientIndexMap[i]] = true;
+                        }
+                        else if (result == -k_EResultLimitExceeded)
+                        {
+                            ReleaseConsoleOutput("SendReliableMessage (size = %d) failed with k_EResultLimitExceeded: Resending message\n", messageSize);
+                            messageRetryCount++;
+                        }
+                        else
+                        {
+                            ReleaseConsoleOutput("SendReliableMessage (size = %d) failed with error code '%lld': Disconnecting\n", messageSize, result);
+                            m_OnlineState = EOnlineState::Disconnecting;
+                        }
+                    }
+                }
+            }
+        }
+
+        void ReceiveReliableMessage(SteamNetworkingMessage_t* netMessage, int clientIndex, CInstance* instance)
+        {
+            ReleaseConsoleOutput("ReceiveReliableMessage (size = %d)\n", netMessage->m_cbSize);
+
+            ReliableMessage reliableMessage;
+            Reader reader(static_cast<uint8*>(netMessage->m_pData), netMessage->m_cbSize);
+            reliableMessage.Serialize(reader);
+
+            if (reliableMessage.m_Type == EReliableMessageType::File || reliableMessage.m_Type == EReliableMessageType::FileDoesNotExist)
+            {
+                auto fileData = FindFileData(reliableMessage.m_Filename, clientIndex);
+
+                assert(fileData->m_Status == EFileStatus::None || fileData->m_Status == EFileStatus::UnownedUnknown);
+                assert(fileData->m_Data == nullptr);
+                assert(fileData->m_Size == 0);
+
+                if (reliableMessage.m_Type == EReliableMessageType::File)
+                {
+                    assert(reliableMessage.m_Size <= reader.m_Size);
+                    auto data = YYAlloc(reliableMessage.m_Size);
+                    assert(data != nullptr);
+                    reader.Write(data, reliableMessage.m_Size);
+                    assert(reader.m_Offset == reader.m_Size);
+                    fileData->m_Data = data;
+                    fileData->m_Size = reliableMessage.m_Size;
+                    fileData->m_Status = EFileStatus::UnownedExists;
+                }
+                else
+                {
+                    fileData->m_Status = EFileStatus::UnownedDoesNotExist;
+                }
+            }
+            else if (reliableMessage.m_Type == EReliableMessageType::ChecksumBuffer)
+            {
+                auto& clientData = m_ClientData[clientIndex];
+                auto& checksumBuffer = clientData.m_ChecksumData[reliableMessage.m_Frame & (countof(clientData.m_ChecksumData) - 1)];
+
+                reset(checksumBuffer);
+                checksumBuffer.m_BufferOffset = m_ChecksumRingBufferHead;
+                checksumBuffer.Serialize(reader);
+                m_ChecksumRingBufferHead += checksumBuffer.m_SessionBufferSize + checksumBuffer.m_GMLBufferSize;
+                assert(checksumBuffer.m_Frame == reliableMessage.m_Frame);
+
+                CheckChecksum(checksumBuffer, clientIndex, instance);
+            }
+
+            netMessage->Release();
+        }
+
         void FileExists(RValue& result, CInstance* instance, RValue* arg, int clientIndex)
         {
             assert(clientIndex >= 0 && clientIndex < countof(m_ClientData));
@@ -1989,7 +2476,6 @@ namespace
                 if (clientIndex == m_ClientIndex)
                 {
                     Script_Perform(g_gml_file_exists, instance, instance, 1, &result, arg);
-                    assert(KIND_RValue(&result) == VALUE_REAL);
                     bool exists = BOOL_RValue(&result);
 
                     if (fileData->m_Status == EFileStatus::None)
@@ -2001,7 +2487,33 @@ namespace
                             ReliableMessage reliableMessage;
                             reliableMessage.m_Type = exists ? EReliableMessageType::File : EReliableMessageType::FileDoesNotExist;
                             strcpy_s(reliableMessage.m_Filename, filename);
-                            SendReliableMessage(reliableMessage, instance, arg);
+
+                            void* data = nullptr;
+                            int dataSize = 0;
+
+                            if (exists)
+                            {
+                                RValue tmpBuffer = {};
+                                Script_Perform(g_gml_buffer_load, instance, instance, 1, &tmpBuffer, arg);
+                                assert(KIND_RValue(&tmpBuffer) == VALUE_REF && GET_REF_TYPE(tmpBuffer.v64) == REFID_BUFFER);
+
+                                bool success = BufferGetContent(tmpBuffer.v32, &data, &dataSize);
+                                assert(success);
+                                assert(data != nullptr);
+                                assert(dataSize >= 0);
+
+                                RValue tmpResult = {};
+                                Script_Perform(g_gml_buffer_delete, instance, instance, 1, &tmpResult, &tmpBuffer);
+                            }
+
+                            reliableMessage.m_Size = dataSize;
+
+                            SendReliableMessage(reliableMessage, instance, data, dataSize);
+
+                            if (data != nullptr)
+                            {
+                                YYFree(data);
+                            }
                         }
                     }
                     else
@@ -2049,129 +2561,7 @@ namespace
                 }
 
                 Script_Perform(g_gml_file_exists, instance, instance, 1, &result, arg);
-                assert(KIND_RValue(&result) == VALUE_REAL);
             }
-        }
-
-        void SendReliableMessage(ReliableMessage& reliableMessage, CInstance* instance, RValue* arg = nullptr, ChecksumBuffer* checksumBuffer = nullptr)
-        {
-        RETRY:
-            auto netMessage = g_SteamNetworkingUtils->AllocateMessage(k_cbMaxSteamNetworkingSocketsMessageSizeSend);
-
-            Writer writer(static_cast<uint8*>(netMessage->m_pData), netMessage->m_cbSize);
-
-            if (reliableMessage.m_Type == EReliableMessageType::File)
-            {
-                RValue result = {};
-                Script_Perform(g_gml_buffer_load, instance, instance, 1, &result, arg);
-                assert(KIND_RValue(&result) == VALUE_REF);
-                assert(GET_REF_TYPE(result.v64) == REFID_BUFFER);
-
-                void* data = nullptr;
-                int dataSize = 0;
-                bool success = BufferGetContent(result.v32, &data, &dataSize);
-                assert(success);
-                assert(data != nullptr);
-                assert(dataSize >= 0);
-
-                reliableMessage.m_Size = dataSize;
-                reliableMessage.Serialize(writer);
-                writer.Write(data, dataSize);
-
-                YYFree(data);
-
-                RValue tmp = {};
-                Script_Perform(g_gml_buffer_delete, instance, instance, 1, &tmp, &result);
-            }
-            else if (reliableMessage.m_Type == EReliableMessageType::FileDoesNotExist)
-            {
-                reliableMessage.Serialize(writer);
-            }
-            else if (reliableMessage.m_Type == EReliableMessageType::ChecksumBuffer)
-            {
-                reliableMessage.Serialize(writer);
-                checksumBuffer->Serialize(writer);
-            }
-
-            for (int clientIndex = 0; clientIndex < countof(m_ClientData); clientIndex++)
-            {
-                if (m_ClientData[clientIndex].m_ConnectSocket != k_HSteamNetConnection_Invalid)
-                {
-                    netMessage->m_conn = m_ClientData[clientIndex].m_ConnectSocket;
-                }
-            }
-
-            netMessage->m_cbSize = writer.m_Offset;
-            netMessage->m_nFlags = k_nSteamNetworkingSend_Reliable;
-            netMessage->m_idxLane = 1;
-
-            int64 outResult;
-            g_SteamNetworkingSockets->SendMessages(1, &netMessage, &outResult);
-            netMessage = nullptr;
-
-            if (outResult == -k_EResultLimitExceeded)
-            {
-                ReleaseConsoleOutput("SendReliableMessage (size = %d) failed with k_EResultLimitExceeded: Resending message\n", writer.m_Offset);
-                Timing_Sleep(1'000'000 / 2);
-                goto RETRY;
-            }
-            else if (outResult <= 0)
-            {
-                ReleaseConsoleOutput("SendReliableMessage (size = %d) failed with error code '%lld': Disconnecting\n", writer.m_Offset, outResult);
-                m_OnlineState = EOnlineState::Disconnecting;
-            }
-            else
-            {
-                ReleaseConsoleOutput("SendReliableMessage (size = %d) succeeded\n", writer.m_Offset);
-            }
-        }
-
-        void ReceiveReliableMessage(SteamNetworkingMessage_t* netMessage, int clientIndex, CInstance* instance)
-        {
-            ReleaseConsoleOutput("ReceiveReliableMessage (size = %d)\n", netMessage->m_cbSize);
-
-            ReliableMessage reliableMessage;
-            Reader reader(static_cast<uint8*>(netMessage->m_pData), netMessage->m_cbSize);
-            reliableMessage.Serialize(reader);
-
-            if (reliableMessage.m_Type == EReliableMessageType::File || reliableMessage.m_Type == EReliableMessageType::FileDoesNotExist)
-            {
-                auto fileData = FindFileData(reliableMessage.m_Filename, clientIndex);
-
-                assert(fileData->m_Status == EFileStatus::None || fileData->m_Status == EFileStatus::UnownedUnknown);
-                assert(fileData->m_Data == nullptr);
-                assert(fileData->m_Size == 0);
-
-                if (reliableMessage.m_Type == EReliableMessageType::File)
-                {
-                    assert(reliableMessage.m_Size <= reader.m_Size);
-                    auto data = YYAlloc(reliableMessage.m_Size);
-                    assert(data != nullptr);
-                    reader.Write(data, reliableMessage.m_Size);
-                    assert(reader.m_Offset == reader.m_Size);
-                    fileData->m_Data = data;
-                    fileData->m_Size = reliableMessage.m_Size;
-                    fileData->m_Status = EFileStatus::UnownedExists;
-                }
-                else
-                {
-                    fileData->m_Status = EFileStatus::UnownedDoesNotExist;
-                }
-            }
-            else if (reliableMessage.m_Type == EReliableMessageType::ChecksumBuffer)
-            {
-                auto& clientData = m_ClientData[clientIndex];
-                auto& checksumBuffer = clientData.m_ChecksumData[reliableMessage.m_Frame & (countof(clientData.m_ChecksumData) - 1)];
-
-                checksumBuffer.Reset();
-                checksumBuffer.Serialize(reader);
-                assert(checksumBuffer.m_Frame == reliableMessage.m_Frame);
-                checksumBuffer.m_HasBuffer = true;
-
-                CheckChecksum(checksumBuffer, instance);
-            }
-
-            netMessage->Release();
         }
 
         void BufferLoad(RValue& result, CInstance* instance, RValue* arg)
@@ -2346,35 +2736,32 @@ namespace
         }
     };
 
-    static constexpr int c_SessionMaxSize = Session::GetMaxSize();
-    static_assert(c_SessionMaxSize == sizeof(ChecksumBuffer::m_SessionBuffer));
-
     Session g_Session;
-}
 
-void* CreateRingBuffer(size_t bufferSize)
-{
-    SYSTEM_INFO sysInfo;
-    GetSystemInfo(&sysInfo);
-    assert((bufferSize % sysInfo.dwAllocationGranularity) == 0);
+    void* CreateRingBuffer(size_t bufferSize)
+    {
+        SYSTEM_INFO sysInfo;
+        GetSystemInfo(&sysInfo);
+        assert((bufferSize % sysInfo.dwAllocationGranularity) == 0);
 
-    void* placeholder1 = VirtualAlloc2FromApp(nullptr, nullptr, bufferSize * 2, MEM_RESERVE | MEM_RESERVE_PLACEHOLDER, PAGE_NOACCESS, nullptr, 0);
-    assert(placeholder1 != nullptr);
+        void* placeholder1 = VirtualAlloc2FromApp(nullptr, nullptr, bufferSize * 2, MEM_RESERVE | MEM_RESERVE_PLACEHOLDER, PAGE_NOACCESS, nullptr, 0);
+        assert(placeholder1 != nullptr);
 
-    BOOL result = VirtualFree(placeholder1, bufferSize, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER);
-    assert(result);
-    void* placeholder2 = static_cast<void*>(static_cast<uint8_t*>(placeholder1) + bufferSize);
+        BOOL result = VirtualFree(placeholder1, bufferSize, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER);
+        assert(result);
+        void* placeholder2 = static_cast<void*>(static_cast<uint8_t*>(placeholder1) + bufferSize);
 
-    HANDLE section = CreateFileMappingFromApp(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, bufferSize, nullptr);
-    assert(section != nullptr);
+        HANDLE section = CreateFileMappingFromApp(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, bufferSize, nullptr);
+        assert(section != nullptr);
 
-    void* view1 = MapViewOfFile3FromApp(section, nullptr, placeholder1, 0, bufferSize, MEM_REPLACE_PLACEHOLDER, PAGE_READWRITE, nullptr, 0);
-    assert(view1 != nullptr);
+        void* view1 = MapViewOfFile3FromApp(section, nullptr, placeholder1, 0, bufferSize, MEM_REPLACE_PLACEHOLDER, PAGE_READWRITE, nullptr, 0);
+        assert(view1 != nullptr);
 
-    void* view2 = MapViewOfFile3FromApp(section, nullptr, placeholder2, 0, bufferSize, MEM_REPLACE_PLACEHOLDER, PAGE_READWRITE, nullptr, 0);
-    assert(view2 != nullptr);
+        void* view2 = MapViewOfFile3FromApp(section, nullptr, placeholder2, 0, bufferSize, MEM_REPLACE_PLACEHOLDER, PAGE_READWRITE, nullptr, 0);
+        assert(view2 != nullptr);
 
-    return view1;
+        return view1;
+    }
 }
 
 YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions, size_t _functions_size)
@@ -2389,14 +2776,26 @@ YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions,
     g_pYYRunnerInterface = &g_RunnerInterface;
 
     auto version = extGetVersion(c_ExtensionName);
-
     if (strcmp(version, c_ExtensionVersion) != 0)
     {
-        char msg[1024];
-        sprintf_s(msg, "Error: Version mismatch detected between PFO.dll (v%s) and data.win (v%s).\n\nPlease make sure you have copied PFO.dll into the same folder as data.win, and that both are the from the same version of the mod.", c_ExtensionVersion, version);
-        ShowMessage(msg);
+        sprintf_s(g_TempBuffer, "Error: Version mismatch detected between PFO.dll (v%s) and data.win (v%s).\n\nPlease make sure you have copied PFO.dll into the same folder as data.win, and that both are the from the same version of the mod.", c_ExtensionVersion, version);
+        ShowMessage(g_TempBuffer);
         ExitProcess(0);
     }
+
+    auto maxSize = extOptGetString(c_ExtensionName, "checksumBufferMaxSize");
+    if (maxSize != nullptr && maxSize[0] != '\0' && strcmp(maxSize, "undefined") != 0)
+    {
+        char* end;
+        g_GMLChecksumBufferMaxSize = strtol(maxSize, &end, 10);
+        if (end[0] != '\0')
+        {
+            YYError("Invalid checksumBufferMaxSize value");
+        }
+    }
+
+    int requiredChecksumBufferSize = (Session::GetMaxSize() + g_GMLChecksumBufferMaxSize) * (countof(ClientData::m_ChecksumData) + c_ClientLimit * c_ClientLimit + 1);
+    assert(requiredChecksumBufferSize <= c_ChecksumRingBufferSize);
 
     constexpr auto get_builtin_function = [](const char* name) -> int
         {
@@ -2414,18 +2813,22 @@ YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions,
     g_gml_file_delete = get_builtin_function("file_delete");
     g_gml_file_copy = get_builtin_function("file_copy");
     g_gml_game_set_speed = get_builtin_function("game_set_speed");
+    g_gml_display_reset = get_builtin_function("display_reset");
 
+    g_SteamUser = SteamUser();
     g_SteamFriends = SteamFriends();
     g_SteamMatchmaking = SteamMatchmaking();
     g_SteamNetworkingSockets = SteamNetworkingSockets();
     g_SteamNetworkingUtils = SteamNetworkingUtils();
 
-    g_GmlChecksumBuffer1 = CreateBuffer(sizeof(ChecksumBuffer::m_GmlBuffer) + 8, eBuffer_Format_Fixed, 1);
-    g_GmlChecksumBuffer2 = CreateBuffer(sizeof(ChecksumBuffer::m_GmlBuffer) + 8, eBuffer_Format_Fixed, 1);
+    g_ChecksumRingBuffer = static_cast<uint8_t*>(CreateRingBuffer(c_ChecksumRingBufferSize));
+    g_GMLChecksumBuffer1 = CreateBuffer(g_GMLChecksumBufferMaxSize, eBuffer_Format_Grow, 1);
+    g_GMLChecksumBuffer2 = CreateBuffer(g_GMLChecksumBufferMaxSize, eBuffer_Format_Grow, 1);
 
     g_SteamNetworkingUtils->InitRelayNetworkAccess();
     g_SteamNetworkingSockets->InitAuthentication();
     g_SteamNetworkingUtils->SetGlobalConfigValueInt32(k_ESteamNetworkingConfig_TimeoutConnected, 60 * 1000);
+    g_SteamNetworkingUtils->SetGlobalConfigValueInt32(k_ESteamNetworkingConfig_SendBufferSize, 0x100000);
 
     struct SteamCallbacks
     {
@@ -2443,28 +2846,10 @@ YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions,
             DsMapAddInt64(map, "member_id", static_cast<int64>(pParam->m_ulSteamIDMember));
             CreateAsyncEventWithDSMap(map, 69);
         }
-
-        STEAM_CALLBACK(SteamCallbacks, OnLobbyGameCreated, LobbyGameCreated_t)
-        {
-            auto map = CreateDsMap(0, 0);
-            DsMapAddString(map, "event_type", "lobby_game_created");
-            DsMapAddInt64(map, "lobby_id", static_cast<int64>(pParam->m_ulSteamIDLobby));
-            DsMapAddInt64(map, "server_id", static_cast<int64>(pParam->m_ulSteamIDGameServer));
-            DsMapAddDouble(map, "ip", pParam->m_unIP);
-            DsMapAddDouble(map, "port", pParam->m_usPort);
-            CreateAsyncEventWithDSMap(map, 69);
-        }
     };
     new SteamCallbacks();
 
     DebugConsoleOutput("PFO 50 YYExtensionInitialise CONFIGURED\n");
-
-    constexpr size_t sz = 0x100000;
-    volatile uint8_t* buf = static_cast<uint8_t*>(CreateRingBuffer(sz));
-    buf[0] = 123;
-    assert(buf[sz] == 123);
-    buf[sz + 98] = 98;
-    assert(buf[98] == 98);
 }
 
 YYEXPORT void pfo_update(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2473,8 +2858,8 @@ YYEXPORT void pfo_update(RValue& result, CInstance* selfinst, CInstance* otherin
 
     bool advanceFrame = argc > 0 ? YYGetBool(arg, 0) : true;
 
-    g_Session.Update(selfinst, advanceFrame);
-    init_bool(result, true);
+    bool success = g_Session.Update(selfinst, advanceFrame);
+    init_bool(result, success);
 }
 
 YYEXPORT void pfo_player_get_input(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2644,6 +3029,26 @@ YYEXPORT void pfo_init(RValue& result, CInstance* selfinst, CInstance* otherinst
     init_bool(result, 1);
 }
 
+YYEXPORT void pfo_set_clients(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 1);
+
+    CSteamID steamIDs[countof(g_Session.m_ClientData)];
+
+    assert(KIND_RValue(&arg[0]) == VALUE_ARRAY);
+    int count = YYArrayGetLength(&arg[0]);
+    assert(count >= 0 && count <= countof(steamIDs));
+
+    for (int i = 0; i < count; i++)
+    {
+        RValue val = {};
+        GET_RValue(&val, &arg[0], nullptr, i);
+        steamIDs[i] = CSteamID(static_cast<uint64>(YYGetInt64(&val, 0)));
+    }
+
+    g_Session.SetClients(steamIDs, count);
+}
+
 YYEXPORT void pfo_set_players(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 1);
@@ -2683,19 +3088,40 @@ YYEXPORT void pfo_client_get_player_index(RValue& result, CInstance* selfinst, C
     assert(argc == 0 || argc == 1);
 
     int clientIndex = argc > 0 ? YYGetInt32(arg, 0) : g_Session.m_ClientIndex;
-    assert(clientIndex >= 0 && clientIndex < countof(g_Session.m_ClientData));
 
-    init_real(result, g_Session.m_ClientData[clientIndex].m_PlayerData.m_PlayerIndex);
+    if (clientIndex >= 0)
+    {
+        assert(clientIndex < countof(g_Session.m_ClientData));
+        init_real(result, g_Session.m_ClientData[clientIndex].m_PlayerData.m_PlayerIndex);
+    }
+    else
+    {
+        init_real(result, -1);
+    }
 }
 
 YYEXPORT void pfo_player_get_client_index(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
-    assert(argc == 1);
+    assert(argc == 0 || argc == 1);
 
-    int playerIndex = YYGetInt32(arg, 0);
-    assert(playerIndex >= 0 && playerIndex < countof(g_Session.m_PlayerIndexToClientIndexMap));
+    int playerIndex = argc > 0 ? YYGetInt32(arg, 0) : -1;
 
-    init_real(result, g_Session.m_PlayerIndexToClientIndexMap[playerIndex]);
+    if (playerIndex >= 0)
+    {
+        assert(playerIndex < countof(g_Session.m_PlayerIndexToClientIndexMap));
+        init_real(result, g_Session.m_PlayerIndexToClientIndexMap[playerIndex]);
+    }
+    else
+    {
+        init_real(result, g_Session.m_ClientIndex);
+    }
+}
+
+YYEXPORT void pfo_get_client_count(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 0);
+
+    init_real(result, g_Session.m_ClientCount);
 }
 
 YYEXPORT void pfo_get_assigned_clients_count(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2724,8 +3150,7 @@ YYEXPORT void pfo_buffer_load(RValue& result, CInstance* selfinst, CInstance* ot
 YYEXPORT void pfo_buffer_save(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 2);
-    assert(KIND_RValue(&arg[0]) == VALUE_REF);
-    assert(GET_REF_TYPE(arg[0].v64) == REFID_BUFFER);
+    assert(KIND_RValue(&arg[0]) == VALUE_REF && GET_REF_TYPE(arg[0].v64) == REFID_BUFFER);
 
     g_Session.BufferSave(result, selfinst, arg);
 }
@@ -2755,7 +3180,7 @@ YYEXPORT void pfo_quit(RValue& result, CInstance* selfinst, CInstance* otherinst
 {
     assert(argc == 0);
 
-    g_Session.Quit();
+    g_Session.Close();
 }
 
 YYEXPORT void pfo_steam_lobby_get_member_data(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2779,77 +3204,45 @@ YYEXPORT void pfo_steam_lobby_set_member_data(RValue& result, CInstance* selfins
     g_SteamMatchmaking->SetLobbyMemberData(lobbyId, key, value);
 }
 
-YYEXPORT void pfo_steam_lobby_set_game_server(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
-{
-    assert(argc == 4);
-    auto lobbyId = CSteamID(static_cast<uint64>(YYGetInt64(arg, 0)));
-    auto serverIp = YYGetUint32(arg, 1);
-    auto serverPort = static_cast<uint16>(YYGetUint32(arg, 2));
-    auto serverId = CSteamID(static_cast<uint64>(YYGetInt64(arg, 3)));
-
-    g_SteamMatchmaking->SetLobbyGameServer(lobbyId, serverIp, serverPort, serverId);
-}
-
-YYEXPORT void pfo_create_listen_socket(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+YYEXPORT void pfo_connect(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
-    g_Session.m_ClientIndex = 0;
-
-    if (g_Session.m_ListenSocket != k_HSteamListenSocket_Invalid)
-    {
-        g_SteamNetworkingSockets->CloseListenSocket(g_Session.m_ListenSocket);
-        g_Session.m_ListenSocket = k_HSteamListenSocket_Invalid;
-    }
-
-    g_Session.m_ListenSocket = g_SteamNetworkingSockets->CreateListenSocketP2P(0, 0, nullptr);
-    if (g_Session.m_ListenSocket == k_HSteamListenSocket_Invalid) YYError("Listen socket invalid");
-}
-
-YYEXPORT void pfo_connect(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
-{
-    assert(argc == 1);
-    SteamNetworkingIdentity identity;
-    identity.SetSteamID64(static_cast<uint64>(YYGetInt64(arg, 0)));
-
-    g_Session.m_ClientIndex = 1;
-
-    auto hConn = g_SteamNetworkingSockets->ConnectP2P(identity, 0, 0, nullptr);
-    if (hConn != k_HSteamNetConnection_Invalid)
-    {
-        g_Session.AddConnection(0, hConn);
-    }
-    else
-    {
-        YYError("Connect socket invalid");
-    }
+    g_Session.Connect();
 }
 
 YYEXPORT void pfo_client_get_ping(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
-    int ping = -2;
-    for (int i = 0; i < countof(g_Session.m_ClientData); i++)
+    int maxPing = -2;
+    int maxAssignedPing = -2;
+    SteamNetConnectionRealTimeStatus_t status;
+    
+    for (int i = 0; i < g_Session.m_ClientCount; i++)
     {
         auto& clientData = g_Session.m_ClientData[i];
         if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
         {
-            SteamNetConnectionRealTimeStatus_t status;
-            g_SteamNetworkingSockets->GetConnectionRealTimeStatus(clientData.m_ConnectSocket, &status, 0, nullptr);
-            ping = status.m_nPing;
-            break;
+            if (g_SteamNetworkingSockets->GetConnectionRealTimeStatus(clientData.m_ConnectSocket, &status, 0, nullptr) == k_EResultOK)
+            {
+                maxPing = max(maxPing, status.m_nPing);
+                if (clientData.m_PlayerData.m_PlayerIndex >= 0)
+                {
+                    maxAssignedPing = max(maxAssignedPing, status.m_nPing);
+                }
+            }
         }
     }
 
-    init_real(result, ping);
+    init_real(result, maxAssignedPing > -2 ? maxAssignedPing : maxPing);
 }
 
 YYEXPORT void pfo_reset(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
-    g_Session.Reset();
+    g_Session.Reset(selfinst);
 }
 
 YYEXPORT void pfo_game_get_speed(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -2860,11 +3253,11 @@ YYEXPORT void pfo_game_get_speed(RValue& result, CInstance* selfinst, CInstance*
 
     if (type == 0.0)
     {
-        init_real(result, g_GameSpeedFPS);
+        init_real(result, g_BaseGameSpeedFPS);
     }
     else
     {
-        init_real(result, g_GameSpeedMicroseconds);
+        init_real(result, 1'000'000.0 / g_BaseGameSpeedFPS);
     }
 }
 
@@ -2877,27 +3270,20 @@ YYEXPORT void pfo_game_set_speed(RValue& result, CInstance* selfinst, CInstance*
 
     bool changedSpeed = false;
 
-    if (type == 0.0)
+    if (type != 0.0)
     {
-        if (g_GameSpeedFPS != speed)
-        {
-            g_GameSpeedFPS = speed;
-            g_GameSpeedMicroseconds = 1'000'000.0 / speed;
-            changedSpeed = true;
-        }
-    }
-    else
-    {
-        if (g_GameSpeedMicroseconds != speed)
-        {
-            g_GameSpeedMicroseconds = speed;
-            g_GameSpeedFPS = 1'000'000.0 / speed;
-            changedSpeed = true;
-        }
+        speed = 1'000'000.0 / speed;
     }
 
-    if (changedSpeed)
-    {
-        Script_Perform(g_gml_game_set_speed, selfinst, otherinst, argc, &result, arg);
-    }
+    g_Session.SetSpeed(speed, selfinst);
+}
+
+YYEXPORT void pfo_client_is_connected(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 1);
+
+    int clientIndex = YYGetInt32(arg, 0);
+    assert(clientIndex >= 0 && clientIndex < countof(g_Session.m_ClientData));
+
+    init_real(result, g_Session.m_ClientData[clientIndex].m_ConnectSocket != k_HSteamNetConnection_Invalid || clientIndex == g_Session.m_ClientIndex);
 }

@@ -12,10 +12,6 @@ void PatchPFO50Extension()
     var extensionName = "PFO";
     var extensionVersion = GetModVersion();
     var gameVersion = GetGameVersion();
-    if (gameVersion.EndsWith(".0"))
-    {
-        gameVersion = gameVersion.Substring(0, gameVersion.Length - 2);
-    }
 
     var pfoExtension = Data.Extensions.ByName(extensionName);
     if (pfoExtension == null)
@@ -62,6 +58,7 @@ void PatchPFO50Extension()
         DefineExtensionOption("onlineStateChangedCallback", "scrOnlineStateChangedCallback");
         DefineExtensionOption("getInputCallback", "scrGetInputCallback");
         DefineExtensionOption("getChecksumCallback", "scrGetChecksumCallback");
+        DefineExtensionOption("checksumBufferMaxSize", "128");
     }
 
     {
@@ -91,10 +88,12 @@ void PatchPFO50Extension()
         DefineExtensionFunction("pfo_set_max_automatic_input_delay");
         DefineExtensionFunction("pfo_get_frame");
         DefineExtensionFunction("pfo_init");
+        DefineExtensionFunction("pfo_set_clients");
         DefineExtensionFunction("pfo_set_players");
         DefineExtensionFunction("pfo_get_client_index");
         DefineExtensionFunction("pfo_client_get_player_index");
         DefineExtensionFunction("pfo_player_get_client_index");
+        DefineExtensionFunction("pfo_get_client_count");
         DefineExtensionFunction("pfo_get_assigned_clients_count");
         DefineExtensionFunction("pfo_file_exists");
         DefineExtensionFunction("pfo_buffer_load");
@@ -105,14 +104,13 @@ void PatchPFO50Extension()
         DefineExtensionFunction("pfo_quit");
         DefineExtensionFunction("pfo_steam_lobby_get_member_data");
         DefineExtensionFunction("pfo_steam_lobby_set_member_data");
-        DefineExtensionFunction("pfo_steam_lobby_set_game_server");
-        DefineExtensionFunction("pfo_create_listen_socket");
         DefineExtensionFunction("pfo_connect");
         DefineExtensionFunction("pfo_client_get_ping");
         DefineExtensionFunction("pfo_reset");
         DefineExtensionFunction("pfo_game_get_speed");
         DefineExtensionFunction("pfo_game_set_speed");
-
+        DefineExtensionFunction("pfo_client_is_connected");
+        
         file.InitScript = Data.Strings.MakeString("pfo_init");
         file.CleanupScript = Data.Strings.MakeString("");
     }
@@ -167,7 +165,8 @@ async Task ImportCode()
 {
     var scriptDir = Path.GetDirectoryName(GetCurrentScript());
     var codeDir = Path.Join(scriptDir, "code");
-    await ImportCodeDir(codeDir, true);
+    var globalDir = Path.Join(scriptDir, "globals");
+    await ImportCodeDir(codeDir, true, globalDir);
 }
 
 void ImportSprites()
