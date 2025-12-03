@@ -1,3 +1,5 @@
+#macro PFO_MAX_PLAYERS global.MAX_PLAYERS_SUPPORTED
+
 function pfo_start()
 {
     global.pfo_randomize_state = int64(0);
@@ -13,7 +15,7 @@ function pfo_start()
     global.pfo_input_command_param_to_send = int64(0);
     global.pfo_input_command_future_send_frame = 0;
 
-    for (var p = 0; p < real(PFO.MaxPlayers); p++)
+    for (var p = 0; p < PFO_MAX_PLAYERS; p++)
     {
         global.pfo_input_command_each[p] = int64(0);
         global.pfo_input_command_param_each[p] = int64(0);
@@ -53,7 +55,7 @@ function pfo_update_extra_input()
     global.pfo_input_command = int64(0);
     global.pfo_input_command_param = int64(0);
 
-    for (var p = 0; p < real(PFO.MaxPlayers); p++)
+    for (var p = 0; p < PFO_MAX_PLAYERS; p++)
     {
         global.pfo_input_command_each[p] = int64(0);
         global.pfo_input_command_param_each[p] = int64(0);
@@ -61,7 +63,7 @@ function pfo_update_extra_input()
 
     if (pfo_is_online())
     {
-        for (var p = real(PFO.MaxPlayers) - 1; p >= 0; p--)
+        for (var p = PFO_MAX_PLAYERS - 1; p >= 0; p--)
         {
             var c = pfo_player_get_input(p);
 
@@ -199,8 +201,6 @@ enum PFO
     InputCommandBits = 8,
     InputCommandParamBits = 8,
     ExtraInputBits = PFO.InputCommandBits + PFO.InputCommandParamBits,
-
-    MaxPlayers = 2
 }
 
 enum LOG

@@ -53,6 +53,10 @@ function scrOnlineCleanup(forceExitToTitleScreen)
                     {
                         scrUnpause();
                     }
+                    else
+                    {
+                        player = -1;
+                    }
                 }
             }
         }

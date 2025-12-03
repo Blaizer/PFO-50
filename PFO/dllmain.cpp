@@ -128,9 +128,9 @@ namespace
 
     constexpr int c_CatchupThresholds[] =
     {
-        10,
-        30,
-        50,
+        8,
+        16,
+        32,
     };
     constexpr double c_CatchupThresholdSpeeds[] =
     {
@@ -1545,45 +1545,16 @@ namespace
                         }
 
                         int framesBehind = static_cast<int>(lastFrame - m_Frame);
-
                         catchupState = m_CatchupState;
-                        switch (catchupState)
+
+                        while (catchupState < countof(c_CatchupThresholds) - 1 && framesBehind >= c_CatchupThresholds[catchupState + 1])
                         {
-                        case 0:
+                            catchupState++;
+                        }
+
+                        while (catchupState > 0 && framesBehind <= c_CatchupThresholds[catchupState - 1])
                         {
-                            if (framesBehind >= c_CatchupThresholds[2])
-                            {
-                                catchupState = 2;
-                            }
-                            else if (framesBehind >= c_CatchupThresholds[1])
-                            {
-                                catchupState = 1;
-                            }
-                        } break;
-                        case 1:
-                        {
-                            if (framesBehind <= c_CatchupThresholds[0])
-                            {
-                                catchupState = 0;
-                            }
-                            else if (framesBehind >= c_CatchupThresholds[2])
-                            {
-                                catchupState = 2;
-                            }
-                        } break;
-                        case 2:
-                        {
-                            if (framesBehind <= c_CatchupThresholds[0])
-                            {
-                                catchupState = 0;
-                            }
-                            else if (framesBehind <= c_CatchupThresholds[1])
-                            {
-                                catchupState = 1;
-                            }
-                        } break;
-                        default:
-                            assert(false);
+                            catchupState--;
                         }
 
                         //trace("Frames behind: %d, Catchup state: %d\n", framesBehind, catchupState);
@@ -1602,12 +1573,10 @@ namespace
                     ChecksumBuffer tempChecksumBuffer;
                     uint64 checksumRingBufferHead = m_ChecksumRingBufferHead;
 
-                    if (advanceFrame)
-                    {
-                        auto& myClientData = m_ClientData[m_ClientIndex];
-                        pChecksumBuffer = &myClientData.m_ChecksumData[m_Frame & (countof(myClientData.m_ChecksumData) - 1)];
-                    }
-                    else
+                    auto& myClientData = m_ClientData[m_ClientIndex];
+                    pChecksumBuffer = &myClientData.m_ChecksumData[m_Frame & (countof(myClientData.m_ChecksumData) - 1)];
+
+                    if (pChecksumBuffer->m_Frame == m_Frame)
                     {
                         pChecksumBuffer = &tempChecksumBuffer;
                     }
@@ -1646,13 +1615,13 @@ namespace
                         checksumRingBufferHead += dataSize;
                     }
 
-                    if (advanceFrame)
+                    if (pChecksumBuffer == &tempChecksumBuffer)
                     {
-                        m_ChecksumRingBufferHead = checksumRingBufferHead;
+                        m_TempChecksumRingBufferHead = max(m_TempChecksumRingBufferHead, checksumRingBufferHead);
                     }
                     else
                     {
-                        m_TempChecksumRingBufferHead = max(m_TempChecksumRingBufferHead, checksumRingBufferHead);
+                        m_ChecksumRingBufferHead = checksumRingBufferHead;
                     }
 
                     checksumBuffer.m_Checksum = hash_fnv1a32(g_ChecksumRingBuffer + (checksumBuffer.m_BufferOffset & (c_ChecksumRingBufferSize - 1)), checksumBuffer.m_SessionBufferSize + checksumBuffer.m_GMLBufferSize);

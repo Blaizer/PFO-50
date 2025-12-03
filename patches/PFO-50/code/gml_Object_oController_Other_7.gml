@@ -42,6 +42,7 @@ if (!global.paused && pfo_get_frame() > 10 && pfo_client_get_player_index() < 0 
 {
     with (oScreenHandler)
     {
+        scrInputClear();
         scrGetInput(0, GetInputType.Raw);
 
         if (pressStart)

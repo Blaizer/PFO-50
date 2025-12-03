@@ -146,7 +146,14 @@ if (substate == SUB_ONLINE_CONNECT)
     }
     else if (stateCounter == 2)
     {
-        pfo_set_players([0, 1]);
+        var players = [];
+        var assignedPlayerCount = min(pfo_get_client_count(), global.MAX_PLAYERS_SUPPORTED);
+        for (var i = 0; i < assignedPlayerCount; i++)
+        {
+            players[i] = i;
+        }
+        scrSetOnlinePlayers(players);
+
         scrInitAch();
     }
     else if (stateCounter == 3)

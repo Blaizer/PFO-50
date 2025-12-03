@@ -61,6 +61,34 @@ function scrGetInputCallback(frame)
     }
 }
 
+function scrCheckPause()
+{
+    if (bPressStart[0] || bForcePause[0])
+    {
+        scrPause(0);
+    }
+    else if (bPressStart[1] || bForcePause[1])
+    {
+        scrPause(1);
+    }
+    else if (global.MAX_PLAYERS_SUPPORTED > 2 && (pfo_is_online() || array_length(global.joySlot) > 2))
+    {
+        with (oScreenHandler)
+        {
+            scrInputClear();
+            for (var i = 2; i < global.MAX_PLAYERS_SUPPORTED; i++)
+            {
+                scrGetInput(i);
+                if (pressStart || forcePause)
+                {
+                    scrPause(i);
+                    break;
+                }
+            }
+        }
+    }
+}
+
 enum LOG
 {
     NONE = 0,

@@ -103,7 +103,7 @@ async Task ApplyCodePatch(string patchPath, bool updateStatus = false) {
 
         if (conflicts.Count > 0)
         {
-            var msg = "Conflicts:\n" + string.Join("\n\n", conflicts);
+            var msg = "Conflicts:\n" + string.Join("\n", conflicts);
             throw new ScriptException(msg);
         }
     }
