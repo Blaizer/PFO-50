@@ -357,11 +357,14 @@ namespace
         const char* m_Name = nullptr;
         int m_Size;
         int m_Offset = 0;
+        int m_TextOffset = 0;
+        int m_Differences = 0;
 
         Differ() = delete;
         Differ(Reader& reader1, Reader& reader2) : m_Buffer1(reader1.m_Buffer), m_Buffer2(reader2.m_Buffer), m_Size(reader1.m_Size)
         {
             assert(reader1.m_Size == reader2.m_Size);
+            m_TextOffset += sprintf_s(g_TempBuffer, countof(g_TempBuffer), "Desync detected!\n\nDifference in Session values: [ ");
         }
 
         template<typename T>
@@ -371,12 +374,26 @@ namespace
 
             if (memcmp(m_Buffer1 + m_Offset, m_Buffer2 + m_Offset, sizeof(T)) != 0)
             {
-                char* str = g_TempBuffer;
-                int offset = 0;
-                constexpr int size = countof(g_TempBuffer);
+                if (m_Differences++ > 0)
+                {
+                    m_TextOffset += sprintf_s(g_TempBuffer + m_TextOffset, countof(g_TempBuffer) - m_TextOffset, ", ");
+                }
 
-                offset += sprintf_s(str + offset, size - offset, "Desync detected!\n\nDifference in Session value: %s\n\nOurs: ", m_Name);
+                m_TextOffset += sprintf_s(g_TempBuffer + m_TextOffset, countof(g_TempBuffer) - m_TextOffset, "\"%s\"", m_Name);
+            }
 
+            m_Offset += sizeof(T);
+        }
+
+        void WriteField(const char* name)
+        {
+            m_Name = name;
+        }
+
+        void ShowDifferences()
+        {
+            if (m_Differences != 0)
+            {
                 auto& diff1 = *new TDiffable();
                 auto& diff2 = *new TDiffable();
 
@@ -385,17 +402,22 @@ namespace
                 diff1.Serialize(reader1);
                 diff2.Serialize(reader2);
 
-                StringWriter nameWriter1(str + offset, size - offset);
-                diff1.Serialize(nameWriter1);
-                offset += nameWriter1.m_Offset;
+                char* str = g_TempBuffer;
+                constexpr int size = countof(g_TempBuffer);
 
-                offset += sprintf_s(str + offset, size - offset, "\n\nTheirs: ");
+                m_TextOffset += sprintf_s(str + m_TextOffset, size - m_TextOffset, " ]\n\nOurs: ");
 
-                StringWriter nameWriter2(str + offset, size - offset);
-                diff2.Serialize(nameWriter2);
-                offset += nameWriter2.m_Offset;
+                StringWriter stringWriter1(str + m_TextOffset, size - m_TextOffset);
+                diff1.Serialize(stringWriter1);
+                m_TextOffset += stringWriter1.m_Offset;
 
-                offset += sprintf_s(str + offset, size - offset, "\n");
+                m_TextOffset += sprintf_s(str + m_TextOffset, size - m_TextOffset, "\n\nTheirs: ");
+
+                StringWriter stringWriter2(str + m_TextOffset, size - m_TextOffset);
+                diff2.Serialize(stringWriter2);
+                m_TextOffset += stringWriter2.m_Offset;
+
+                m_TextOffset += sprintf_s(str + m_TextOffset, size - m_TextOffset, "\n");
 
                 ReleaseConsoleOutput("%s", g_TempBuffer);
                 ShowMessage(g_TempBuffer);
@@ -405,13 +427,6 @@ namespace
                 delete &diff1;
                 delete &diff2;
             }
-
-            m_Offset += sizeof(T);
-        }
-
-        void WriteField(const char* name)
-        {
-            m_Name = name;
         }
     };
 
@@ -1772,6 +1787,7 @@ namespace
 
                 Differ<Session> differ(readerA, readerB);
                 Serialize(differ);
+                differ.ShowDifferences();
             }
 
             // compare gml checksum
@@ -3173,6 +3189,39 @@ YYEXPORT void pfo_steam_lobby_set_member_data(RValue& result, CInstance* selfins
     g_SteamMatchmaking->SetLobbyMemberData(lobbyId, key, value);
 }
 
+YYEXPORT void pfo_steam_request_lobby_data(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 1);
+    auto lobbyId = CSteamID(static_cast<uint64>(YYGetInt64(arg, 0)));
+
+    init_bool(result, g_SteamMatchmaking->RequestLobbyData(lobbyId));
+}
+
+YYEXPORT void pfo_steam_get_lobby_data(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 2);
+    auto lobbyId = CSteamID(static_cast<uint64>(YYGetInt64(arg, 0)));
+    auto key = YYGetString(arg, 1);
+
+    YYCreateString(&result, SteamMatchmaking()->GetLobbyData(lobbyId, key));
+}
+
+YYEXPORT void pfo_steam_get_num_lobby_members(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 1);
+    auto lobbyId = CSteamID(static_cast<uint64>(YYGetInt64(arg, 0)));
+
+    init_real(result, SteamMatchmaking()->GetNumLobbyMembers(lobbyId));
+}
+
+YYEXPORT void pfo_steam_get_lobby_member_limit(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 1);
+    auto lobbyId = CSteamID(static_cast<uint64>(YYGetInt64(arg, 0)));
+
+    init_real(result, SteamMatchmaking()->GetLobbyMemberLimit(lobbyId));
+}
+
 YYEXPORT void pfo_connect(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
@@ -3187,7 +3236,7 @@ YYEXPORT void pfo_client_get_ping(RValue& result, CInstance* selfinst, CInstance
     int maxPing = -2;
     int maxAssignedPing = -2;
     SteamNetConnectionRealTimeStatus_t status;
-    
+
     for (int i = 0; i < g_Session.m_ClientCount; i++)
     {
         auto& clientData = g_Session.m_ClientData[i];

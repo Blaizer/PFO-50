@@ -88,6 +88,7 @@ function scrOnlineCleanup(forceExitToTitleScreen)
         // we need to return to the title screen to make sure we don't keep using the current save file
         if (room == rmLibrary)
         {
+            instance_destroy(oOkay);
             with (oLibrary)
             {
                 scrSwitchState(STATE_LOGO);
@@ -99,7 +100,7 @@ function scrOnlineCleanup(forceExitToTitleScreen)
             scrExitToLibrary();
             scrClearCheats();
             global.SKIP_INTRO = true;
-            global.roomPrev = rmInit;
+            global.roomPrev = rmLibrary;
         }
     }
 }
@@ -171,7 +172,7 @@ function scrOnlineStateChangedCallback(state)
         global.profileLanguage = global.defaultLanguage;
 
         global.SKIP_INTRO = 2;
-        global.roomPrev = rmInit;
+        global.roomPrev = rmLibrary;
         room_goto(rmLibrary);
     }
     else if (state == PFO_OnlineState.Disconnecting)

@@ -12,280 +12,259 @@
 #macro steam_lobby_list_distance_filter_far 2
 #macro steam_lobby_list_distance_filter_worldwide 3
 
+function scrRequestLobbyList()
+{
+    lobbyListNextSearchTime = current_time + 1000;
+    steam_lobby_list_add_string_filter("ufoVersion", "", steam_lobby_list_filter_gt);
+    steam_lobby_list_add_string_filter("pfoVersion", "", steam_lobby_list_filter_gt);
+    steam_lobby_list_add_string_filter("name", "", steam_lobby_list_filter_gt);
+    steam_lobby_list_request();
+}
+
+function scrRequestCreateLobby(type)
+{
+    requestTimeoutTime = current_time + ONLINE_REQUEST_TIMEOUT;
+    steam_lobby_create(type, 8);
+    scrSwitchSub(SUB_ONLINE_CREATING_LOBBY);
+}
+
+function scrListFindLobbyIndex(id, lobbyId)
+{
+    var size = ds_list_size(id);
+    for (var i = 0; i < size; i++)
+    {
+        var elem = ds_list_find_value(id, i);
+        if (elem.lobbyId == lobbyId)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+function scrUpdateLobbySel()
+{
+    if (sel1 < ds_list_size(lobbyList))
+    {
+        selLobby = ds_list_find_value(lobbyList, sel1).lobbyId;
+    }
+}
+
 if (substate == SUB_ONLINE_INIT)
 {
-    creatingLobby = false;
-    joiningLobby = false;
-    lobbyListCount = 0;
+    steam_lobby_leave();
+
+    sel1 = 0;
+    sel2 = 0;
+    subsel = 0;
+    selLobby = int64(0);
+
+    errorMessage = undefined;
+    requestTimeoutTime = NaN;
     lobbyListNextSearchTime = -1;
+    selectionAcceptLockoutTime = NaN;
     ds_list_clear(lobbyList);
-    ds_list_clear(lobbyUsers);
 
-    arrowSel = 0;
-    arrowBlink = -1;
-    arrowBlinkMax = 26;
+    if (!steam_is_user_logged_on())
+    {
+        errorMessage = "MUST BE LOGGED ON TO STEAM TO PLAY ONLINE.";
+        scrSwitchSub(SUB_ONLINE_ERROR);
+        exit;
+    }
 
-    scrSwitchSub(SUB_ONLINE_MAIN);
+    if (automaticallyJoinLobby != int64(0))
+    {
+        requestTimeoutTime = current_time + ONLINE_REQUEST_TIMEOUT;
+        pfo_steam_request_lobby_data(automaticallyJoinLobby);
+        scrSwitchSub(SUB_ONLINE_AUTOMATICALLY_JOINING_LOBBY);
+        exit;
+    }
+
+    requestTimeoutTime = current_time + ONLINE_REQUEST_TIMEOUT;
+    scrRequestLobbyList();
+    scrSwitchSub(SUB_ONLINE_INITIAL_SEARCH);
 }
-
-function scrOnlineSelect(active, lastSel)
+else if (substate == SUB_ONLINE_INITIAL_SEARCH)
 {
-    if (active)
-    {
-        if (++arrowBlink >= arrowBlinkMax)
-        {
-            arrowBlink = -arrowBlinkMax;
-        }
-
-        var oldArrowSel = arrowSel;
-        arrowSel = scrVertNav(arrowSel, lastSel);
-        if (arrowSel != oldArrowSel) arrowBlink = 0;
-
-        if (fire2pressed)
-        {
-            return arrowSel;
-        }
-        else
-        {
-            return -1;
-        }
-    }
-    else
-    {
-        arrowBlink = -1;
-        return -2;
-    }
+    scrCheckRequestTimeout("CONNECTION TO STEAM TIMED OUT.");
 }
-
-if (substate == SUB_ONLINE_MAIN)
+else if (substate == SUB_ONLINE_LIST)
 {
     if (lobbyListNextSearchTime <= current_time && !steam_lobby_list_is_loading())
     {
-        lobbyListNextSearchTime = current_time + 750;
-        steam_lobby_list_add_string_filter("ufo50_version", global.betaVersion, steam_lobby_list_filter_eq);
-        steam_lobby_list_request();
+        scrRequestLobbyList();
     }
 
-    var action = scrOnlineSelect(stateCounter >= 1 && !creatingLobby && !joiningLobby, 2);
-    if (action == -2)
+    var oldSelLobby = selLobby;
+    var oldSubsel = subsel;
+
+    if (selLobby != int64(0))
     {
+        var index = scrListFindLobbyIndex(lobbyList, selLobby);
+        if (index != -1)
+        {
+            sel1 = index;
+        }
     }
-    else if (action == 0)
+
+    var lobbyListCount = ds_list_size(lobbyList);
+
+    if (lobbyListCount == 0)
     {
-        creatingLobby = true;
-        steam_lobby_create(steam_lobby_type_public, 8);
+        sel1 = 0;
+        subsel = 1;
     }
-    else if (action == 1 && lobbyListCount > 0)
+    else if (sel1 >= lobbyListCount)
     {
-        joiningLobby = true;
-        steam_lobby_join_id(ds_list_find_value(lobbyList, 0));
+        sel1 = ds_list_size(lobbyList) - 1;
     }
-    else if (action == 2 || fire1pressed)
+
+    scrUpdateLobbySel();
+
+    if (selLobby != oldSelLobby || subsel != oldSubsel)
+    {
+        selectionAcceptLockoutTime = current_time + 250;
+    }
+
+    if (subsel == 0 || lobbyListCount != 0)
+    {
+        subsel = scrHorzNav(subsel, 1);
+    }
+
+    if (subsel == 0)
+    {
+        sel1 = scrVertNav(sel1, lobbyListCount - 1);
+    }
+    else if (subsel == 1)
+    {
+        sel2 = scrVertNav(sel2, 2);
+    }
+
+    scrUpdateLobbySel();
+
+    if (selectionAcceptLockoutTime > current_time)
+    {
+        fire2pressed = false;
+    }
+
+    if ((fire2pressed && subsel == 1 && sel2 == 2) || fire1pressed)
     {
         scrSwitchState(STATE_PROFILE);
     }
-}
-
-if (substate == SUB_ONLINE_INIT_LOBBY)
-{
-    global.onlineSettings = undefined;
-    readyState = false;
-    arrowSel = 0;
-    arrowBlink = -1;
-
-    scrSwitchSub(SUB_ONLINE_LOBBY);
-}
-
-if (substate == SUB_ONLINE_LOBBY)
-{
-    var mySteamId = steam_get_user_steam_id();
-    var lobbyId = steam_lobby_get_lobby_id();
-
-    readyState = false;
-    for (var i = 0; i < ds_list_size(lobbyUsers); i++)
+    else if (fire2pressed && subsel == 0)
     {
-        var user = ds_list_find_value(lobbyUsers, i);
-        if (user.steamId == mySteamId)
+        var data = ds_list_find_value(lobbyList, sel1);
+        scrRequestJoinLobby(data);
+    }
+    else if (fire2pressed && subsel == 1)
+    {
+        if (sel2 == 0)
         {
-            readyState = user.ready;
-            break;
+            scrRequestCreateLobby(steam_lobby_type_public);
+        }
+        else if (sel2 == 1)
+        {
+            scrRequestCreateLobby(steam_lobby_type_friends_only);
         }
     }
-
-    var action = scrOnlineSelect(stateCounter == 0, 2);
-    if (action == 0 && !readyState)
+}
+else if (substate == SUB_ONLINE_CREATING_LOBBY)
+{
+    scrCheckRequestTimeout("TIMED OUT ATTEMPTING TO CREATE LOBBY.");
+}
+else if (substate == SUB_ONLINE_JOINING_LOBBY)
+{
+    scrCheckRequestTimeout("TIMED OUT ATTEMPTING TO JOIN LOBBY.");
+}
+else if (substate == SUB_ONLINE_AUTOMATICALLY_JOINING_LOBBY)
+{
+    if (scrCheckRequestTimeout("TIMED OUT ATTEMPTING TO FIND LOBBY."))
     {
-        stateCounter = 0.5;
-        pfo_steam_lobby_set_member_data(lobbyId, "ready", "1");
-    }
-    else if (action == 1 && readyState)
-    {
-        pfo_steam_lobby_set_member_data(lobbyId, "ready", "");
-    }
-    else if (action == 2 || fire1pressed)
-    {
-        steam_lobby_leave();
-        scrSwitchSub(SUB_ONLINE_INIT);
+        automaticallyJoinLobby = int64(0);
     }
 }
-
-if (substate == SUB_ONLINE_CONNECT)
+else if (substate == SUB_ONLINE_ERROR)
 {
-    if (stateCounter == 1)
+    var _okay = scrGetOkay(errorMessage);
+    if (_okay == true)
     {
-        var allFilesShared = pfo_file_exists(global.ACCOUNT_FILE) >= 0
-            && pfo_file_exists(string_replace(global.SAVE_FILE, "*", "1")) >= 0 
-            && pfo_file_exists(string_replace(global.SAVE_FILE, "*", "2")) >= 0 
-            && pfo_file_exists(string_replace(global.SAVE_FILE, "*", "3")) >= 0;
-
-        if (!allFilesShared)
-        {
-            global.onlineRunUpdate = false;
-            exit;
-        }
-    }
-    else if (stateCounter == 2)
-    {
-        var players = [];
-        var assignedPlayerCount = min(pfo_get_client_count(), global.MAX_PLAYERS_SUPPORTED);
-        for (var i = 0; i < assignedPlayerCount; i++)
-        {
-            players[i] = i;
-        }
-        scrSetOnlinePlayers(players);
-
-        scrInitAch();
-    }
-    else if (stateCounter == 3)
-    {
+        errorMessage = undefined;
         scrSwitchState(STATE_PROFILE);
     }
-
-    stateCounter++;
 }
-
-function draw_text_bg_centered_2(arg0, arg1, arg2, arg3, arg4, arg5, arg6)
+else if (substate == SUB_ONLINE_VERSION_ERROR)
 {
-    var numChars = string_length(arg2);
-    var oldColor = draw_get_color();
-    var pixelWidth = numChars * arg4;
-    var startX = arg0 - floor(pixelWidth / 2);
-    
-    for (var q = 1; q <= numChars; q++)
+    var _okay = scrGetOkay(errorMessage);
+    if (_okay == true)
     {
-        var c = string_char_at(arg2, q);
-        
-        if (c != " " || !arg6)
-        {
-            draw_set_color(arg3);
-            draw_rectangle((startX + ((q - 1) * arg4)) - 2, arg1 - 2, ((startX + (q * arg4)) - 1) + 1, (arg1 + arg5) - 1, false);
-        }
+        errorMessage = undefined;
+        scrSwitchSub(SUB_ONLINE_LIST);
     }
-    
-    draw_set_color(oldColor);
-    draw_text(startX, arg1, arg2);
-}
-
-function scrDrawOnlineMenuSelection(text, enabled)
-{
-    var color;
-    var selected = sel == arrowSel;
-    if (enabled)
-    {
-        color = selected ? 12 : 11;
-    }
-    else
-    {
-        color = 28;
-    }
-
-    var selX = 104;
-    draw_set_color(global.palette[color]);
-    draw_text(selX, selY, text);
-
-    if (selected && arrowBlink >= 0)
-    {
-        draw_sprite_ext(sLittleArrow, 0, selX - 16, selY, 1, 1, 0, draw_get_color(), 1);
-    }
-
-    selY += 16;
-    sel++;
 }
 
 function scrLibraryOnlineStateDraw()
 {
-    scrFillScreen(0);
-    scrSetFont(global.fontDefaultNoShadow);
-    draw_set_color(c_black);
+    var onlineXcenteroff = 0;
+
+    scrDrawMenuBorder(96 + onlineXcenteroff, 8, 192, 24);
+    draw_set_color(c_white);
+    scrSetFont(global.fontDefault);
+    draw_text_centered(192 + onlineXcenteroff, 16, "CREATE OR JOIN LOBBY", 8);
     
-    if (substate == SUB_ONLINE_MAIN)
+    sel = 0;
+    selY = 44;
+    scrDrawOnlineMenuSelection([ "CREATE", "PUBLIC", "LOBBY" ], true);
+    scrDrawOnlineMenuSelection([ "CREATE", "PRIVATE", "LOBBY" ], true);
+
+    scrDrawOnlineMenuBack();
+
+    var lobbyListCount = ds_list_size(lobbyList);
+
+    if (lobbyListCount == 0 && (substate == SUB_ONLINE_LIST || substate == SUB_ONLINE_CREATING_LOBBY))
     {
-        draw_text_bg_centered_2(192, 48, "CREATE OR JOIN A LOBBY", global.palette[11], 8, 8, false);
-
-        var joinLobbyText = "";
-        if (stateCounter >= 1)
-        {
-            joinLobbyText = "(" + (lobbyListCount > 0 ? string(lobbyListCount) + " OPEN" : "NONE FOUND") + ")";
-        }
-
-        sel = 0;
-        selY = 88;
-        scrDrawOnlineMenuSelection("CREATE LOBBY", true);
-        scrDrawOnlineMenuSelection("JOIN LOBBY " + joinLobbyText, lobbyListCount > 0);
-        scrDrawOnlineMenuSelection("BACK TO PROFILE SELECT", true);
-
-        draw_set_color(global.palette[11]);
-        scrDrawTextInput(192, 160, "[2] CONFIRM       [1] BACK", 0, 0, 2);
+        scrSetFont(global.fontDefault);
+        draw_text_centered(192 + onlineXcenteroff - 40, 48 + 0, string_even("NO LOBBIES FOUND.", 1), 8);
+        draw_text_centered(192 + onlineXcenteroff - 40, 48 + 16, string_even("MAYBE CREATE ONE?", 1), 8);
     }
-    else if (substate == SUB_ONLINE_LOBBY)
+    else
     {
-        draw_text_bg_centered_2(192, 40, "YOU ARE IN A LOBBY", global.palette[11], 8, 8, false);
-        draw_set_color(global.palette[11]);
-        
-        for (var player = 0; player < max(2, ds_list_size(lobbyUsers)); player++)
+        for (var i = 0; i < lobbyListCount; i++)
         {
-            var text = "PLAYER " + string(player + 1) + ": ";
-            var readyText = "";
+            var data = ds_list_find_value(lobbyList, i);
+            var listX = 28;
+            var handX = listX - 14;
+            var listY = 44 + i * 32;
+            var listWidth = 240;
+            var selected = sel1 == i && subsel == 0;
 
-            var color;
-            if (ds_list_size(lobbyUsers) > player)
+            if (selected)
             {
-                var user = ds_list_find_value(lobbyUsers, player);
-                text += user.personaName;
+                listX += 4;
+            }
 
-                if (user.ready)
-                {
-                    readyText = "[READY] ";
-                    color = 12;
-                }
-                else
-                {
-                    color = 11;
-                }
-            }
-            else
+            scrDrawMenuBorder(listX, listY, listWidth, 32);
+            scrSetFont(global.fontTall);
+            var _textTop = listY + 8;
+
+            if (data.ufoVersion != global.ufoVersion || data.pfoVersion != global.pfoVersion)
             {
-                text += "<EMPTY>";
-                color = 28;
+                draw_set_color(global.palette[16]);
             }
-            
-            draw_set_color(global.palette[color]);
-            draw_text(104, 64 + player * 16, text);
-            draw_text(104 - string_length(readyText) * 8, 64 + player * 16, readyText);
+
+            var lobbyName = string_copy(data.name, 1, 20);
+            draw_text(listX + 16, _textTop, lobbyName);
+
+            scrSetFont(global.fontDefault);
+            draw_text(listX + listWidth - 48, _textTop + 0, "P " + string(data.memberCount) + "/" + string(data.memberLimit));
+            draw_text(listX + listWidth - 48, _textTop + 8, data.pfoVersion);
+
+            if (selected)
+            {
+                draw_sprite(sMenuHand, 0, handX, listY + 9);
+            }
+
+            draw_set_color(c_white);
         }
-        
-        sel = 0;
-        selY = 112;
-        scrDrawOnlineMenuSelection("READY", !readyState);
-        scrDrawOnlineMenuSelection("UNREADY", readyState);
-        scrDrawOnlineMenuSelection("LEAVE LOBBY", true);
-
-        draw_set_color(global.palette[11]);
-        scrDrawTextInput(192, 168, "[2] CONFIRM       [1] BACK", 0, 0, 2);
-    }
-    else if (substate == SUB_ONLINE_CONNECT)
-    {
-        draw_text_bg_centered_2(192, 100, "CONNECTING ...", global.palette[11], 8, 8, false);
     }
 }
 

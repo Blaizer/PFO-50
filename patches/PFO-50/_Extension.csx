@@ -104,6 +104,10 @@ void PatchPFO50Extension()
         DefineExtensionFunction("pfo_quit");
         DefineExtensionFunction("pfo_steam_lobby_get_member_data");
         DefineExtensionFunction("pfo_steam_lobby_set_member_data");
+        DefineExtensionFunction("pfo_steam_request_lobby_data");
+        DefineExtensionFunction("pfo_steam_get_lobby_data");
+        DefineExtensionFunction("pfo_steam_get_num_lobby_members");
+        DefineExtensionFunction("pfo_steam_get_lobby_member_limit");
         DefineExtensionFunction("pfo_connect");
         DefineExtensionFunction("pfo_client_get_ping");
         DefineExtensionFunction("pfo_reset");

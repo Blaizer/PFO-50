@@ -30,10 +30,6 @@ if (substate == SUB_PRE_INIT)
 
     assignablePlayerCount = global.MAX_PLAYERS_SUPPORTED;
 
-    var prevMaxAutomaticInputDelay = pfo_get_max_automatic_input_delay();
-    inputDelayLimit = pfo_set_max_automatic_input_delay(0x7fffffff);
-    pfo_set_max_automatic_input_delay(prevMaxAutomaticInputDelay);
-
     if (is_undefined(onlinePlayers))
     {
         for (var playerIndex = 0; playerIndex < assignablePlayerCount; playerIndex++)
@@ -75,8 +71,8 @@ else if (substate == SUB_INIT)
 
     if (mode == InputDelayMode.Automatic)
     {
-        OP_AUTO_DELAY_MIN = scrMenuItem(TYPE_DUAL_INT, "MIN INPUT DELAY", pfo_get_min_automatic_input_delay(), 0, inputDelayLimit);
-        OP_AUTO_DELAY_MAX = scrMenuItem(TYPE_DUAL_INT, "MAX INPUT DELAY", pfo_get_max_automatic_input_delay(), 0, inputDelayLimit);
+        OP_AUTO_DELAY_MIN = scrMenuItem(TYPE_DUAL_INT, "MIN INPUT DELAY", pfo_get_min_automatic_input_delay(), 0, global.ONLINE_MAX_AUTOMATIC_DELAY);
+        OP_AUTO_DELAY_MAX = scrMenuItem(TYPE_DUAL_INT, "MAX INPUT DELAY", pfo_get_max_automatic_input_delay(), 0, global.ONLINE_MAX_AUTOMATIC_DELAY);
     }
     else if (mode == InputDelayMode.Manual)
     {
@@ -89,11 +85,11 @@ else if (substate == SUB_INIT)
             }
         }
 
-        OP_MANUAL_DELAY = scrMenuItem(TYPE_DUAL_INT, "INPUT DELAY", max(manualInputDelays[0], manualInputDelays[1]), 0, inputDelayLimit * 2);
+        OP_MANUAL_DELAY = scrMenuItem(TYPE_DUAL_INT, "INPUT DELAY", max(manualInputDelays[0], manualInputDelays[1]), 0, global.ONLINE_MAX_AUTOMATIC_DELAY * 2);
 
         for (var i = 0; i < assignablePlayerCount; i++)
         {
-            var item = scrMenuItem(TYPE_DUAL_INT, "P" + string(i + 1) + " INPUT DELAY", manualInputDelays[i], 0, inputDelayLimit * 2);
+            var item = scrMenuItem(TYPE_DUAL_INT, "P" + string(i + 1) + " INPUT DELAY", manualInputDelays[i], 0, global.ONLINE_MAX_AUTOMATIC_DELAY * 2);
             if (OP_MANUAL_DELAY_P1 == -1)
             {
                 OP_MANUAL_DELAY_P1 = item;
@@ -219,7 +215,7 @@ else if (substate == SUB_RESET)
         onlinePlayers[1] = 1;
         pfo_set_input_delay_mode(InputDelayMode.Automatic);
         pfo_set_min_automatic_input_delay(0);
-        pfo_set_max_automatic_input_delay(inputDelayLimit);
+        pfo_set_max_automatic_input_delay(global.ONLINE_MAX_AUTOMATIC_DELAY);
 
         stateCounter = 1;
     }
