@@ -1,6 +1,8 @@
 #load "lib/_UFO50.csx"
 #load "lib/_Utils.csx"
 
+using System.Diagnostics;
+
 {
 var modName = Path.GetFileName(Directory.GetDirectories(GetPatchesDir())[0]);
 var modPrettyName = modName.Replace("-", " ");
@@ -11,7 +13,12 @@ if (modVersion.EndsWith(".0"))
 }
 
 var rootDir = GetRootDir();
-var convertRootDir = Path.Join(GetBuildDir(), $"{modPrettyName} v{modVersion}");
+var dllOutputDir = Path.Join(rootDir, "UFO 50");
+var extDllName = Path.GetFileName(Directory.GetFiles(dllOutputDir, "*.dll")[0]);
+var dllVersionInfo = FileVersionInfo.GetVersionInfo(extDllName);
+var isDebug = dllVersionInfo.IsDebug;
+
+var convertRootDir = Path.Join(GetBuildDir(), $"{modPrettyName} v{modVersion}" + (isDebug ? "D" : ""));
 var convertDir = Path.Join(convertRootDir, modPrettyName);
 
 if (Directory.Exists(convertRootDir))
@@ -43,8 +50,6 @@ Directory.CreateDirectory(codeDir);
 CopyFile(buildDir, codeDir, "files.txt");
 
 var dllDir = Path.Join(convertDir, "dll");
-var dllOutputDir = Path.Join(rootDir, "UFO 50");
-var extDllName = Path.GetFileName(Directory.GetFiles(dllOutputDir, "*.dll")[0]);
 Directory.CreateDirectory(dllDir);
 CopyFile(dllOutputDir, dllDir, extDllName);
 
@@ -96,7 +101,9 @@ Directory.CreateDirectory(csxDir);
 Directory.CreateDirectory(csxSubDir);
 
 var csxFile = Path.Join(csxSubDir, $"1_Patch{modName}.csx");
-File.WriteAllText(csxFile, $@"#load ""../../{modName}/patches/{modName}/GamePatch.csx""");
+var csxSettingsFile = Path.Join(csxSubDir, $"1_Patch{modName}.csx-settings");
+File.WriteAllText(csxFile, $@"#load ""1_Patch{modName}.csx-settings""" + "\n" + $@"#load ""../../{modName}/patches/{modName}/GamePatch.csx""");
+File.WriteAllText(csxSettingsFile, $@"Environment.SetEnvironmentVariable(""DEBUG"", ""{(isDebug ? "1" : "")}"");");
 
 var libDir = Path.Join(mainDir, "patcher", "lib");
 File.Delete(Path.Join(libDir, "busybox.exe"));

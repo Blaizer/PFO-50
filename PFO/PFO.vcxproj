@@ -71,6 +71,9 @@
       <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);steam_api64.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)steam\redistributable_bin\win64</AdditionalLibraryDirectories>
     </Link>
+    <ResourceCompile>
+      <PreprocessorDefinitions>_UNICODE;UNICODE;%(PreprocessorDefinitions);_DEBUG</PreprocessorDefinitions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>

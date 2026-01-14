@@ -143,7 +143,8 @@ else if (state == STATE_ONLINE_LOBBY)
                             var startGameSettings = steam_lobby_get_data("start_game_settings");
                             if (is_string(startGameSettings) && startGameSettings != "")
                             {
-                                if (LOG.LEVEL >= LOG.VERBOSE) show_debug_message("start_game_settings: " + startGameSettings);
+                                LOG_INFO("### STARTING SESSION ###");
+                                LOG_DEBUG("start_game_settings: " + startGameSettings);
 
                                 try
                                 {
@@ -176,13 +177,26 @@ else if (state == STATE_ONLINE_LOBBY)
                                 }
 
                                 pfo_reset();
-                                pfo_set_clients(global.onlineSettings.clientIds);
+                                if (!pfo_set_clients(global.onlineSettings.clientIds))
+                                {
+                                    errorMessage = "THIS LOBBY HAS ALREADY STARTED.";
+                                    scrSwitchSub(SUB_ONLINE_ERROR);
+                                    exit;
+                                }
+
+                                for (var i = 0; i < ds_list_size(lobbyUsers); i++)
+                                {
+                                    var data = ds_list_find_value(lobbyUsers, i);
+                                    LOG_INFO("Client " + string(i) + ": " + string({ hash: data.hash }));
+                                }
 
                                 requestTimeoutTime = current_time + ONLINE_REQUEST_TIMEOUT;
                                 pfo_steam_lobby_set_member_data(lobbyId, "ready", "2");
 
                                 scrSwitchSub(SUB_ONLINE_SET_STARTING_GAME);
                                 scrUpdateLobbyUsers(lobbyId);
+
+                                LOG_INFO("########################");
                             }
                         }
                     }
@@ -195,13 +209,4 @@ else if (state == STATE_ONLINE_LOBBY)
             }
         }
     }
-}
-
-enum LOG
-{
-    NONE = 0,
-    INFO = 1,
-    VERBOSE = 2,
-
-    LEVEL = 2
 }

@@ -53,6 +53,7 @@ function scrUpdateLobbySel()
 if (substate == SUB_ONLINE_INIT)
 {
     steam_lobby_leave();
+    global.drawLibraryBG = false;
 
     sel1 = 0;
     sel2 = 0;
@@ -266,13 +267,4 @@ function scrLibraryOnlineStateDraw()
             draw_set_color(c_white);
         }
     }
-}
-
-enum LOG
-{
-    NONE = 0,
-    INFO = 1,
-    VERBOSE = 2,
-
-    LEVEL = 2
 }

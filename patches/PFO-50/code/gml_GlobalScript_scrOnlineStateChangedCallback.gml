@@ -11,6 +11,49 @@ function scrInitAttractModePlaylist()
     scrShuffle(global.attractModePlaylist);
 }
 
+function scrInitCompatabilityCheckData()
+{
+    global.dataHash = "";
+    global.installedMods = [];
+
+    try
+    {
+        var _dataPath = working_directory + "data.win";
+        if (file_exists(_dataPath))
+        {
+            var _buf = buffer_load(_dataPath);
+            var _size = buffer_get_size(_buf);
+            
+            // UMT patches data.win in a completely deterministic way,
+            // except a short section at the very end starting with "%tEXtdate".
+            // Let's attempt to find that section and ignore it if it exists.
+            if (_size >= 256)
+            {
+                for (var _offset = _size - 256; _offset < _size - 8; _offset++)
+                {
+                    var _char = buffer_peek(_buf, _offset, buffer_u8);
+                    
+                    if (_char == ord("%"))
+                    {
+                        var _token = buffer_peek(_buf, _offset + 1, buffer_u64);
+                        
+                        if (_token == 0x6574616474584574) // tEXtdate
+                        {
+                            _size = _offset;
+                            break;
+                        }
+                    }
+                }
+            }
+                
+            global.dataHash = buffer_md5(_buf, 0, _size);
+        }
+    }
+    catch (_exception)
+    {
+    }
+}
+
 function scrSetOnlinePlayers(players)
 {
     if (pfo_is_online())

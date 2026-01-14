@@ -1,4 +1,9 @@
-if (stateCounter == 1)
+if (stateCounter == 0)
+{
+    global.drawLibraryBG = false;
+    requestTimeoutTime = current_time + ONLINE_SYNC_FILES_TIMEOUT;
+}
+else if (stateCounter == 1)
 {
     var allFilesShared = pfo_file_exists(global.ACCOUNT_FILE) >= 0
         && pfo_file_exists(string_replace(global.SAVE_FILE, "*", "1")) >= 0 
@@ -7,6 +12,13 @@ if (stateCounter == 1)
 
     if (!allFilesShared)
     {
+        if (requestTimeoutTime <= current_time)
+        {
+            scrOnlineCleanup(false);
+            scrSwitchState(STATE_ONLINE_LOBBY_LIST);
+            exit;
+        }
+
         global.onlineRunUpdate = false;
         exit;
     }

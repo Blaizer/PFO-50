@@ -84,13 +84,13 @@ function scrGetChecksumCallback()
         if (array_length(differ.differences) > 0)
         {
             var message = "Desync detected!\n\nDifference in GML values: " + string(differ.differences) + "\n\nOurs: " + string(differ.diff1) + "\n\nTheirs: " + string(differ.diff2);
-            show_debug_message(message);
+            LOG_INFO(message);
             show_message(message);
         }
 
         if (array_contains(differ.differences, "instance_count"))
         {
-            show_debug_message("=== INSTANCE COUNTS ===");
+            LOG_INFO("=== INSTANCE COUNTS ===");
 
             var map = ds_map_create();
 
@@ -104,12 +104,12 @@ function scrGetChecksumCallback()
 
             for (var obj = ds_map_find_first(map); !is_undefined(obj); obj = ds_map_find_next(map, obj))
             {
-                show_debug_message(object_get_name(obj) + ": " + string(instance_number(obj)));
+                LOG_INFO(object_get_name(obj) + ": " + string(instance_number(obj)));
             }
 
             ds_map_destroy(map);
 
-            show_debug_message("========================");
+            LOG_INFO("========================");
         }
     }
 }

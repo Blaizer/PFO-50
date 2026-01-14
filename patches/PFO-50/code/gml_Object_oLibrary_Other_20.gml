@@ -1,5 +1,7 @@
 if (substate == SUB_ONLINE_INIT)
 {
+    global.drawLibraryBG = false;
+
     sel2 = 0;
     subsel = 1;
     isOwner = false;
@@ -12,7 +14,31 @@ if (substate == SUB_ONLINE_INIT)
 
     scrUpdateLobbyUsers(steam_lobby_get_lobby_id());
 
-    scrSwitchSub(SUB_ONLINE_LOBBY);
+    var ownerSteadId = steam_lobby_get_owner_id();
+    var mySteamId = steam_get_user_steam_id();
+    var ownerHash = undefined;
+    var myHash = undefined;
+    for (var player = 0; player < ds_list_size(lobbyUsers); player++)
+    {
+        var user = ds_list_find_value(lobbyUsers, player);
+        if (user.steamId == ownerSteadId)
+        {
+            ownerHash = user.hash;
+        }
+        if (user.steamId == mySteamId)
+        {
+            myHash = user.hash;
+        }
+    }
+
+    if (!is_undefined(ownerHash) && !is_undefined(myHash) && ownerHash != myHash)
+    {
+        scrSwitchSub(SUB_ONLINE_COMPAT_WARNING);
+    }
+    else
+    {
+        scrSwitchSub(SUB_ONLINE_LOBBY);
+    }
 }
 else if (substate == SUB_ONLINE_LOBBY)
 {
@@ -54,6 +80,14 @@ else if (substate == SUB_ONLINE_ERROR)
     {
         errorMessage = undefined;
         scrSwitchState(STATE_PROFILE);
+    }
+}
+else if (substate == SUB_ONLINE_COMPAT_WARNING)
+{
+    var _okay = scrGetOkay("WARNING: YOUR MODS DIFFER FROM LOBBY OWNER.");
+    if (_okay == true)
+    {
+        scrSwitchSub(SUB_ONLINE_LOBBY);
     }
 }
 

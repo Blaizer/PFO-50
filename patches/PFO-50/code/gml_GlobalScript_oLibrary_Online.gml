@@ -94,12 +94,19 @@ function scrUpdateLobbyUsers(lobbyId)
     if (lobbyId == steam_lobby_get_lobby_id())
     {
         var newIsOwner = steam_lobby_is_owner();
+        var mySteamId = steam_get_user_steam_id();
         if (!isOwner && newIsOwner)
         {
-            var personaName = scrGetUserPersonaName(steam_get_user_steam_id());
+            var personaName = scrGetUserPersonaName(mySteamId);
             steam_lobby_set_data("name", string_upper(personaName) + "'S LOBBY");
         }
         isOwner = newIsOwner;
+
+        var compat = pfo_steam_lobby_get_member_data(lobbyId, mySteamId, "compat");
+        if (!is_string(compat) || compat == "")
+        {
+            pfo_steam_lobby_set_member_data(lobbyId, "compat", json_stringify({ hash: global.dataHash, mods: global.installedMods }));
+        }
 
         ds_list_clear(lobbyUsers);
 
@@ -132,7 +139,6 @@ function scrUpdateLobbyUsers(lobbyId)
         }
 
         readyState = 0;
-        var mySteamId = steam_get_user_steam_id();
         var readyCount = 0;
         var connectReadyCount = 0;
         for (var i = 0; i < ds_list_size(lobbyUsers); i++)
@@ -140,6 +146,7 @@ function scrUpdateLobbyUsers(lobbyId)
             var steamId = ds_list_find_value(lobbyUsers, i);
             var personaName = scrGetUserPersonaName(steamId);
             var ready = pfo_steam_lobby_get_member_data(lobbyId, steamId, "ready");
+            var compat = pfo_steam_lobby_get_member_data(lobbyId, steamId, "compat");
             
             if (ready == "2")
             {
@@ -162,7 +169,24 @@ function scrUpdateLobbyUsers(lobbyId)
                 readyState = ready;
             }
 
-            var data = { steamId: steamId, personaName: personaName, ready: ready };
+            var hash = "";
+            if (is_string(compat) && compat != "")
+            {
+                try
+                {
+                    var data = json_parse(compat);
+
+                    if (is_string(data.hash))
+                    {
+                        hash = data.hash;
+                    }
+                }
+                catch (_exception)
+                {
+                }
+            }
+
+            var data = { steamId: steamId, personaName: personaName, ready: ready, hash: hash };
             ds_list_set(lobbyUsers, i, data);
         }
 

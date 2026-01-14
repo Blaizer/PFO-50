@@ -5,6 +5,7 @@
 #load "../../patcher/lib/_Graphics.csx"
 
 using System.Threading.Tasks;
+using System.Diagnostics;
 
 void PatchPFO50Extension()
 {
@@ -114,7 +115,9 @@ void PatchPFO50Extension()
         DefineExtensionFunction("pfo_game_get_speed");
         DefineExtensionFunction("pfo_game_set_speed");
         DefineExtensionFunction("pfo_client_is_connected");
-        
+        DefineExtensionFunction("pfo_show_debug_message");
+
+
         file.InitScript = Data.Strings.MakeString("pfo_init");
         file.CleanupScript = Data.Strings.MakeString("");
     }
@@ -167,6 +170,13 @@ void PatchPFO50Extension()
 
 async Task ImportCode()
 {
+    var dllPath = Path.Join(GetRootDir(), "UFO 50/PFO.dll");
+    if (File.Exists(dllPath))
+    {
+        var dllVersionInfo = FileVersionInfo.GetVersionInfo(dllPath);
+        Environment.SetEnvironmentVariable("DEBUG", dllVersionInfo.IsDebug ? "1" : "");
+    }
+
     var scriptDir = Path.GetDirectoryName(GetCurrentScript());
     var codeDir = Path.Join(scriptDir, "code");
     var globalDir = Path.Join(scriptDir, "globals");

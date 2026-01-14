@@ -15,9 +15,26 @@
 #macro SUB_ONLINE_SET_START_GAME_SETTINGS 2
 #macro SUB_ONLINE_SET_STARTING_GAME 3
 #macro SUB_ONLINE_CONNECTING 4
+#macro SUB_ONLINE_COMPAT_WARNING 5
 
 #macro ONLINE_REQUEST_TIMEOUT 6000
 #macro ONLINE_CONNECT_TIMEOUT 12000
+#macro ONLINE_SYNC_FILES_TIMEOUT 30000
+
+#macro LOG_LEVEL Log.Info
+#macro DEBUG:LOG_LEVEL Log.Debug
+#macro LOG pfo_show_debug_message
+#macro DEBUG:LOG show_debug_message
+#macro LOG_VERBOSE if (LOG_LEVEL <= Log.Verbose) LOG
+#macro LOG_DEBUG if (LOG_LEVEL <= Log.Debug) LOG
+#macro LOG_INFO if (LOG_LEVEL <= Log.Info) LOG
+
+enum Log
+{
+    Verbose,
+    Debug,
+    Info
+}
 
 enum GetInputType
 {

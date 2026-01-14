@@ -934,6 +934,22 @@
      scrOpenAccount();
      for (var i = 0; i < global.ACH_TOTAL; i++)
      {
+--- original/gml_GlobalScript_scrInitDisplay.gml
++++ patched/gml_GlobalScript_scrInitDisplay.gml
+@@ -12,8 +12,12 @@
+     global.scaleFill = min(display_get_width() / 384, display_get_height() / 216);
+     global.DEFAULT_SCALE = max(1, global.scaleMax - 2);
+     scrSetDisplayDefaults(true);
+-    global.scale = min(global.scale, global.scaleMax + 1);
++    global.scale = min(global.scale, (global.scaleFill <= global.scaleMax) ? global.scaleMax : (global.scaleMax + 1));
+     global.canDoShaders = shaders_are_supported();
++    if (global.canDoShaders)
++    {
++        application_surface_draw_enable(false);
++    }
+     instance_create_depth(-32, -32, 0, oScreenHandler);
+     window_set_size(384 * global.scale, 216 * global.scale);
+     if (!window_get_fullscreen())
 --- original/gml_GlobalScript_scrInputAny.gml
 +++ patched/gml_GlobalScript_scrInputAny.gml
 @@ -1,23 +1,22 @@
@@ -4722,7 +4738,7 @@
  }
 --- original/gml_Object_oController_Create_0.gml
 +++ patched/gml_Object_oController_Create_0.gml
-@@ -3,5 +3,35 @@
+@@ -3,5 +3,36 @@
      instance_destroy();
      exit;
  }
@@ -4758,6 +4774,7 @@
 +global.onlineRunUpdate = true;
 +global.onlineSimultaneousTurns = false;
 +global.onlineSpectatorPauseMenu = -4;
++scrInitCompatabilityCheckData();
 +scrInputClear();
 --- original/gml_Object_oController_Other_3.gml
 +++ patched/gml_Object_oController_Other_3.gml

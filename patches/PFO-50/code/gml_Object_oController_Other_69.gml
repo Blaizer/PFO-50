@@ -1,5 +1,5 @@
 var param = async_load;
-if (LOG.LEVEL >= LOG.VERBOSE) show_debug_message("Steam Async Event: " + json_encode(param));
+LOG_DEBUG("Steam Async Event: " + json_encode(param));
 
 var eventType = ds_map_find_value(param, "event_type");
 if (eventType == "lobby_join_requested")
@@ -30,13 +30,4 @@ if (eventType == "lobby_join_requested")
         global.SKIP_INTRO = lobbyId;
         room_goto(rmLibrary);
     }
-}
-
-enum LOG
-{
-    NONE = 0,
-    INFO = 1,
-    VERBOSE = 2,
-
-    LEVEL = 2
 }

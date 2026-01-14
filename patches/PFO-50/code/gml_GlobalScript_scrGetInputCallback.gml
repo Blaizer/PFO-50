@@ -88,12 +88,3 @@ function scrCheckPause()
         }
     }
 }
-
-enum LOG
-{
-    NONE = 0,
-    INFO = 1,
-    VERBOSE = 2,
-
-    LEVEL = 1
-}

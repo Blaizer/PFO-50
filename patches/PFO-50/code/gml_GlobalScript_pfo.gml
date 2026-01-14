@@ -31,7 +31,7 @@ function pfo_add_extra_input(futureFrame)
 
         if (global.pfo_input_command_to_send != int64(0))
         {
-            if (LOG.LEVEL >= LOG.INFO) show_debug_message("Writing command to input flags: " + string(global.pfo_input_command_to_send) + " " + string(global.pfo_input_command_param_to_send) + " with future frame " + string(futureFrame) + " on frame " + string(pfo_get_frame()));
+            LOG_DEBUG("Writing command to input flags: " + string(global.pfo_input_command_to_send) + " " + string(global.pfo_input_command_param_to_send) + " with future frame " + string(futureFrame) + " on frame " + string(pfo_get_frame()));
             c |= (global.pfo_input_command_to_send      & int64((1 << PFO.InputCommandBits)      - 1));
             c |= (global.pfo_input_command_param_to_send & int64((1 << PFO.InputCommandParamBits) - 1)) << PFO.InputCommandBits;
             global.pfo_input_command_future_send_frame = futureFrame;
@@ -72,7 +72,7 @@ function pfo_update_extra_input()
 
             if (command != int64(0))
             {
-                if (LOG.LEVEL >= LOG.INFO) show_debug_message("Read command from input flags for player " + string(p) + ": " + string(command) + " " + string(commandParam) + " on frame " + string(pfo_get_frame()));
+                LOG_DEBUG("Read command from input flags for player " + string(p) + ": " + string(command) + " " + string(commandParam) + " on frame " + string(pfo_get_frame()));
                 global.pfo_input_command = command;
                 global.pfo_input_command_param = commandParam;
                 global.pfo_input_command_each[p] = command;
@@ -90,7 +90,7 @@ function pfo_send_command_in_progress()
     var ret = false;
     if (pfo_is_online() && pfo_get_frame() <= global.pfo_input_command_future_send_frame)
     {
-        if (LOG.LEVEL >= LOG.VERBOSE) show_debug_message("Send command in progress until future frame " + string(global.pfo_input_command_future_send_frame) + " on frame " + string(pfo_get_frame()));
+        LOG_VERBOSE("Send command in progress until future frame " + string(global.pfo_input_command_future_send_frame) + " on frame " + string(pfo_get_frame()));
         ret = true;
     }
     return ret;
@@ -103,7 +103,7 @@ function pfo_send_command(command)
 
     if (p >= 0 && pfo_is_online())
     {
-        if (LOG.LEVEL >= LOG.INFO) show_debug_message("Set Command to send: " + string(command) + " " + string(commandParam) + " on frame " + string(pfo_get_frame()));
+        LOG_DEBUG("Set Command to send: " + string(command) + " " + string(commandParam) + " on frame " + string(pfo_get_frame()));
         global.pfo_input_command_to_send = command;
         global.pfo_input_command_param_to_send = commandParam;
         global.pfo_input_command_future_send_frame = pfo_get_frame(); // guarantees the command send will be in progress at least for this frame
@@ -145,7 +145,7 @@ function pfo_receive_command(command, param)
 
     if (inputCommand == command)
     {
-        if (LOG.LEVEL >= LOG.INFO) show_debug_message("Received Command: " + string(inputCommand) + " " + string(commandParam) + " P" + string(p) + " on frame " + string(pfo_get_frame()));
+        LOG_DEBUG("Received Command: " + string(inputCommand) + " " + string(commandParam) + " P" + string(p) + " on frame " + string(pfo_get_frame()));
 
         if (is_array(param))
         {
@@ -165,7 +165,7 @@ function pfo_randomize()
         global.pfo_randomize_state = (global.pfo_randomize_state * int64(0xd1342543de82ef95)) + int64(0x9e3779b97f4a7c15);
         random_set_seed((global.pfo_randomize_state >> int64(32)) & int64(0xffffffff));
 
-        if (LOG.LEVEL >= LOG.VERBOSE) show_debug_message("Frame " + string(pfo_get_frame()) + ": Randomize: " + string(global.pfo_randomize_state));
+        LOG_VERBOSE("Frame " + string(pfo_get_frame()) + ": Randomize: " + string(global.pfo_randomize_state));
     }
     else
     {
@@ -201,13 +201,4 @@ enum PFO
     InputCommandBits = 8,
     InputCommandParamBits = 8,
     ExtraInputBits = PFO.InputCommandBits + PFO.InputCommandParamBits,
-}
-
-enum LOG
-{
-    NONE = 0,
-    INFO = 1,
-    VERBOSE = 2,
-
-    LEVEL = 1
 }
