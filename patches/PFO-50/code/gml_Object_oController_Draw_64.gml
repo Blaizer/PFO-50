@@ -76,11 +76,11 @@ if (pfo_is_online())
         {
             var mode = pfo_get_input_delay_mode();
 
-            if (mode == InputDelayMode.Manual)
+            if (mode == PFO_InputDelayMode.Manual)
             {
                 draw_set_color(global.palette[16]);
             }
-            else if (mode == InputDelayMode.Automatic && pfo_get_input_delay_favored_client_index() == pfo_get_client_index())
+            else if (mode == PFO_InputDelayMode.Automatic && pfo_get_input_delay_favored_client_index() == pfo_get_client_index())
             {
                 draw_set_color(global.palette[12]);
             }
@@ -133,9 +133,3 @@ draw_set_color(origColor);
 draw_set_halign(origHAlign);
 draw_set_valign(origVAlign);
 surface_reset_target();
-
-enum InputDelayMode
-{
-    Automatic,
-    Manual,
-}

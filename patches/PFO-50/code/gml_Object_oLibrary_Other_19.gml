@@ -117,7 +117,7 @@ else if (substate == SUB_ONLINE_LIST)
     }
     else if (sel1 >= lobbyListCount)
     {
-        sel1 = ds_list_size(lobbyList) - 1;
+        sel1 = lobbyListCount - 1;
     }
 
     scrUpdateLobbySel();

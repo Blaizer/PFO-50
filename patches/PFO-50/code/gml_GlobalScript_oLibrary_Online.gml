@@ -77,15 +77,15 @@ function scrRequestJoinLobby(data)
 
 function scrUpdateLobbyData(lobbyId)
 {
-    var data = scrGetLobbyData(lobbyId);
-    if (!is_string(data.name) || data.name == "" || data.memberLimit <= 0)
+    lobbyData = scrGetLobbyData(lobbyId);
+
+    if (!is_string(lobbyData.name) || lobbyData.name == "" || lobbyData.memberLimit <= 0)
     {
         errorMessage = "LOBBY IS INVALID OR NO LONGER EXISTS.";
         scrSwitchSub(SUB_ONLINE_ERROR);
         return false;
     }
 
-    lobbyData = data;
     return true;
 }
 
@@ -105,12 +105,12 @@ function scrUpdateLobbyUsers(lobbyId)
         var compat = pfo_steam_lobby_get_member_data(lobbyId, mySteamId, "compat");
         if (!is_string(compat) || compat == "")
         {
-            pfo_steam_lobby_set_member_data(lobbyId, "compat", json_stringify({ hash: global.dataHash, mods: global.installedMods }));
+            pfo_steam_lobby_set_member_data(lobbyId, "compat", json_stringify(global.onlineCompatibilityInfo));
         }
 
         ds_list_clear(lobbyUsers);
 
-        var hasOnlineSettings = substate >= SUB_ONLINE_SET_STARTING_GAME && !is_undefined(global.onlineSettings);
+        var hasOnlineSettings = !is_undefined(global.onlineSettings);
         if (hasOnlineSettings)
         {
             var ids = global.onlineSettings.clientIds;
@@ -138,7 +138,7 @@ function scrUpdateLobbyUsers(lobbyId)
             }
         }
 
-        readyState = 0;
+        myLobbyIndex = -1;
         var readyCount = 0;
         var connectReadyCount = 0;
         for (var i = 0; i < ds_list_size(lobbyUsers); i++)
@@ -146,7 +146,7 @@ function scrUpdateLobbyUsers(lobbyId)
             var steamId = ds_list_find_value(lobbyUsers, i);
             var personaName = scrGetUserPersonaName(steamId);
             var ready = pfo_steam_lobby_get_member_data(lobbyId, steamId, "ready");
-            var compat = pfo_steam_lobby_get_member_data(lobbyId, steamId, "compat");
+            var compatString = pfo_steam_lobby_get_member_data(lobbyId, steamId, "compat");
             
             if (ready == "2")
             {
@@ -166,28 +166,39 @@ function scrUpdateLobbyUsers(lobbyId)
 
             if (steamId == mySteamId)
             {
-                readyState = ready;
+                myLobbyIndex = i;
             }
 
-            var hash = "";
-            if (is_string(compat) && compat != "")
+            var compat = undefined;
+            if (is_string(compatString) && compatString != "")
             {
-                try
-                {
-                    var data = json_parse(compat);
-
-                    if (is_string(data.hash))
-                    {
-                        hash = data.hash;
-                    }
-                }
-                catch (_exception)
-                {
-                }
+                compat = scrCreateCompatibilityInfoFromString(compatString);
             }
 
-            var data = { steamId: steamId, personaName: personaName, ready: ready, hash: hash };
+            var data = { steamId: steamId, personaName: personaName, ready: ready, compat: compat };
             ds_list_set(lobbyUsers, i, data);
+        }
+
+        if (myLobbyIndex < 0)
+        {
+            if (substate == SUB_ONLINE_INIT)
+            {
+                errorMessage = "FAILED TO JOIN. LOBBY HAS ALREADY STARTED.";
+                ds_list_clear(lobbyUsers);
+                scrSwitchSub(SUB_ONLINE_ERROR);
+            }
+            else if (hasOnlineSettings)
+            {
+                errorMessage = "THIS LOBBY HAS ALREADY STARTED.";
+                scrSwitchSub(SUB_ONLINE_ERROR);
+            }
+            else
+            {
+                errorMessage = "NO LONGER A MEMBER OF THIS LOBBY.";
+                scrSwitchSub(SUB_ONLINE_ERROR);
+            }
+
+            return false;
         }
 
         if (isOwner && substate < SUB_ONLINE_SET_START_GAME_SETTINGS && readyCount > 1 && readyCount == ds_list_size(lobbyUsers))
@@ -219,6 +230,8 @@ function scrUpdateLobbyUsers(lobbyId)
             scrSwitchSub(SUB_ONLINE_CONNECTING);
         }
     }
+
+    return true;
 }
 
 function scrDrawOnlineMenuSelection(text, enabled)
@@ -257,7 +270,7 @@ function scrDrawOnlineMenuSelection(text, enabled)
 
 function scrDrawOnlineMenuBack()
 {
-    var backY = 180;
+    var backY = 182;
     var backX = 340;
     var selected = sel2 == 2 && subsel == 1;
     draw_text_centered(backX, backY, "BACK", 8);
@@ -265,4 +278,92 @@ function scrDrawOnlineMenuBack()
     {
         draw_sprite(sMenuHand, 0, backX - 42, backY - 3);
     }
+}
+
+function scrGetCompatibilityDiffList(ours, theirs)
+{
+    var comparers = [ [], [] ];
+    for (var n = 0; n < 2; n++)
+    {
+        for (var i = 0; i < array_length(argument[n].mods); i += 2)
+        {
+            // for string comparison we use a key that sorts first case-insensitively, then case sensitively
+            var cmp = string_lower(argument[n].mods[i]) + argument[n].mods[i];
+            array_push(comparers[n], { name: argument[n].mods[i], version: argument[n].mods[i + 1], cmp: cmp });
+        }
+
+        array_sort(comparers[n], function (a, b)
+        {
+            if (a.cmp < b.cmp)
+            {
+                return -1;
+            }
+            if (a.cmp > b.cmp)
+            {
+                return 1;
+            }
+            return 0;
+        });
+    }
+
+    var gmloaderDiff = { name: "UFO 50 Mod Loader", status: argument[0].version == argument[1].version ? 0 : (argument[0].version == "" || argument[1].version == "" ? 1 : 2), versions: [] };
+    for (var n = 0; n < 2; n++)
+    {
+        gmloaderDiff.versions[n] = argument[n].version == "" ? "UNKNOWN" : argument[n].version;
+    }
+
+    var diffs = [ gmloaderDiff ];
+
+    var indexes = [ 0, 0 ];
+    while (indexes[0] < array_length(comparers[0]) || indexes[1] < array_length(comparers[1]))
+    {
+        var next;
+        var both = false;
+        var otherValue;
+
+        if (indexes[0] >= array_length(comparers[0]))
+        {
+            next = 1;
+        }
+        else if (indexes[1] >= array_length(comparers[1]))
+        {
+            next = 0;
+        }
+        else if (comparers[0][indexes[0]].cmp < comparers[1][indexes[1]].cmp)
+        {
+            next = 0;
+        }
+        else if (comparers[0][indexes[0]].cmp > comparers[1][indexes[1]].cmp)
+        {
+            next = 1;
+        }
+        else
+        {
+            next = 0;
+            both = true;
+            otherValue = comparers[1][indexes[1]]; 
+            indexes[1]++;
+        }
+
+        var nextValue = comparers[next][indexes[next]];
+        indexes[next]++;
+
+        var status = both ? (nextValue.version == otherValue.version ? (nextValue.version == "" ? 2 : 0) : 1) : 1;
+        var diff = { name: nextValue.name, status: status, versions: [] };
+
+        for (var n = 0; n < 2; n++)
+        {
+            if (n == 1 && both)
+            {
+                next = 1;
+                nextValue = otherValue;
+            }
+
+            diff.versions[n] = next == n ? (nextValue.version == "" ? "VERSION UNKNOWN" : nextValue.version) : "";
+        }
+
+        array_push(diffs, diff);
+    }
+
+    return diffs;
 }

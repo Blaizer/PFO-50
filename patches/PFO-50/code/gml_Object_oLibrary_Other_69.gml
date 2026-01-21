@@ -131,8 +131,7 @@ else if (state == STATE_ONLINE_LOBBY)
                     scrUpdateLobbyUsers(lobbyId);
                 }
             }
-
-            if (substate > SUB_ONLINE_INIT && memberId == lobbyId)
+            else if (substate > SUB_ONLINE_INIT && memberId == lobbyId)
             {
                 if (ds_map_find_value(param, "success"))
                 {
@@ -176,10 +175,16 @@ else if (state == STATE_ONLINE_LOBBY)
                                     exit;
                                 }
 
+                                if (!scrUpdateLobbyUsers(lobbyId))
+                                {
+                                    // error state already set
+                                    exit;
+                                }
+
                                 pfo_reset();
                                 if (!pfo_set_clients(global.onlineSettings.clientIds))
                                 {
-                                    errorMessage = "THIS LOBBY HAS ALREADY STARTED.";
+                                    errorMessage = "AN ERROR OCCURED STARTING THE GAME.";
                                     scrSwitchSub(SUB_ONLINE_ERROR);
                                     exit;
                                 }
@@ -187,14 +192,13 @@ else if (state == STATE_ONLINE_LOBBY)
                                 for (var i = 0; i < ds_list_size(lobbyUsers); i++)
                                 {
                                     var data = ds_list_find_value(lobbyUsers, i);
-                                    LOG_INFO("Client " + string(i) + ": " + string({ hash: data.hash }));
+                                    LOG_INFO("Client " + string(i) + ": " + string(data.compat));
                                 }
 
                                 requestTimeoutTime = current_time + ONLINE_REQUEST_TIMEOUT;
                                 pfo_steam_lobby_set_member_data(lobbyId, "ready", "2");
 
                                 scrSwitchSub(SUB_ONLINE_SET_STARTING_GAME);
-                                scrUpdateLobbyUsers(lobbyId);
 
                                 LOG_INFO("########################");
                             }

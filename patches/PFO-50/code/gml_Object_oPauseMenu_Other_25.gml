@@ -5,7 +5,7 @@
 
 function scrUpdateManualInputDelays()
 {
-    if (pfo_get_input_delay_mode() == InputDelayMode.Manual)
+    if (pfo_get_input_delay_mode() == PFO_InputDelayMode.Manual)
     {
         for (var playerIndex = 0; playerIndex < 2; playerIndex++)
         {
@@ -69,12 +69,12 @@ else if (substate == SUB_INIT)
     var mode = pfo_get_input_delay_mode();
     OP_DELAY_MODE = scrMenuItem(TYPE_DUAL, "INPUT DELAY MODE", mode, ["AUTO", "MANUAL"]);
 
-    if (mode == InputDelayMode.Automatic)
+    if (mode == PFO_InputDelayMode.Automatic)
     {
         OP_AUTO_DELAY_MIN = scrMenuItem(TYPE_DUAL_INT, "MIN INPUT DELAY", pfo_get_min_automatic_input_delay(), 0, global.ONLINE_MAX_AUTOMATIC_DELAY);
         OP_AUTO_DELAY_MAX = scrMenuItem(TYPE_DUAL_INT, "MAX INPUT DELAY", pfo_get_max_automatic_input_delay(), 0, global.ONLINE_MAX_AUTOMATIC_DELAY);
     }
-    else if (mode == InputDelayMode.Manual)
+    else if (mode == PFO_InputDelayMode.Manual)
     {
         var manualInputDelays = array_create(assignablePlayerCount);
         for (var playerIndex = 0; playerIndex < assignablePlayerCount; playerIndex++)
@@ -213,7 +213,7 @@ else if (substate == SUB_RESET)
     {
         onlinePlayers[0] = 0;
         onlinePlayers[1] = 1;
-        pfo_set_input_delay_mode(InputDelayMode.Automatic);
+        pfo_set_input_delay_mode(PFO_InputDelayMode.Automatic);
         pfo_set_min_automatic_input_delay(0);
         pfo_set_max_automatic_input_delay(global.ONLINE_MAX_AUTOMATIC_DELAY);
 
@@ -228,19 +228,4 @@ else if (substate == SUB_RESET)
             scrSwitchSub(SUB_INIT);
         }
     }
-}
-
-enum InputDelayMode
-{
-    Automatic,
-    Manual,
-}
-
-enum Command
-{
-    None    = 0,
-    Back    = 1,
-    Unpause = 2,
-    Reset   = 3,
-    SetSel  = 4,
 }

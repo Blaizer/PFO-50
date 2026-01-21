@@ -1,4 +1,7 @@
 #macro PFO_MAX_PLAYERS global.MAX_PLAYERS_SUPPORTED
+#macro PFO_INPUT_COMMAND_BITS int64(8)
+#macro PFO_INPUT_COMMAND_PARAM_BITS int64(8)
+#macro PFO_EXTRA_INPUT_BITS (PFO_INPUT_COMMAND_BITS + PFO_INPUT_COMMAND_PARAM_BITS)
 
 function pfo_start()
 {
@@ -32,22 +35,22 @@ function pfo_add_extra_input(futureFrame)
         if (global.pfo_input_command_to_send != int64(0))
         {
             LOG_DEBUG("Writing command to input flags: " + string(global.pfo_input_command_to_send) + " " + string(global.pfo_input_command_param_to_send) + " with future frame " + string(futureFrame) + " on frame " + string(pfo_get_frame()));
-            c |= (global.pfo_input_command_to_send      & int64((1 << PFO.InputCommandBits)      - 1));
-            c |= (global.pfo_input_command_param_to_send & int64((1 << PFO.InputCommandParamBits) - 1)) << PFO.InputCommandBits;
+            c |= (global.pfo_input_command_to_send       & int64((1 << PFO_INPUT_COMMAND_BITS)      - 1));
+            c |= (global.pfo_input_command_param_to_send & int64((1 << PFO_INPUT_COMMAND_PARAM_BITS) - 1)) << PFO_INPUT_COMMAND_BITS;
             global.pfo_input_command_future_send_frame = futureFrame;
         }
 
-        return (flags << PFO.ExtraInputBits) | c;
+        return (flags << PFO_EXTRA_INPUT_BITS) | c;
     }
     else if (argument_count == 3)
     {
-        return (argument[2] & int64((1 << PFO.InputCommandBits) - 1)) != int64(0);
+        return (argument[2] & int64((1 << PFO_INPUT_COMMAND_BITS) - 1)) != int64(0);
     }
 }
 
 function pfo_remove_extra_input(flags)
 {
-    return flags >> PFO.ExtraInputBits;
+    return flags >> PFO_EXTRA_INPUT_BITS;
 }
 
 function pfo_update_extra_input()
@@ -67,8 +70,8 @@ function pfo_update_extra_input()
         {
             var c = pfo_player_get_input(p);
 
-            var command      = c                           & int64((1 << int64(PFO.InputCommandBits)) - 1);
-            var commandParam = (c >> PFO.InputCommandBits) & int64((1 << int64(PFO.InputCommandParamBits)) - 1);
+            var command      = c                             & int64((1 << int64(PFO_INPUT_COMMAND_BITS)) - 1);
+            var commandParam = (c >> PFO_INPUT_COMMAND_BITS) & int64((1 << int64(PFO_INPUT_COMMAND_PARAM_BITS)) - 1);
 
             if (command != int64(0))
             {
@@ -194,11 +197,4 @@ function pfo_update_time()
 
     global.pfo_frames_at_current_gamespeed++;
     global.pfo_current_time = round(global.pfo_base_current_time + global.pfo_frames_at_current_gamespeed * 1000.0 / _fps);
-}
-
-enum PFO
-{
-    InputCommandBits = 8,
-    InputCommandParamBits = 8,
-    ExtraInputBits = PFO.InputCommandBits + PFO.InputCommandParamBits,
 }

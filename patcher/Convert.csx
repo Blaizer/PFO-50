@@ -105,6 +105,23 @@ var csxSettingsFile = Path.Join(csxSubDir, $"1_Patch{modName}.csx-settings");
 File.WriteAllText(csxFile, $@"#load ""1_Patch{modName}.csx-settings""" + "\n" + $@"#load ""../../{modName}/patches/{modName}/GamePatch.csx""");
 File.WriteAllText(csxSettingsFile, $@"Environment.SetEnvironmentVariable(""DEBUG"", ""{(isDebug ? "1" : "")}"");");
 
+foreach (var d in new[] { "pre", "post", "after" })
+{
+    var srcCsxDir = Path.Join(modPatchesDir, d);
+    if (Directory.Exists(srcCsxDir))
+    {
+        foreach (var srcCsxFile in Directory.GetFiles(srcCsxDir, "*.csx"))
+        {
+            var f = Path.GetFileNameWithoutExtension(srcCsxFile);
+            var dstCsxSubDir = Path.Join(csxDir, d);
+            var dstCsxFile = Path.Join(dstCsxSubDir, $"{f}{modName}.csx");
+
+            Directory.CreateDirectory(dstCsxSubDir);
+            File.Copy(srcCsxFile, dstCsxFile, true);
+        }
+    }
+}
+
 var libDir = Path.Join(mainDir, "patcher", "lib");
 File.Delete(Path.Join(libDir, "busybox.exe"));
 }

@@ -11,46 +11,77 @@ function scrInitAttractModePlaylist()
     scrShuffle(global.attractModePlaylist);
 }
 
-function scrInitCompatabilityCheckData()
+function scrCreateCompatibilityInfoFromString(compatString)
 {
-    global.dataHash = "";
-    global.installedMods = [];
+    var _compat =
+    {
+        hash: "",
+        version: "",
+        mods: [],
+    };
 
-    try
+    if (is_string(compatString) && compatString != "")
+    {
+        try
+        {
+            var _info = json_parse(compatString);
+
+            if (is_string(_info.hash))
+            {
+                _compat.hash = _info.hash;
+            }
+
+            if (is_string(_info.version))
+            {
+                _compat.version = _info.version;
+            }
+
+            if (is_array(_info.mods))
+            {
+                for (var i = 0; i < array_length(_info.mods) - 1; i += 2)
+                {
+                    if (is_string(_info.mods[i]) && is_string(_info.mods[i + 1]))
+                    {
+                        array_push(_compat.mods, _info.mods[i]);
+                        array_push(_compat.mods, _info.mods[i + 1]);
+                    }
+                }
+            }
+        }
+        catch (_exception)
+        {
+        }
+    }
+
+    return _compat;
+}
+
+function scrInitCompatibilityInfo()
+{
+    global.onlineCompatibilityInfo = scrCreateCompatibilityInfoFromString(extension_get_option_value("PFO", "compat"));
+
+    if (global.onlineCompatibilityInfo.hash == "")
     {
         var _dataPath = working_directory + "data.win";
         if (file_exists(_dataPath))
         {
-            var _buf = buffer_load(_dataPath);
-            var _size = buffer_get_size(_buf);
+            var _buf = -1;
             
-            // UMT patches data.win in a completely deterministic way,
-            // except a short section at the very end starting with "%tEXtdate".
-            // Let's attempt to find that section and ignore it if it exists.
-            if (_size >= 256)
+            try
             {
-                for (var _offset = _size - 256; _offset < _size - 8; _offset++)
-                {
-                    var _char = buffer_peek(_buf, _offset, buffer_u8);
-                    
-                    if (_char == ord("%"))
-                    {
-                        var _token = buffer_peek(_buf, _offset + 1, buffer_u64);
-                        
-                        if (_token == 0x6574616474584574) // tEXtdate
-                        {
-                            _size = _offset;
-                            break;
-                        }
-                    }
-                }
+                _buf = buffer_load(_dataPath);
+                var _size = buffer_get_size(_buf);
+                global.onlineCompatibilityInfo.hash = buffer_md5(_buf, 0, _size);
             }
-                
-            global.dataHash = buffer_md5(_buf, 0, _size);
+            catch (_exception)
+            {
+            }
+
+            if (_buf != -1)
+            {
+                buffer_delete(_buf);
+            }
         }
-    }
-    catch (_exception)
-    {
     }
 }
 
@@ -222,11 +253,4 @@ function scrOnlineStateChangedCallback(state)
     {
         scrOnlineCleanup(false);
     }
-}
-
-enum PFO_OnlineState
-{
-    Offline,
-    Online,
-    Disconnecting
 }

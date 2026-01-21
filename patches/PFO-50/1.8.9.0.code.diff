@@ -4774,7 +4774,7 @@
 +global.onlineRunUpdate = true;
 +global.onlineSimultaneousTurns = false;
 +global.onlineSpectatorPauseMenu = -4;
-+scrInitCompatabilityCheckData();
++scrInitCompatibilityInfo();
 +scrInputClear();
 --- original/gml_Object_oController_Other_3.gml
 +++ patched/gml_Object_oController_Other_3.gml
