@@ -2182,10 +2182,9 @@ namespace
                 m_InputDelayFavoredClientIndex = -1;
             }
 
-            LogDebug("We set the players [ %d, %d ] on frame: %u\n", map[0], map[1], m_Frame);
-
             if (changedPlayerAssignment)
             {
+                LogDebug("We changed the players [ %d, %d, %d, %d, %d, %d, %d, %d ] on frame: %u\n", map[0], map[1], map[2], map[3], map[4], map[5], map[6], map[7], m_Frame);
                 UpdateInputDelay();
                 RequestAutomaticInputDelayChange();
             }
@@ -2845,8 +2844,8 @@ YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions,
 
     {
         const char* cmd = GetCommandLineA();
-        const char option[] = "-output ";
-        const char prefix[] = "pfo-";
+        constexpr char option[] = "-output ";
+        constexpr char prefix[] = "pfo-";
 
         while (*cmd != '\0')
         {
@@ -3223,7 +3222,7 @@ YYEXPORT void pfo_get_assigned_clients_count(RValue& result, CInstance* selfinst
 {
     assert(argc == 0);
 
-    init_real(result, g_Session.m_PreviousFrameAssignedClientsCount); // TODO: this is a temporary hack
+    init_real(result, g_Session.m_AssignedClientsCount);
 }
 
 YYEXPORT void pfo_file_exists(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)

@@ -70,7 +70,7 @@ if (valign == fa_bottom)
 
 if (pfo_is_online())
 {
-    if (showDelay && pfo_get_assigned_clients_count() > 0)
+    if (showDelay && pfo_get_frame() > 4)
     {
         if (pfo_client_get_player_index() >= 0)
         {

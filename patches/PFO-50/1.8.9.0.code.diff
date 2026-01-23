@@ -1198,7 +1198,7 @@
          {
              scrSfxLibrary(soundWarn[currentSoundSet]);
              seekingConfirmation = true;
-@@ -260,5 +261,91 @@
+@@ -260,5 +261,93 @@
              return -1;
          }
      }
@@ -1267,9 +1267,11 @@
 +            }
 +            if (_newIndex != itemIndex[menuSel])
 +            {
-+                if (!localInputDisabled())
++                if (!localInputDisabled() && !pfo_send_command_in_progress())
 +                {
-+                    sendCommand(UnknownEnum.Value_4, (int64(menuSel) & UnknownEnum.Value_15) | ((int64(_newIndex) & UnknownEnum.Value_15) << UnknownEnum.Value_4));
++                    var _playerIndex = menuSel - firstOnlinePlayerMenuIndex;
++                    var _value = (_newIndex < (_numItems - 1)) ? _newIndex : -1;
++                    sendCommand(UnknownEnum.Value_4, (int64(_playerIndex) & UnknownEnum.Value_15) | ((int64(_value) & UnknownEnum.Value_15) << UnknownEnum.Value_4));
 +                }
 +                if (pressRight)
 +                {
@@ -1416,21 +1418,15 @@
          for (var i = 0; i < instNum; i++)
          {
              instance_activate_object(instId[i]);
-@@ -35,6 +37,16 @@
-         {
+@@ -36,5 +38,10 @@
              instance_destroy();
          }
-+            if (!is_undefined(onlinePlayers))
-+            {
-+                scrSetOnlinePlayers(onlinePlayers);
-+                onlinePlayers = undefined;
-+                with (oLibrary)
-+                {
-+                    backupOnlinePlayers = undefined;
-+                }
-+            }
          instance_destroy();
 +        }
++    }
++    if (!global.disableSettingOnlinePlayers)
++    {
++        scrSetOnlinePlayers(global.onlinePlayers);
      }
  }
 --- original/gml_Object_o01_Game_Alarm_0.gml
@@ -4738,7 +4734,7 @@
  }
 --- original/gml_Object_oController_Create_0.gml
 +++ patched/gml_Object_oController_Create_0.gml
-@@ -3,5 +3,36 @@
+@@ -3,5 +3,38 @@
      instance_destroy();
      exit;
  }
@@ -4770,6 +4766,8 @@
 +prevGame = 0;
 +global.onlineSettings = undefined;
 +global.onlineBackupDefaultLanguage = undefined;
++global.onlinePlayers = undefined;
++global.disableSettingOnlinePlayers = false;
 +global.onlineFavoredPlayer = -1;
 +global.onlineRunUpdate = true;
 +global.onlineSimultaneousTurns = false;
@@ -4918,12 +4916,11 @@
      state = STATE_PRE_GAMES_BUFFER;
  }
  PARALLAX_SPEED = 0.1;
-@@ -124,4 +166,11 @@
+@@ -124,4 +166,10 @@
      global.AM_LIB_TIME = 1200;
      scrLoadProfile(global.ARCADE_MODE_PROFILE);
      state = STATE_PRE_GAMES_BUFFER;
 +}
-+backupOnlinePlayers = undefined;
 +lastInputFrame = 0;
 +
 +enum UnknownEnum
@@ -5181,7 +5178,7 @@
          {
 --- original/gml_Object_oLibrary_Other_14.gml
 +++ patched/gml_Object_oLibrary_Other_14.gml
-@@ -14,6 +14,29 @@
+@@ -14,6 +14,28 @@
  {
      parallaxCounter += PARALLAX_SPEED;
  }
@@ -5192,16 +5189,15 @@
 +    if (_player < 0)
 +    {
 +        var _count = pfo_get_client_count();
-+        backupOnlinePlayers = [];
 +        var _newOnlinePlayers = [];
 +        for (var i = 0; i < _count; i++)
 +        {
-+            backupOnlinePlayers[i] = pfo_player_get_client_index(i);
-+            _newOnlinePlayers[i] = backupOnlinePlayers[i];
++            _newOnlinePlayers[i] = pfo_player_get_client_index(i);
 +        }
 +        _newOnlinePlayers[0] = 0;
 +        scrSetOnlinePlayers(_newOnlinePlayers);
 +        scrInputClear();
++        global.disableSettingOnlinePlayers = true;
 +    }
 +    else
 +    {
@@ -5211,7 +5207,7 @@
  if (substate == SUB_INIT)
  {
      if (statePrev == STATE_GAMES)
-@@ -71,6 +94,8 @@
+@@ -71,6 +93,8 @@
      }
      menuSel = profileSelFinal;
      menuSelOrig = 0;
@@ -5220,7 +5216,7 @@
      if (subPrev == SUB_COPYING)
      {
          scrSwitchSub(SUB_COPY_FX);
-@@ -94,18 +119,36 @@
+@@ -94,18 +118,36 @@
  }
  else if (substate == SUB_LOAD)
  {
@@ -5259,7 +5255,7 @@
              if (scrLoadProfile(menuSel + 1))
              {
                  global.goldWins = goldWins[menuSel + 1];
-@@ -216,9 +259,9 @@
+@@ -216,9 +258,9 @@
  else if (substate == SUB_DELETING)
  {
      var filename = string_replace(global.SAVE_FILE, "*", string(menuSel + 1));
@@ -5271,7 +5267,7 @@
      }
      for (var i = 0; i < 22; i++)
      {
-@@ -360,14 +403,15 @@
+@@ -360,14 +402,15 @@
  else if (substate == SUB_COPYING)
  {
      var fileFrom = string_replace(global.SAVE_FILE, "*", string(copyFrom + 1));
@@ -5371,10 +5367,10 @@
  {
      global.backupTimer++;
 +}
-+if (state != STATE_PROFILE && !is_undefined(backupOnlinePlayers))
++if (state != STATE_PROFILE && state != STATE_ONLINE_CONNECTING && global.disableSettingOnlinePlayers)
 +{
-+    scrSetOnlinePlayers(backupOnlinePlayers);
-+    backupOnlinePlayers = undefined;
++    global.disableSettingOnlinePlayers = false;
++    scrSetOnlinePlayers(global.onlinePlayers);
  }
 --- original/gml_Object_oOkay_Create_0.gml
 +++ patched/gml_Object_oOkay_Create_0.gml
@@ -5507,7 +5503,7 @@
  currentSound = -1;
  currentSoundSet = 0;
  pauseSoundTrig = false;
-@@ -157,4 +163,56 @@
+@@ -157,4 +163,55 @@
  scrInputClear();
  inputListenerTimer = 0;
  padCount = scrGetJoyCount();
@@ -5559,7 +5555,6 @@
 +    commandSent = UnknownEnum.Value_0;
 +}
 +inEndDraw = false;
-+onlinePlayers = undefined;
 +
 +enum UnknownEnum
 +{
@@ -6680,7 +6675,7 @@
                  }
 --- original/gml_Object_oPauseMenu_Step_1.gml
 +++ patched/gml_Object_oPauseMenu_Step_1.gml
-@@ -1,19 +1,35 @@
+@@ -1,19 +1,98 @@
 -if (state != STATE_JOYCONFIG && (inputListenerTimer++ % 30) == 0 && scrGetJoyCount() != padCount)
 +if (!localInputDisabled() && state != STATE_JOYCONFIG && (inputListenerTimer++ % 30) == 0 && scrGetJoyCount() != padCount)
  {
@@ -6716,12 +6711,75 @@
 +{
      state = STATE_TERMINAL;
  }
++if (pfo_is_online())
++{
++    if (!localInputDisabled() && !pfo_send_command_in_progress())
++    {
++        var _playerMaskToRemove = UnknownEnum.Value_0;
++        for (var i = 0; i < global.MAX_PLAYERS_SUPPORTED; i++)
++        {
++            if (global.onlinePlayers[i] >= 0 && !pfo_client_is_connected(global.onlinePlayers[i]))
++            {
++                _playerMaskToRemove |= (UnknownEnum.Value_1 << int64(i));
++            }
++        }
++        if (_playerMaskToRemove != UnknownEnum.Value_0)
++        {
++            sendCommand(UnknownEnum.Value_5, _playerMaskToRemove);
++        }
++    }
++    var _arg = [UnknownEnum.Value_0];
++    if (receiveCommand(UnknownEnum.Value_4, _arg))
++    {
++        var _playerIndex = real(_arg[0] & UnknownEnum.Value_15);
++        var _value = real(_arg[0] >> UnknownEnum.Value_4);
++        if (_value == UnknownEnum.Value_15)
++        {
++            _value = -1;
++        }
++        if (_value >= 0)
++        {
++            var _previousValue = global.onlinePlayers[_playerIndex];
++            for (var i = 0; i < global.MAX_PLAYERS_SUPPORTED; i++)
++            {
++                if (global.onlinePlayers[i] == _value)
++                {
++                    global.onlinePlayers[i] = _previousValue;
++                }
++            }
++        }
++        global.onlinePlayers[_playerIndex] = _value;
++    }
++    else if (receiveCommand(UnknownEnum.Value_5, _arg))
++    {
++        var _playerMaskToRemove = _arg[0];
++        var i = global.MAX_PLAYERS_SUPPORTED - 1;
++        while (i >= 0)
++        {
++            if ((_playerMaskToRemove & (UnknownEnum.Value_1 << int64(i))) != UnknownEnum.Value_0)
++            {
++                array_delete(global.onlinePlayers, i, 1);
++                array_push(global.onlinePlayers, -1);
++            }
++            i--;
++        }
++        if (global.onlinePlayers[0] < 0)
++        {
++            global.onlinePlayers[0] = pfo_player_get_client_index(player);
++        }
++    }
++}
  scrRunStateMachine();
 +
 +enum UnknownEnum
 +{
-+    Value_2 = 2,
-+    Value_3
++    Value_0,
++    Value_1,
++    Value_2,
++    Value_3,
++    Value_4,
++    Value_5,
++    Value_15 = 15
 +}
 --- original/gml_Object_oTitleScreens_Create_0.gml
 +++ patched/gml_Object_oTitleScreens_Create_0.gml

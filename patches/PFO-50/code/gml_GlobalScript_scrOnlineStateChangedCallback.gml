@@ -85,13 +85,49 @@ function scrInitCompatibilityInfo()
     }
 }
 
-function scrSetOnlinePlayers(players)
+function scrSetOnlinePlayers()
 {
     if (pfo_is_online())
     {
+        var players = argument_count > 0 ? argument[0] : global.onlinePlayers;
+        
+        var playersLength = array_length(players);
+        var playerCount;
+        for (playerCount = 0; playerCount < playersLength; playerCount++)
+        {
+            if (players[playerCount] < 0)
+            {
+                break;
+            }
+        }
+
+        var assignablePlayerCount = global.MAX_PLAYERS_SUPPORTED;
+        if (global.currGame >= 1 && global.currGame <= global.NUM_GAMES && global.attractModeLibraryTimer < global.AM_LIB_TIME)
+        {
+            assignablePlayerCount = global.mGamePlayersSupported[global.currGame];
+        }
+        if (playerCount < assignablePlayerCount)
+        {
+            assignablePlayerCount = playerCount;
+        }
+
+        // we call this function every frame with no arguments, so we want to skip the work if we already have the right number
+        // of players assigned. we will call this function with arguments when we actually change what's in the array
+        if (argument_count <= 0 && assignablePlayerCount == pfo_get_assigned_clients_count())
+        {
+            return;
+        }
+
+        if (playerCount != assignablePlayerCount)
+        {
+            var tempPlayers = [];
+            array_copy(tempPlayers, 0, players, 0, assignablePlayerCount);
+            players = tempPlayers;
+        }
+
         pfo_set_players(players);
 
-        if (pfo_client_get_player_index() >= 0)
+        if (pfo_client_get_player_index() >= 0 && global.onlineSpectatorPauseMenu != noone)
         {
             instance_destroy(global.onlineSpectatorPauseMenu);
             global.onlineSpectatorPauseMenu = noone;
@@ -154,6 +190,8 @@ function scrOnlineCleanup(forceExitToTitleScreen)
 
     global.onlineSettings = undefined;
     global.onlineBackupDefaultLanguage = undefined;
+    global.onlinePlayers = undefined;
+    global.disableSettingOnlinePlayers = false;
 
     if (!saveFileOwned || forceExitToTitleScreen)
     {
@@ -188,8 +226,16 @@ function scrOnlineStateChangedCallback(state)
         pfo_start();
         global.onlineSimultaneousTurns = false;
         global.onlineRunUpdate = true;
-        global.onlineFavoredPlayer = -1;         
+        global.onlineFavoredPlayer = -1;
+        global.onlinePlayers = [];
+        global.disableSettingOnlinePlayers = true;
         scrUnpause();
+
+        var clientCount = pfo_get_client_count();
+        for (var i = 0; i < global.MAX_PLAYERS_SUPPORTED; i++)
+        {
+            global.onlinePlayers[i] = i < clientCount ? i : -1;
+        }
 
         pfo_set_randomize_seed(global.onlineSettings.randomizeSeed);
         scrRandomize(0);

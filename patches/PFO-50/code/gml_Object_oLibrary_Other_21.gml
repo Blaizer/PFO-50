@@ -25,14 +25,8 @@ else if (stateCounter == 1)
 }
 else if (stateCounter == 2)
 {
-    var players = [];
-    var assignedPlayerCount = min(pfo_get_client_count(), global.MAX_PLAYERS_SUPPORTED);
-    for (var i = 0; i < assignedPlayerCount; i++)
-    {
-        players[i] = i;
-    }
-    scrSetOnlinePlayers(players);
-
+    global.disableSettingOnlinePlayers = false;
+    scrSetOnlinePlayers(global.onlinePlayers);
     scrInitAch();
 }
 else if (stateCounter == 3)

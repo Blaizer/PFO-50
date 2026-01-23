@@ -32,7 +32,10 @@ but for some turn-based games the input delay will favor the current player.
 
 Credits
 -------
-* Blazier: programming, art
+PFO 50 is mostly a one-man project, but it was made possible thanks to the
+help from these people:
+
 * Sailor: testing
 * p-sam: ufo50-patcher
+* Phil: UFO 50 Mod Loader
 * Mossmouth: making UFO 50

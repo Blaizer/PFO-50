@@ -31,9 +31,10 @@ enum GetInputType
 
 enum Command
 {
-    None    = 0,
-    Back    = 1,
-    Unpause = 2,
-    Reset   = 3,
-    SetSel  = 4,
+    None          = 0,
+    Back          = 1,
+    Unpause       = 2,
+    Reset         = 3,
+    SetPlayer     = 4,
+    RemovePlayers = 5,
 }

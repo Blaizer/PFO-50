@@ -7,11 +7,11 @@ function scrUpdateManualInputDelays()
 {
     if (pfo_get_input_delay_mode() == PFO_InputDelayMode.Manual)
     {
-        for (var playerIndex = 0; playerIndex < 2; playerIndex++)
+        for (var playerIndex = 0; playerIndex < global.MAX_PLAYERS_SUPPORTED; playerIndex++)
         {
-            if (onlinePlayers[playerIndex] >= 0)
+            if (global.onlinePlayers[playerIndex] >= 0)
             {
-                pfo_client_set_input_delay(itemIndex[OP_MANUAL_DELAY_P1 + playerIndex], onlinePlayers[playerIndex]);
+                pfo_client_set_input_delay(itemIndex[OP_MANUAL_DELAY_P1 + playerIndex], global.onlinePlayers[playerIndex]);
             }
         }
     }
@@ -27,16 +27,6 @@ if (substate == SUB_PRE_INIT)
 {
     menuSel = 0;
     scrSwitchSub(SUB_INIT);
-
-    assignablePlayerCount = global.MAX_PLAYERS_SUPPORTED;
-
-    if (is_undefined(onlinePlayers))
-    {
-        for (var playerIndex = 0; playerIndex < assignablePlayerCount; playerIndex++)
-        {
-            onlinePlayers[playerIndex] = pfo_player_get_client_index(playerIndex);
-        }
-    }
 }
 else if (substate == SUB_INIT)
 {
@@ -60,9 +50,9 @@ else if (substate == SUB_INIT)
 
     if (!global.onlineSimultaneousTurns)
     {
-        for (var i = 0; i < assignablePlayerCount; i++)
+        for (var i = 0; i < global.MAX_PLAYERS_SUPPORTED; i++)
         {
-            scrMenuItem(TYPE_DUAL_ONLINE_PLAYER, "P" + string(i + 1) + " ASSIGN", onlinePlayers[i] >= 0 ? onlinePlayers[i] : onlinePlayerCount, playerNames);
+            scrMenuItem(TYPE_DUAL_ONLINE_PLAYER, "P" + string(i + 1) + " ASSIGN", global.onlinePlayers[i] >= 0 ? global.onlinePlayers[i] : onlinePlayerCount, playerNames);
         }
     }
 
@@ -76,18 +66,18 @@ else if (substate == SUB_INIT)
     }
     else if (mode == PFO_InputDelayMode.Manual)
     {
-        var manualInputDelays = array_create(assignablePlayerCount);
-        for (var playerIndex = 0; playerIndex < assignablePlayerCount; playerIndex++)
+        var manualInputDelays = array_create(global.MAX_PLAYERS_SUPPORTED);
+        for (var playerIndex = 0; playerIndex < global.MAX_PLAYERS_SUPPORTED; playerIndex++)
         {
-            if (onlinePlayers[playerIndex] >= 0)
+            if (global.onlinePlayers[playerIndex] >= 0)
             {
-                manualInputDelays[playerIndex] = pfo_client_get_input_delay(onlinePlayers[playerIndex]);
+                manualInputDelays[playerIndex] = pfo_client_get_input_delay(global.onlinePlayers[playerIndex]);
             }
         }
 
         OP_MANUAL_DELAY = scrMenuItem(TYPE_DUAL_INT, "INPUT DELAY", max(manualInputDelays[0], manualInputDelays[1]), 0, global.ONLINE_MAX_AUTOMATIC_DELAY * 2);
 
-        for (var i = 0; i < assignablePlayerCount; i++)
+        for (var i = 0; i < global.MAX_PLAYERS_SUPPORTED; i++)
         {
             var item = scrMenuItem(TYPE_DUAL_INT, "P" + string(i + 1) + " INPUT DELAY", manualInputDelays[i], 0, global.ONLINE_MAX_AUTOMATIC_DELAY * 2);
             if (OP_MANUAL_DELAY_P1 == -1)
@@ -115,37 +105,31 @@ else if (substate == SUB_INIT)
 }
 else if (substate == SUB_NAV)
 {
+    if (firstOnlinePlayerMenuIndex != -1)
+    {
+        var changed = false;
+
+        for (var i = 0; i < global.MAX_PLAYERS_SUPPORTED; i++)
+        {
+            var newItemIndex = global.onlinePlayers[i] >= 0 ? global.onlinePlayers[i] : onlinePlayerCount;
+            if (itemIndex[i + firstOnlinePlayerMenuIndex] != newItemIndex)
+            {
+                itemIndex[i + firstOnlinePlayerMenuIndex] = newItemIndex;
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            scrUpdateManualInputDelays();
+        }
+    }
+
     if (receiveCommand(Command.Reset))
     {
         scrSfxLibrary(soundSet[currentSoundSet]);
         scrSwitchSub(SUB_RESET);
         exit;
-    }
-
-    var _arg = [ int64(0) ];
-    if (receiveCommand(Command.SetSel, _arg))
-    {
-        var _menuSel = real(_arg[0] & int64(0xf));
-        var _choice = real(_arg[0] >> int64(4));
-
-        var _previousChoice = itemIndex[_menuSel];
-        itemIndex[_menuSel] = _choice;
-
-        onlinePlayers[_menuSel - firstOnlinePlayerMenuIndex] = _choice < onlinePlayerCount ? _choice : -1;
-
-        if (_choice < onlinePlayerCount)
-        {
-            for (var _sel = _menuSel + 1; _sel <= lastOnlinePlayerMenuIndex; _sel++)
-            {
-                if (itemIndex[_sel] == _choice)
-                {
-                    itemIndex[_sel] = _previousChoice;
-                    onlinePlayers[_sel - firstOnlinePlayerMenuIndex] = _previousChoice < onlinePlayerCount ? _previousChoice : -1;
-                }
-            }
-        }
-
-        scrUpdateManualInputDelays();
     }
 
     var choice = scrMenuNavigation();
@@ -163,7 +147,7 @@ else if (substate == SUB_NAV)
         exit;
     }
 
-    if (!localInputDisabled() && keyboard_check_pressed(vk_f1))
+    if (!localInputDisabled() && !pfo_send_command_in_progress() && keyboard_check_pressed(vk_f1))
     {
         sendCommand(Command.Reset);
     }
@@ -186,7 +170,7 @@ else if (substate == SUB_NAV)
                 break;
 
             case OP_MANUAL_DELAY:
-                for (var i = 0; i < assignablePlayerCount; i++)
+                for (var i = 0; i < global.MAX_PLAYERS_SUPPORTED; i++)
                 {
                     itemIndex[OP_MANUAL_DELAY_P1 + i] = choice;
                 }
@@ -199,7 +183,7 @@ else if (substate == SUB_NAV)
                 break;
 
             default:
-                if (OP_MANUAL_DELAY_P1 != -1 && menuSel >= OP_MANUAL_DELAY_P1 && menuSel - OP_MANUAL_DELAY_P1 < assignablePlayerCount)
+                if (OP_MANUAL_DELAY_P1 != -1 && menuSel >= OP_MANUAL_DELAY_P1 && menuSel - OP_MANUAL_DELAY_P1 < global.MAX_PLAYERS_SUPPORTED)
                 {
                     scrUpdateManualInputDelays();
                 }
@@ -211,8 +195,11 @@ else if (substate == SUB_RESET)
 {
     if (stateCounter == 0)
     {
-        onlinePlayers[0] = 0;
-        onlinePlayers[1] = 1;
+        var clientCount = pfo_get_client_count();
+        for (var i = 0; i < global.MAX_PLAYERS_SUPPORTED; i++)
+        {
+            global.onlinePlayers[i] = i < clientCount ? i : -1;
+        }
         pfo_set_input_delay_mode(PFO_InputDelayMode.Automatic);
         pfo_set_min_automatic_input_delay(0);
         pfo_set_max_automatic_input_delay(global.ONLINE_MAX_AUTOMATIC_DELAY);
