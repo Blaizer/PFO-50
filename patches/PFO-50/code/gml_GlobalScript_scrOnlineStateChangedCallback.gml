@@ -226,7 +226,6 @@ function scrOnlineStateChangedCallback(state)
         pfo_start();
         global.onlineSimultaneousTurns = false;
         global.onlineRunUpdate = true;
-        global.onlineFavoredPlayer = -1;
         global.onlinePlayers = [];
         global.disableSettingOnlinePlayers = true;
         scrUnpause();

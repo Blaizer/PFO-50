@@ -1,3 +1,11 @@
+--- original/gml_GlobalScript_scr01_Meta.gml
++++ patched/gml_GlobalScript_scr01_Meta.gml
+@@ -19,4 +19,5 @@
+     global.mGameCleanupScript[arg0] = -1;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineFavoredPlayerFunction[arg0] = scrFunction(o01_Game, scr01_GetFavoredPlayer, 0);
+ }
 --- original/gml_GlobalScript_scr07_DrawMapUI.gml
 +++ patched/gml_GlobalScript_scr07_DrawMapUI.gml
 @@ -53,8 +53,8 @@
@@ -24,11 +32,12 @@
                      draw_text(arg0 + 128 + 28, (arg1 + 28 + (64 * i)) - 12, scrString("mods_danger"));
 --- original/gml_GlobalScript_scr08_Meta.gml
 +++ patched/gml_GlobalScript_scr08_Meta.gml
-@@ -19,4 +19,5 @@
+@@ -19,4 +19,6 @@
      global.mGameCleanupScript[arg0] = scr08_Cleanup;
      global.mGameTitleMusic[arg0] = -1;
      global.mGameTitleMusicLoop[arg0] = false;
 +    global.mGamePlayersSupported[arg0] = 2;
++    global.mGameOnlineFavoredPlayerFunction[arg0] = scrFunction(o08_mg_Mas, scr08_GetFavoredPlayer, 0);
  }
 --- original/gml_GlobalScript_scr09_Meta.gml
 +++ patched/gml_GlobalScript_scr09_Meta.gml
@@ -47,6 +56,14 @@
      global.mGameTitleMusicLoop[arg0] = false;
 +    global.mGameOnlineHUDHAlign[arg0] = 2;
 +    global.mGameOnlineHUDVAlign[arg0] = 0;
+ }
+--- original/gml_GlobalScript_scr13_Meta.gml
++++ patched/gml_GlobalScript_scr13_Meta.gml
+@@ -19,4 +19,5 @@
+     global.mGameCleanupScript[arg0] = scr13_Cleanup;
+     global.mGameTitleMusic[arg0] = bgm00_lonestar_stingTitle;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineFavoredPlayerFunction[arg0] = scrFunction(o13_Game, scr13_GetFavoredPlayer);
  }
 --- original/gml_GlobalScript_scr14_Cleanup.gml
 +++ patched/gml_GlobalScript_scr14_Cleanup.gml
@@ -184,12 +201,13 @@
  }
 --- original/gml_GlobalScript_scr14_Meta.gml
 +++ patched/gml_GlobalScript_scr14_Meta.gml
-@@ -19,4 +19,6 @@
+@@ -19,4 +19,7 @@
      global.mGameCleanupScript[arg0] = scr14_Cleanup;
      global.mGameTitleMusic[arg0] = bgm14_title;
      global.mGameTitleMusicLoop[arg0] = true;
 +    global.mGameOnlineHUDHAlign[arg0] = 2;
 +    global.mGameOnlineHUDVAlign[arg0] = 0;
++    global.mGameOnlineFavoredPlayerFunction[arg0] = scrFunction(o14_Game, scr14_GetFavoredPlayer);
  }
 --- original/gml_GlobalScript_scr18_Meta.gml
 +++ patched/gml_GlobalScript_scr18_Meta.gml
@@ -208,6 +226,22 @@
      global.mGameTitleMusicLoop[arg0] = false;
 +    global.mGameOnlineHUDHAlign[arg0] = 0;
 +    global.mGameOnlineHUDVAlign[arg0] = 2;
+ }
+--- original/gml_GlobalScript_scr20_Meta.gml
++++ patched/gml_GlobalScript_scr20_Meta.gml
+@@ -18,4 +18,5 @@
+     global.mGameCleanupScript[arg0] = -1;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineFavoredPlayerFunction[arg0] = scrFunction(o20_Game, scr20_GetFavoredPlayer);
+ }
+--- original/gml_GlobalScript_scr23_Meta.gml
++++ patched/gml_GlobalScript_scr23_Meta.gml
+@@ -19,4 +19,5 @@
+     global.mGameCleanupScript[arg0] = scr23_Cleanup;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineFavoredPlayerFunction[arg0] = scrFunction(o23_Mas, scr23_GetFavoredPlayer);
  }
 --- original/gml_GlobalScript_scr25_Meta.gml
 +++ patched/gml_GlobalScript_scr25_Meta.gml
@@ -268,14 +302,23 @@
                      }
                  }
              }
+--- original/gml_GlobalScript_scr29_Meta.gml
++++ patched/gml_GlobalScript_scr29_Meta.gml
+@@ -19,4 +19,5 @@
+     global.mGameCleanupScript[arg0] = scr29_Cleanup;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineFavoredPlayerFunction[arg0] = scrFunction(o29_Game, scr29_GetFavoredPlayer, 0);
+ }
 --- original/gml_GlobalScript_scr30_Meta.gml
 +++ patched/gml_GlobalScript_scr30_Meta.gml
-@@ -19,4 +19,6 @@
+@@ -19,4 +19,7 @@
      global.mGameCleanupScript[arg0] = scr30_Cleanup;
      global.mGameTitleMusic[arg0] = -1;
      global.mGameTitleMusicLoop[arg0] = false;
 +    global.mGameOnlineHUDHAlign[arg0] = 1;
 +    global.mGameOnlineHUDVAlign[arg0] = 0;
++    global.mGameOnlineFavoredPlayerFunction[arg0] = scrFunction(o30_Game, scr30_GetFavoredPlayer);
  }
 --- original/gml_GlobalScript_scr31_Meta.gml
 +++ patched/gml_GlobalScript_scr31_Meta.gml
@@ -294,6 +337,14 @@
      global.mGameTitleMusicLoop[arg0] = false;
 +    global.mGameOnlineHUDHAlign[arg0] = 0;
 +    global.mGameOnlineHUDVAlign[arg0] = 2;
+ }
+--- original/gml_GlobalScript_scr33_Meta.gml
++++ patched/gml_GlobalScript_scr33_Meta.gml
+@@ -19,4 +19,5 @@
+     global.mGameCleanupScript[arg0] = scr33_Cleanup;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineFavoredPlayerFunction[arg0] = scrFunction(o33_Game, scr33_GetFavoredPlayer);
  }
 --- original/gml_GlobalScript_scr35_DrawInventoryUI.gml
 +++ patched/gml_GlobalScript_scr35_DrawInventoryUI.gml
@@ -326,6 +377,14 @@
          var _l = string_line_breaks(_traits[0], 7, 2);
          if (_l[1] != "")
          {
+--- original/gml_GlobalScript_scr36_Meta.gml
++++ patched/gml_GlobalScript_scr36_Meta.gml
+@@ -19,4 +19,5 @@
+     global.mGameCleanupScript[arg0] = scr36_Cleanup;
+     global.mGameTitleMusic[arg0] = -1;
+     global.mGameTitleMusicLoop[arg0] = false;
++    global.mGameOnlineFavoredPlayerFunction[arg0] = scrFunction(o36_Game, scr36_GetFavoredPlayer);
+ }
 --- original/gml_GlobalScript_scr39_Meta.gml
 +++ patched/gml_GlobalScript_scr39_Meta.gml
 @@ -19,4 +19,6 @@
@@ -421,12 +480,13 @@
      }
 --- original/gml_GlobalScript_scr50_Meta.gml
 +++ patched/gml_GlobalScript_scr50_Meta.gml
-@@ -19,4 +19,6 @@
+@@ -19,4 +19,7 @@
      global.mGameCleanupScript[arg0] = scr50_Cleanup;
      global.mGameTitleMusic[arg0] = -1;
      global.mGameTitleMusicLoop[arg0] = false;
 +    global.mGameOnlineHUDHAlign[arg0] = 2;
 +    global.mGameOnlineHUDVAlign[arg0] = 0;
++    global.mGameOnlineFavoredPlayerFunction[arg0] = scrFunction(o50_Game, scr50_GetFavoredPlayer);
  }
 --- original/gml_GlobalScript_scr50_Sfx.gml
 +++ patched/gml_GlobalScript_scr50_Sfx.gml
@@ -535,16 +595,17 @@
          for (var j = 0; j < global.NUM_PILLARS; j++)
          {
              global.mGamePillars[i][j] = false;
-@@ -28,6 +29,8 @@
+@@ -28,6 +29,9 @@
          global.mGameCleanupScript[i] = -1;
          global.mGameTitleMusic[i] = -1;
          global.mGameTitleMusicLoop[i] = false;
 +        global.mGameOnlineHUDHAlign[i] = 2;
 +        global.mGameOnlineHUDVAlign[i] = 2;
++        global.mGameOnlineFavoredPlayerFunction[i] = -1;
      }
      nGame = 1;
      scr40_Meta(nGame);
-@@ -208,4 +211,15 @@
+@@ -208,4 +212,15 @@
      nGame++;
      scr51_Meta(nGame);
      nGame++;
@@ -1467,19 +1528,6 @@
  playerType = 0;
  numLives = 99;
  keys = 0;
---- original/gml_Object_o01_Game_Step_2.gml
-+++ patched/gml_Object_o01_Game_Step_2.gml
-@@ -1,3 +1,10 @@
-+if (numPlayers == 2)
-+{
-+    if (state >= 0 && state <= 2)
-+    {
-+        global.onlineFavoredPlayer = currPlayer;
-+    }
-+}
- if (!instance_exists(o01__Player))
- {
-     exit;
 --- original/gml_Object_o06_SwitchBarrier_Step_0.gml
 +++ patched/gml_Object_o06_SwitchBarrier_Step_0.gml
 @@ -30,7 +30,7 @@
@@ -1758,27 +1806,6 @@
  }
  if (shotCount < 20 && state == 1)
  {
---- original/gml_Object_o13_Game_Step_0.gml
-+++ patched/gml_Object_o13_Game_Step_0.gml
-@@ -28,6 +28,18 @@
- }
- event_user(state);
- timer++;
-+if (numPlayers == 2)
-+{
-+    var _playerIndex = switchSides ? !(player - 1) : (player - 1);
-+    if (futureState == STATE_TURN_READY || futureState == STATE_TURN_GO || (state == STATE_LEVEL_PREVIEW && subState >= 2))
-+    {
-+        global.onlineFavoredPlayer = _playerIndex;
-+    }
-+    else if (futureState == STATE_TURN_END)
-+    {
-+        global.onlineFavoredPlayer = !_playerIndex;
-+    }
-+}
- if ((timer % 8) == 0)
- {
-     flicker8 = !flicker8;
 --- original/gml_Object_o14_Game_Create_0.gml
 +++ patched/gml_Object_o14_Game_Create_0.gml
 @@ -184,18 +184,7 @@
@@ -3083,25 +3110,7 @@
      }
 --- original/gml_Object_o14_Game_Step_0.gml
 +++ patched/gml_Object_o14_Game_Step_0.gml
-@@ -5,6 +5,17 @@
-     substate = 0;
-     stateTimer = 0;
- }
-+if (state >= STATE_TURN_MAIN && state <= STATE_TURN_STABLE && numPlayers == 2 && currPlayer < numPlayers)
-+{
-+    if (!global.onlineSimultaneousTurns)
-+    {
-+        global.onlineFavoredPlayer = currPlayer;
-+    }
-+    else if (currPlayer == pfo_client_get_player_index())
-+    {
-+        global.onlineFavoredPlayer = -2;
-+    }
-+}
- if (scrTransitionDone())
- {
-     if (state == STATE_GAME_SETUP)
-@@ -13,8 +24,19 @@
+@@ -13,8 +13,19 @@
      }
      else if (state == STATE_TURN_AI || state == STATE_RACE_NEWS || state == STATE_RACE || state == STATE_RACE_RESULTS || state == STATE_GAME_END || state == STATE_GAME_RESULTS || state == STATE_RACE_LOOK_AT_SCREEN)
      {
@@ -3121,7 +3130,7 @@
      else if (numPlayers == 1 || numPlayers == 3 || (numPlayers == 2 && currPlayer == 0))
      {
          scrGetInput(0);
-@@ -84,6 +106,315 @@
+@@ -84,6 +95,315 @@
          event_user(15);
          break;
  }
@@ -3437,7 +3446,7 @@
  for (var i = 0; i < 3; i++)
  {
      var numRepeats = 1;
-@@ -124,12 +455,44 @@
+@@ -124,12 +444,44 @@
  }
  for (var i = 0; i < 3; i++)
  {
@@ -3498,26 +3507,6 @@
  if (faceLeft)
  {
      draw_sprite_ext(sprite_index, image_index, x + xs + 2, y, -1, 1, 0, c_white, 1);
---- original/gml_Object_o20_Game_Step_0.gml
-+++ patched/gml_Object_o20_Game_Step_0.gml
-@@ -61,6 +61,17 @@
-         scr20_SeedSelection();
-         break;
- }
-+if (numPlayers == 2)
-+{
-+    if (futureState == STATE_PLAYER_HANDOFF)
-+    {
-+        global.onlineFavoredPlayer = !cp;
-+    }
-+    else
-+    {
-+        global.onlineFavoredPlayer = cp;
-+    }
-+}
- exit;
- if (keyboard_check_pressed(ord("1")))
- {
 --- original/gml_Object_o22_Ball_Draw_0.gml
 +++ patched/gml_Object_o22_Ball_Draw_0.gml
 @@ -7,7 +7,7 @@
@@ -3551,18 +3540,7 @@
      }
 --- original/gml_Object_o23_Mas_Draw_0.gml
 +++ patched/gml_Object_o23_Mas_Draw_0.gml
-@@ -1,3 +1,10 @@
-+if (global.numPlayers == 2)
-+{
-+    if (state == STATE_STAGE_INTRO || state == STATE_GAMEPLAY)
-+    {
-+        global.onlineFavoredPlayer = player[1].myTurn ? 1 : 0;
-+    }
-+}
- var _currHole = stageSequence[global.g23_currStage];
- var _xview = camera_get_view_x(view_get_camera(0));
- var _yview = camera_get_view_y(view_get_camera(0));
-@@ -305,7 +312,7 @@
+@@ -305,7 +305,7 @@
      var _x = _xview + 168;
      var _y = _yview + 48;
      var _img = 0;
@@ -3571,7 +3549,7 @@
      if (endingType == 1 && (_i % 18) <= 6)
      {
          _img = _i % 6;
-@@ -340,10 +347,10 @@
+@@ -340,10 +340,10 @@
      _y = _yview + 104;
      draw_rectangle_color(_x, _y, _x + 96, _y + 48, c_black, c_black, c_black, c_black, 0);
      var _sprite = spriteGolfer[_victor];
@@ -3684,26 +3662,9 @@
          myLives = bestScores[global.numPlayers][lvl] - 1;
          if (lvl != 10)
          {
---- original/gml_Object_o29_Game_Step_0.gml
-+++ patched/gml_Object_o29_Game_Step_0.gml
-@@ -12,3 +12,14 @@
-     stateTimer = 0;
- }
- event_user(state);
-+if (numPlayers >= 2)
-+{
-+    if (futureState == STATE_RESPAWN && !firstSpawn)
-+    {
-+        global.onlineFavoredPlayer = (currPlayer + 1) % numPlayers;
-+    }
-+    else if (futureState == STATE_LEVEL_PLAY || futureState == STATE_RESPAWN)
-+    {
-+        global.onlineFavoredPlayer = currPlayer;
-+    }
-+}
 --- original/gml_Object_o30_Game_Step_0.gml
 +++ patched/gml_Object_o30_Game_Step_0.gml
-@@ -5,9 +5,23 @@
+@@ -5,7 +5,14 @@
      subState = 0;
      stateTimer = 0;
  }
@@ -3717,16 +3678,7 @@
 +}
  event_user(state);
  timer++;
-+if (numPlayers == 2)
-+{
-+    if ((state == STATE_2P_GAMBLE && subState >= 3) || (futureState >= STATE_PREP_FIGHT && futureState <= STATE_GAME_OVER))
-+    {
-+        global.onlineFavoredPlayer = controller - 1;
-+    }
-+}
  if (holdFlicker)
- {
-     holdFlicker--;
 --- original/gml_Object_o32_Mas_Draw_0.gml
 +++ patched/gml_Object_o32_Mas_Draw_0.gml
 @@ -73,7 +73,7 @@
@@ -3789,27 +3741,6 @@
      if (stateTime <= 0)
      {
          if (speed == 0)
---- original/gml_Object_o33_Game_Step_0.gml
-+++ patched/gml_Object_o33_Game_Step_0.gml
-@@ -68,3 +68,18 @@
-     stateTimer = 0;
- }
- event_user(state);
-+if (numPlayers == 2)
-+{
-+    if ((state == STATE_MAP && subState == 8 && stateTimer > 0) || (state == STATE_PLAY && subState == 10 && stateTimer > 2))
-+    {
-+        global.onlineFavoredPlayer = !(player - 1);
-+    }
-+    else if ((mode == MODE_SKIRMISH) ? (state == STATE_PLAY || futureState == STATE_MATCH_OVER) : (state == STATE_WAR_SETUP || (futureState >= STATE_MAP_GEN && futureState <= STATE_MATCH_OVER)))
-+    {
-+        global.onlineFavoredPlayer = player - 1;
-+    }
-+    else if (mode == MODE_SKIRMISH && (state == STATE_LEVEL_GEN || state == STATE_ARMY_SETUP))
-+    {
-+        global.onlineFavoredPlayer = attacker - 1;
-+    }
-+}
 --- original/gml_Object_o35_Game_Step_0.gml
 +++ patched/gml_Object_o35_Game_Step_0.gml
 @@ -85,7 +85,7 @@
@@ -3925,23 +3856,6 @@
  with (o35__Enemy)
  {
      if (abs(x - other.x) < 32 && abs(y - (other.y + 16)) < 64)
---- original/gml_Object_o36_Game_Step_0.gml
-+++ patched/gml_Object_o36_Game_Step_0.gml
-@@ -81,3 +81,14 @@
-         event_user(13);
-         break;
- }
-+if (numPlayers >= 2)
-+{
-+    if (futureState == STATE_START_PARTY && time[0] != NUM_DAYS)
-+    {
-+        global.onlineFavoredPlayer = (cp + 1) % numPlayers;
-+    }
-+    else
-+    {
-+        global.onlineFavoredPlayer = cp;
-+    }
-+}
 --- original/gml_Object_o45_MapNode_Draw_0.gml
 +++ patched/gml_Object_o45_MapNode_Draw_0.gml
 @@ -14,7 +14,7 @@
@@ -4660,23 +4574,6 @@
          }
      }
      else if (numPlayers == 2)
---- original/gml_Object_o50_Game_Step_0.gml
-+++ patched/gml_Object_o50_Game_Step_0.gml
-@@ -74,3 +74,14 @@
-         }
-     }
- }
-+if (numPlayers == 2 && !hotseat)
-+{
-+    if (futureState == STATE_END_TURN)
-+    {
-+        global.onlineFavoredPlayer = !(player - 1);
-+    }
-+    else if ((controller == player && (futureState >= STATE_START_TURN && futureState <= STATE_END_TURN)) || futureState == STATE_END_COMBAT || (state == STATE_LEVEL_GEN && subState == 2))
-+    {
-+        global.onlineFavoredPlayer = player - 1;
-+    }
-+}
 --- original/gml_Object_o50_Location_Create_0.gml
 +++ patched/gml_Object_o50_Location_Create_0.gml
 @@ -13,7 +13,10 @@
@@ -4734,7 +4631,7 @@
  }
 --- original/gml_Object_oController_Create_0.gml
 +++ patched/gml_Object_oController_Create_0.gml
-@@ -3,5 +3,38 @@
+@@ -3,5 +3,37 @@
      instance_destroy();
      exit;
  }
@@ -4768,7 +4665,6 @@
 +global.onlineBackupDefaultLanguage = undefined;
 +global.onlinePlayers = undefined;
 +global.disableSettingOnlinePlayers = false;
-+global.onlineFavoredPlayer = -1;
 +global.onlineRunUpdate = true;
 +global.onlineSimultaneousTurns = false;
 +global.onlineSpectatorPauseMenu = -4;

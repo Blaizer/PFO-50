@@ -20,12 +20,6 @@ else
     global.steamOverlayActivated = false;
 }
 
-if (!global.paused && !global.disableSettingOnlinePlayers)
-{
-    scrSetOnlinePlayers();
-}
-pfo_set_input_delay_favored_client_index(global.onlineFavoredPlayer >= 0 ? pfo_player_get_client_index(global.onlineFavoredPlayer) : -1);
-
 if (global.onlineRunUpdate)
 {
     pfo_update_time();
@@ -57,5 +51,4 @@ if (!global.paused && pfo_get_frame() > 10 && pfo_client_get_player_index() < 0 
     }
 }
 
-global.onlineFavoredPlayer = -1;
 global.onlineRunUpdate = true;

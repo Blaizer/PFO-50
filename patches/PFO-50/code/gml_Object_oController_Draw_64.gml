@@ -70,6 +70,44 @@ if (valign == fa_bottom)
 
 if (pfo_is_online())
 {
+    if (!global.paused && !global.disableSettingOnlinePlayers)
+    {
+        scrSetOnlinePlayers();
+    }
+
+    var favoredPlayer = -1;
+    var favoredClient = -1;
+    if (global.paused)
+    {
+        with (oPauseMenu)
+        {
+            if (menuType == 0)
+            {
+                favoredClient = pfo_player_get_client_index(player);
+            }
+        }
+    }
+    else if (global.currGame >= 1 && global.currGame <= global.NUM_GAMES && global.attractModeLibraryTimer < global.AM_LIB_TIME)
+    {
+        if (global.mGamePlayersSupported[global.currGame] == 1)
+        {
+            favoredClient = pfo_player_get_client_index(0);
+        }
+        else if (room != rmTitleScreens && !global.attractMode && !global.playIntro)
+        {
+            if (global.mGameOnlineFavoredPlayerFunction[global.currGame] != -1)
+            {
+                favoredPlayer = scrCallFunction(global.mGameOnlineFavoredPlayerFunction[global.currGame]);
+                favoredClient = favoredPlayer >= 0 ? pfo_player_get_client_index(favoredPlayer) : -1;
+            }
+            else if (global.numPlayers == 1)
+            {
+                favoredClient = pfo_player_get_client_index(0);
+            }
+        }
+    }
+    pfo_set_input_delay_favored_client_index(favoredClient);
+
     if (showDelay && pfo_get_frame() > 4)
     {
         if (pfo_client_get_player_index() >= 0)
@@ -85,7 +123,7 @@ if (pfo_is_online())
                 draw_set_color(global.palette[12]);
             }
 
-            var delayPrefix = global.onlineFavoredPlayer == -2 ? "Delay: 0/" : "Delay: ";
+            var delayPrefix = favoredPlayer == -2 ? "Delay: 0/" : "Delay: ";
             draw_text(xx, yy, delayPrefix + string(pfo_client_get_input_delay()) + "f");
             yy += ydelta;
 
