@@ -214,7 +214,7 @@ async Task<string> GenerateCodePatch(UndertaleData patched, UndertaleData origin
         }
         await ExportSpecificCodeToDir(original, scriptNames, Path.Join(tempDir.Path, "original"), updateStatus ? "Exporting original code": null);
         await ExportSpecificCodeToDir(patched, scriptNames, Path.Join(tempDir.Path, "patched"), updateStatus ? "Exporting patched code": null);
-        return RemoveNewFileDiffs(await BusyBox("diff", tempDir.Path, "-a -b -B -d -N -w -r original patched".Split(' '), updateStatus, 1));
+        return RemoveNewFileDiffs(await BusyBox("diff", tempDir.Path, "-a -b -B -d -N -w -r -U 2 original patched".Split(' '), updateStatus, 1));
     }
 }
 

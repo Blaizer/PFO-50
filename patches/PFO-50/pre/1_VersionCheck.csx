@@ -68,4 +68,5 @@ if (ufo50Version != expectedUfo50Version)
     throw new ScriptException($"UFO 50 version {expectedUfo50Version} is required to install PFO 50. The version of your vanilla.win is {ufo50Version}");
 }
 
-Log.Information($"PFO 50 version check OK. You are using GMLoader version {settingsVersion} and UFO 50 version {ufo50Version}");
+var modVersion = GetModVersion();
+Log.Information($"PFO 50 {modVersion} version check OK. You are using GMLoader version {settingsVersion} and UFO 50 version {ufo50Version}");

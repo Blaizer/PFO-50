@@ -1,2 +1,2 @@
 Blazier
-Native online multiplayer support for UFO 50
+Adds integrated online multiplayer support to UFO 50. [v0.9.0]
