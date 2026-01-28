@@ -5,6 +5,26 @@
      global.mGameTitleMusicLoop[arg0] = false;
 +    global.mGameOnlineFavoredPlayerFunction[arg0] = scrFunction(o01_Game, scr01_GetFavoredPlayer, 0);
  }
+--- original/gml_GlobalScript_scr07_BossXCutscene.gml
++++ patched/gml_GlobalScript_scr07_BossXCutscene.gml
+@@ -46,6 +46,8 @@
+ function scr07_BossXRoom()
+ {
+-    static _room = 
++    if (is_undefined(global.s07_bossXCutsceneRoom))
+     {
++        global.s07_bossXCutsceneRoom = 
++        {
+         room_x1: 3072,
+         room_x2: 3456,
+@@ -356,5 +358,5 @@
+         }
+     };
+-    
+-    return _room;
++    }
++    return global.s07_bossXCutsceneRoom;
+ }
 --- original/gml_GlobalScript_scr07_DrawMapUI.gml
 +++ patched/gml_GlobalScript_scr07_DrawMapUI.gml
 @@ -54,6 +54,6 @@
@@ -218,6 +238,72 @@
      global.mGameTitleMusicLoop[arg0] = false;
 +    global.mGameOnlineFavoredPlayerFunction[arg0] = scrFunction(o20_Game, scr20_GetFavoredPlayer);
  }
+--- original/gml_GlobalScript_scr23_AttractMode.gml
++++ patched/gml_GlobalScript_scr23_AttractMode.gml
+@@ -1,6 +1,4 @@
+ function scr23_AttractMode(arg0 = -1)
+ {
+-    static _variant = 0;
+-    
+     if (inRecordOrPlayback())
+     {
+@@ -8,7 +6,7 @@
+         if (arg0 != -1)
+         {
+-            _variant = arg0 % _variantCount;
++            global.s23_attractModeVariant = arg0 % _variantCount;
+         }
+-        trace("ATTRACT MODE VARIANT (INIT):", _variant, _variantCount);
++        trace("ATTRACT MODE VARIANT (INIT):", global.s23_attractModeVariant, _variantCount);
+         array_delete(stageSequence, 0, 3);
+         array_delete(stageSequence, array_length(stageSequence) - 4, 4);
+@@ -19,13 +17,13 @@
+         {
+             trace("Attract mode is clear");
+-            if (_variant == 0)
++            if (global.s23_attractModeVariant == 0)
+             {
+                 global.g23_currStage = 0;
+             }
+-            if (_variant == 1)
++            if (global.s23_attractModeVariant == 1)
+             {
+                 global.g23_currStage = 2;
+             }
+-            if (_variant == 2)
++            if (global.s23_attractModeVariant == 2)
+             {
+                 global.g23_currStage = 4;
+@@ -54,5 +52,5 @@
+         {
+             global.playbackMode = true;
+-            if (_variant == 0)
++            if (global.s23_attractModeVariant == 0)
+             {
+                 global.inputPlayback[0][0] = 85;
+@@ -589,5 +587,5 @@
+                 global.inputPlayback[132][3] = 1;
+             }
+-            else if (_variant == 1)
++            else if (global.s23_attractModeVariant == 1)
+             {
+                 global.inputPlayback[0][0] = 51;
+@@ -1124,5 +1122,5 @@
+                 global.inputPlayback[132][3] = 1;
+             }
+-            else if (_variant == 2)
++            else if (global.s23_attractModeVariant == 2)
+             {
+                 global.inputPlayback[0][0] = 66;
+@@ -1707,6 +1705,6 @@
+                 global.inputPlayback[144][3] = 1;
+             }
+-            _variant = (_variant + 1) % _variantCount;
+-            trace("ATTRACT MODE VARIANT (INCREMENTED):", _variant, _variantCount);
++            global.s23_attractModeVariant = (global.s23_attractModeVariant + 1) % _variantCount;
++            trace("ATTRACT MODE VARIANT (INCREMENTED):", global.s23_attractModeVariant, _variantCount);
+         }
+     }
 --- original/gml_GlobalScript_scr23_Meta.gml
 +++ patched/gml_GlobalScript_scr23_Meta.gml
 @@ -20,3 +20,4 @@
@@ -339,6 +425,46 @@
 +        draw_set_color(global.palette[2 + ((global.pfo_current_time div 160) % 2)]);
          var _l = string_line_breaks(_traits[0], 7, 2);
          if (_l[1] != "")
+--- original/gml_GlobalScript_scr35_EnemyAttackSwoop.gml
++++ patched/gml_GlobalScript_scr35_EnemyAttackSwoop.gml
+@@ -1,7 +1,9 @@
+ function scr35_EnemyAttackSwoop(arg0, arg1, arg2)
+ {
+-    static attToX = verify(target) ? (target.x + scrIRandomRange(-6, 6)) : x;
+-    static attToY = (camera_get_view_y(view_get_camera(0)) + 216) - 64;
+-    
++    if (is_undefined(global.s35_enemyAttackSwoopAttToX))
++    {
++        global.s35_enemyAttackSwoopAttToX = verify(target) ? (target.x + scrIRandomRange(-6, 6)) : x;
++        global.s35_enemyAttackSwoopAttToY = (camera_get_view_y(view_get_camera(0)) + 216) - 64;
++    }
+     if (animState == 0)
+     {
+@@ -13,12 +15,12 @@
+         {
+             animState += 1;
+-            attToY = (camera_get_view_y(view_get_camera(0)) + 216) - 64;
++            global.s35_enemyAttackSwoopAttToY = (camera_get_view_y(view_get_camera(0)) + 216) - 64;
+             if (verify(target))
+             {
+-                attToX = target.x + scrIRandomRange(-6, 6);
++                global.s35_enemyAttackSwoopAttToX = target.x + scrIRandomRange(-6, 6);
+             }
+             else
+             {
+-                attToX = x;
++                global.s35_enemyAttackSwoopAttToX = x;
+             }
+             img += 1;
+@@ -28,6 +30,6 @@
+     else if (animState == 1)
+     {
+-        x = lerp(x, attToX, 1 - (animCount / arg0));
+-        y = lerp(y, attToY, 1 - (animCount / arg0));
++        x = lerp(x, global.s35_enemyAttackSwoopAttToX, 1 - (animCount / arg0));
++        y = lerp(y, global.s35_enemyAttackSwoopAttToY, 1 - (animCount / arg0));
+         z = (camera_get_view_y(view_get_camera(0)) + 216) - 64 - (16 * !inForeground) - y;
+         if (animCount > 0)
 --- original/gml_GlobalScript_scr36_Meta.gml
 +++ patched/gml_GlobalScript_scr36_Meta.gml
 @@ -20,3 +20,4 @@
@@ -846,13 +972,17 @@
 +    global.MAX_PLAYERS_SUPPORTED = 0;
      global.currGame = 0;
      global.currGameID = 0;
-@@ -76,4 +77,5 @@
+@@ -76,4 +77,9 @@
      }
      scrInitInput();
 +    pfo_start();
++    global.s07_bossXCutsceneRoom = undefined;
++    global.s23_attractModeVariant = 0;
++    global.s35_enemyAttackSwoopAttToX = undefined;
++    global.s35_enemyAttackSwoopAttToY = undefined;
      global.attractMode = false;
      global.attractModeLibrary = false;
-@@ -82,11 +84,4 @@
+@@ -82,11 +88,4 @@
      global.AM_LIB_TIME_PER_GAME = 1200;
      global.attractModePlaylist = ds_list_create();
 -    for (var i = 1; i <= global.NUM_LIBRARY_GAMES; i++)
@@ -864,7 +994,7 @@
 -    }
      global.attractModeIndex = 0;
      global.playbackMode = false;
-@@ -133,5 +128,5 @@
+@@ -133,5 +132,5 @@
      scrInitAch();
      scrInitRandomness();
 -    scrShuffle(global.attractModePlaylist);

@@ -180,7 +180,7 @@ function scrLibraryOnlineLobbyDraw()
             }
 
             var modBadgeColor = isDiff ? warningColor : global.palette[8];
-            var modBadgeText = (isDiff ? "MODS  " : "MODS? ");
+            var modBadgeText = (isDiff ? "MODS  " : "MODS: ");
 
             scrSetFont(global.fontThinOutline);
             draw_set_color(selected ? global.palette[3] : modBadgeColor);

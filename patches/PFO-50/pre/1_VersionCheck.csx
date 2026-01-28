@@ -6,6 +6,8 @@ using System.Security;
 var requiredVersion = new Version("1.3.10");
 var requiredVersionMessage = $"GMLoader version {requiredVersion} or newer is required to install PFO 50.";
 
+var incompatibleMods = new[] { "UFO 50 Modding Settings" };
+
 struct Settings
 {
     public string Version { get; set; }
@@ -58,6 +60,12 @@ catch
 if (settingsVersion < requiredVersion)
 {
     throw new ScriptException($"{requiredVersionMessage} You are using version {settingsVersion}");
+}
+
+var modsToDisable = settings.EnabledMods.Intersect(incompatibleMods).ToList();
+if (modsToDisable.Count > 0)
+{
+    throw new ScriptException($"The following mods are incompatible with PFO 50 and should be disabled: {string.Join(", ", modsToDisable)}");
 }
 
 var ufo50Version = GetUFO50Version(Data);

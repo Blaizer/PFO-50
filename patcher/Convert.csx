@@ -1,15 +1,23 @@
 #load "lib/_UFO50.csx"
+#load "lib/_Patch.csx"
 #load "lib/_Utils.csx"
 
 using System.Diagnostics;
+using System.Linq;
 
 {
+var gamePatch = ScanGamePatches(GetPatchesDir()).ToList()[0];
 var modName = Path.GetFileName(Directory.GetDirectories(GetPatchesDir())[0]);
-var modPrettyName = modName.Replace("-", " ");
+var modPrettyName = gamePatch.Name;
 var modVersion = GetModVersion();
 if (modVersion.EndsWith(".0"))
 {
     modVersion = modVersion.Substring(0, modVersion.Length - 2);
+}
+var gameVersion = GetGameVersion();
+if (gameVersion.EndsWith(".0"))
+{
+    gameVersion = gameVersion.Substring(0, gameVersion.Length - 2);
 }
 
 var rootDir = GetRootDir();
@@ -18,7 +26,9 @@ var extDllName = Path.GetFileName(Directory.GetFiles(dllOutputDir, "*.dll")[0]);
 var dllVersionInfo = FileVersionInfo.GetVersionInfo(extDllName);
 var isDebug = dllVersionInfo.IsDebug;
 
-var convertRootDir = Path.Join(GetBuildDir(), $"{modPrettyName} v{modVersion}" + (isDebug ? "D" : ""));
+var convertDirName = $"{modPrettyName} v{modVersion}" + (isDebug ? "D" : "");
+convertDirName = convertDirName.Replace(" ", "_").Replace(".", "-");
+var convertRootDir = Path.Join(GetBuildDir(), convertDirName);
 var convertDir = Path.Join(convertRootDir, modPrettyName);
 
 if (Directory.Exists(convertRootDir))
@@ -34,6 +44,25 @@ if (!File.Exists(readme))
 {
     readme = Path.Join(rootDir, "README");
 }
+
+string ReplaceVariables(string text)
+{
+    return text
+        .Replace("$ModVersion", modVersion)
+        .Replace("$GameVersion", gameVersion);
+}
+
+var readmeText = File.ReadAllText(readme);
+var replacedReadmeText = readmeText;
+foreach (var pair in gamePatch.ReadmeReplacements)
+{
+    replacedReadmeText = Regex.Replace(replacedReadmeText, pair.Pattern, pair.Replacement);
+}
+replacedReadmeText = ReplaceVariables(replacedReadmeText);
+if (readmeText != replacedReadmeText)
+{
+    File.WriteAllText(readme, replacedReadmeText);
+}
 File.Copy(readme, Path.Join(convertRootDir, "README.txt"), overwrite: true);
 
 void CopyFile(string srcDir, string dstDir, string file)
@@ -42,7 +71,9 @@ void CopyFile(string srcDir, string dstDir, string file)
 }
 
 CopyFile(rootDir, convertDir, "icon.png");
-CopyFile(rootDir, convertDir, "info.txt");
+
+var infoText = $"{gamePatch.Author}\n{ReplaceVariables(gamePatch.Description)}";
+File.WriteAllText(Path.Join(convertDir, "info.txt"), infoText);
 
 var codeDir = Path.Join(convertDir, "code");
 var buildDir = GetBuildDir();

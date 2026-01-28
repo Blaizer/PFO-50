@@ -219,10 +219,18 @@ async Task<string> GenerateCodePatch(UndertaleData patched, UndertaleData origin
 }
 
 struct GamePatch {
+    public struct ReplacementPair {
+        public string Pattern { get; set; }
+        public string Replacement { get; set; }
+    }
+
     public string Name { get; set; }
     public string ScriptFile { get; set; }
     public bool Public { get; set; }
     public string[] Deps { get; set; }
+    public string Author { get; set; }
+    public string Description { get; set; }
+    public ReplacementPair[] ReadmeReplacements { get; set; }
 }
 
 JsonSerializerOptions __g_gamepatch_jsonDeserializeOptions = new(JsonSerializerDefaults.Web);
@@ -252,6 +260,10 @@ IEnumerable<GamePatch> ScanGamePatches(string gamePatchesDir) {
 
         if(gamePatch.Deps == null) {
             gamePatch.Deps = new string[]{};
+        }
+
+        if(gamePatch.ReadmeReplacements == null) {
+            gamePatch.ReadmeReplacements = new GamePatch.ReplacementPair[]{};
         }
 
         yield return gamePatch;

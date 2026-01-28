@@ -282,6 +282,12 @@ function scrOnlineStateChangedCallback(state)
         global.selGame = 1;
         global.selSort = 0;
 
+        // variables that used to be static
+        global.s07_bossXCutsceneRoom = undefined;
+        global.s23_attractModeVariant = 0;
+        global.s35_enemyAttackSwoopAttToX = undefined;
+        global.s35_enemyAttackSwoopAttToY = undefined;
+
         if (pfo_get_client_index() != 0)
         {
             global.onlineBackupDefaultLanguage = global.defaultLanguage;

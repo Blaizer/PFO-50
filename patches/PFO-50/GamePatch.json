@@ -1,1 +1,15 @@
-{ "Public": true }
+{
+  "Name": "PFO 50",
+  "Author": "Blazier",
+  "Description": "Adds integrated online multiplayer support to UFO 50. [v$ModVersion]",
+  "ReadmeReplacements": [
+    {
+      "Pattern": "(?<=PFO 50 v)\\d+(?:\\.\\d+){2,3}",
+      "Replacement": "$ModVersion"
+    },
+    {
+      "Pattern": "(?<=UFO 50 v)\\d+(?:\\.\\d+){2,3}",
+      "Replacement": "$GameVersion"
+    }
+  ]
+}
