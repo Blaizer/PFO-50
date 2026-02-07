@@ -1,4 +1,5 @@
 #load "../../PFO-50/patcher/lib/_UFO50.csx"
+#load "../../PFO-50/patcher/lib/_Patch.csx"
 
 using System.Text.Json;
 using System.Security;
@@ -6,7 +7,8 @@ using System.Security;
 var requiredVersion = new Version("1.3.10");
 var requiredVersionMessage = $"GMLoader version {requiredVersion} or newer is required to install PFO 50.";
 
-var incompatibleMods = new[] { "UFO 50 Modding Settings" };
+var gamePatch = ScanGamePatches(GetPatchesDir()).ToList()[0];
+var incompatibleMods = gamePatch.ConflictingMods;
 
 struct Settings
 {
@@ -17,7 +19,7 @@ struct Settings
 string settingsText;
 try
 {
-    settingsText = File.ReadAllText("settings.json");
+    settingsText = File.ReadAllText(Path.Combine(modsPath, "..", "settings.json"));
 }
 catch (IOException ex)
 {
@@ -44,13 +46,20 @@ catch (JsonException ex)
 
 if (string.IsNullOrEmpty(settings.Version))
 {
-    throw new ScriptException($"The settings.json file does't contain a Version string. {requiredVersionMessage}");
+    throw new ScriptException($"The settings.json file doesn't contain a Version string. {requiredVersionMessage}");
+}
+
+if (settings.EnabledMods is null)
+{
+    throw new ScriptException($"The settings.json file doesn't contain a list of EnabledMods. {requiredVersionMessage}");
 }
 
 Version settingsVersion;
 try
 {
-    settingsVersion = new Version(settings.Version);
+    var index = settings.Version.IndexOfAny(new[] { '-', '+' });
+    var versionCore = index >= 0 ? settings.Version[..index] : settings.Version;
+    settingsVersion = new Version(versionCore);
 }
 catch
 {
@@ -59,7 +68,7 @@ catch
 
 if (settingsVersion < requiredVersion)
 {
-    throw new ScriptException($"{requiredVersionMessage} You are using version {settingsVersion}");
+    throw new ScriptException($"{requiredVersionMessage} You are using version {settings.Version}");
 }
 
 var modsToDisable = settings.EnabledMods.Intersect(incompatibleMods).ToList();
@@ -77,4 +86,4 @@ if (ufo50Version != expectedUfo50Version)
 }
 
 var modVersion = GetModVersion();
-Log.Information($"PFO 50 {modVersion} version check OK. You are using GMLoader version {settingsVersion} and UFO 50 version {ufo50Version}");
+Log.Information($"PFO 50 {modVersion} version check OK. You are using GMLoader version {settings.Version} and UFO 50 version {ufo50Version}");

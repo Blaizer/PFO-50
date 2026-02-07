@@ -3763,7 +3763,7 @@
          }
      }
 -    if ((numPlayers == 2 && fogOfWar && !combatFlash && state != STATE_END_COMBAT && state != STATE_END_TURN) || (numPlayers == 1 && fogOfWar && player == 1) || (numPlayers == 1 && !fogOfWar && (player == 1 || !custom)) || (numPlayers == 2 && !fogOfWar) || aiVersus)
-+    if ((numPlayers == 2 && !hasOnlinePlayers && fogOfWar && !combatFlash && state != STATE_END_COMBAT && state != STATE_END_TURN) || (numPlayers == 2 && hasOnlinePlayers && controller == onlineLocalPlayer) || (numPlayers == 1 && fogOfWar && player == 1) || (numPlayers == 1 && !fogOfWar && (player == 1 || !custom)) || (numPlayers == 2 && !hasOnlinePlayers && !fogOfWar) || (numPlayers == 2 && hasOnlinePlayers && !isAnyOnlineLocalPlayer) || aiVersus)
++    if ((numPlayers == 2 && !hasOnlinePlayers && fogOfWar && !combatFlash && state != STATE_END_COMBAT && state != STATE_END_TURN) || (numPlayers == 2 && hasOnlinePlayers && player == onlineLocalPlayer) || (numPlayers == 1 && fogOfWar && player == 1) || (numPlayers == 1 && !fogOfWar && (player == 1 || !custom)) || (numPlayers == 2 && !hasOnlinePlayers && !fogOfWar) || (numPlayers == 2 && hasOnlinePlayers && !isAnyOnlineLocalPlayer) || aiVersus)
      {
          if ((state == STATE_GOD_SELECT && subState == 4) || (state == STATE_ACTIONS && subState == (200 + (10 * OFFERING) + 3)))
 @@ -932,35 +939,50 @@
@@ -4106,7 +4106,7 @@
 @@ -616,5 +616,8 @@
                  if (bPressLeft[inp])
                  {
-+                    if (!(numPlayers == 2 && scr50_IsOnlineRemotePlayer(inp)))
++                    if (!(numPlayers == 2 && scr50_IsOnlineRemotePlayer(p)))
 +                    {
                      scr50_Sfx(soundBattleNavi, 60);
 +                    }
@@ -4115,7 +4115,7 @@
 @@ -625,5 +628,8 @@
                  if (bPressRight[inp])
                  {
-+                    if (!(numPlayers == 2 && scr50_IsOnlineRemotePlayer(inp)))
++                    if (!(numPlayers == 2 && scr50_IsOnlineRemotePlayer(p)))
 +                    {
                      scr50_Sfx(soundBattleNavi, 60);
 +                    }
@@ -4124,7 +4124,7 @@
 @@ -634,5 +640,8 @@
                  if (bFire2pressed[inp] && currOrder[p] != orderSel[p])
                  {
-+                    if (!(numPlayers == 2 && scr50_IsOnlineRemotePlayer(inp)))
++                    if (!(numPlayers == 2 && scr50_IsOnlineRemotePlayer(p)))
 +                    {
                      scr50_Sfx(soundBattleSelect, 65);
 +                    }

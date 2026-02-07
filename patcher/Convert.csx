@@ -80,6 +80,12 @@ var buildDir = GetBuildDir();
 Directory.CreateDirectory(codeDir);
 CopyFile(buildDir, codeDir, "files.txt");
 
+if (gamePatch.ConflictingMods.Length > 0)
+{
+    var conflictingModsFile = Path.Join(codeDir, "conflicting_mods.txt");
+    File.WriteAllText(conflictingModsFile, string.Join("\n", gamePatch.ConflictingMods));
+}
+
 var dllDir = Path.Join(convertDir, "dll");
 Directory.CreateDirectory(dllDir);
 CopyFile(dllOutputDir, dllDir, extDllName);
@@ -96,20 +102,28 @@ var mainDir = Path.Join(convertDir, modName);
 Directory.CreateDirectory(mainDir);
 CopyFile(rootDir, mainDir, "version.h");
 
-void CopyDir(string srcDir, string dstDir, string name, string[] excludeDirs = null)
+void CopyDir(string srcDir, string dstDir, string name, string[] excludeDirs = null, bool deleteExisting = false)
 {
     srcDir = Path.Join(srcDir, name);
     dstDir = Path.Join(dstDir, name);
     var dir = new DirectoryInfo(srcDir);
 
     if (!dir.Exists)
+    {
         throw new DirectoryNotFoundException($"Source directory not found: {dir.FullName}");
+    }
+
+    if (deleteExisting && Directory.Exists(dstDir))
+    {
+        File.SetAttributes(dstDir, FileAttributes.Normal);
+        Directory.Delete(dstDir, true);
+    }
 
     Directory.CreateDirectory(dstDir);
 
     foreach (FileInfo file in dir.GetFiles())
     {
-        string targetFilePath = Path.Combine(dstDir, file.Name);
+        string targetFilePath = Path.Join(dstDir, file.Name);
         file.CopyTo(targetFilePath, true);
     }
 
@@ -117,7 +131,7 @@ void CopyDir(string srcDir, string dstDir, string name, string[] excludeDirs = n
     {
         if (excludeDirs == null || !Array.Exists(excludeDirs, x => x.Equals(subDir.Name, StringComparison.OrdinalIgnoreCase)))
         {
-            string newDestDir = Path.Combine(dstDir, subDir.Name);
+            string newDestDir = Path.Join(dstDir, subDir.Name);
             CopyDir(srcDir, dstDir, subDir.Name);
         }
     }
@@ -155,4 +169,10 @@ foreach (var d in new[] { "pre", "post", "after" })
 
 var libDir = Path.Join(mainDir, "patcher", "lib");
 File.Delete(Path.Join(libDir, "busybox.exe"));
+
+var modLoaderInstallDir = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "UFO-50-Mod-Loader", "my mods");
+if (Directory.Exists(modLoaderInstallDir))
+{
+    CopyDir(convertRootDir, modLoaderInstallDir, modPrettyName, deleteExisting: true);
+}
 }

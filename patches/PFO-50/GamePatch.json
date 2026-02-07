@@ -11,5 +11,9 @@
       "Pattern": "(?<=UFO 50 v)\\d+(?:\\.\\d+){2,3}",
       "Replacement": "$GameVersion"
     }
+  ],
+  "ConflictingMods": [
+    "UFO 50 Modding Settings",
+    "CoffeeTools"
   ]
 }

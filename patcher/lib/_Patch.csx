@@ -231,6 +231,7 @@ struct GamePatch {
     public string Author { get; set; }
     public string Description { get; set; }
     public ReplacementPair[] ReadmeReplacements { get; set; }
+    public string[] ConflictingMods { get; set; }
 }
 
 JsonSerializerOptions __g_gamepatch_jsonDeserializeOptions = new(JsonSerializerDefaults.Web);
@@ -264,6 +265,10 @@ IEnumerable<GamePatch> ScanGamePatches(string gamePatchesDir) {
 
         if(gamePatch.ReadmeReplacements == null) {
             gamePatch.ReadmeReplacements = new GamePatch.ReplacementPair[]{};
+        }
+
+        if(gamePatch.ConflictingMods == null) {
+            gamePatch.ConflictingMods = new string[]{};
         }
 
         yield return gamePatch;

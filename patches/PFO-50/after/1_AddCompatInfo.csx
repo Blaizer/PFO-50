@@ -6,26 +6,48 @@ struct Settings
     public List<string> EnabledMods { get; set; }
 }
 
-var settings = JsonSerializer.Deserialize<Settings>(File.ReadAllText("settings.json"));
-var enabledMods = settings.EnabledMods;
+var settings = JsonSerializer.Deserialize<Settings>(File.ReadAllText(Path.Combine(modsPath, "..", "settings.json")));
+var enabledMods = new HashSet<string>(settings.EnabledMods);
 var gmloaderVersion = settings.Version;
 
-struct DownloadedMod
+var modVersions = new Dictionary<string, string>();
+
+struct DownloadedMods
 {
     public string Name { get; set; }
     public string Version { get; set; }
 }
 
-var downloadedModsFile = "downloaded_mods.json";
-var modVersions = new Dictionary<string, string>();
+var downloadedModsFile = Path.Combine(modsPath, "..", "downloaded_mods.json");
 if (File.Exists(downloadedModsFile))
 {
-    var downloadedMods = JsonSerializer.Deserialize<List<DownloadedMod>>(File.ReadAllText(downloadedModsFile));
+    var downloadedMods = JsonSerializer.Deserialize<List<DownloadedMods>>(File.ReadAllText(downloadedModsFile));
     foreach (var mod in downloadedMods)
     {
-        var name = mod.Name;
-        var version = mod.Version;
-        modVersions[name] = version;
+        modVersions[mod.Name] = mod.Version;
+    }
+}
+
+struct GamebananaInfo
+{
+    public string Version { get; set; }
+}
+
+var myModsFolder = Path.Combine(modsPath, "..", "..", "my mods");
+if (Directory.Exists(myModsFolder))
+{
+    foreach (var modPath in Directory.GetDirectories(myModsFolder))
+    {
+        var modName = Path.GetFileName(modPath);
+        if (enabledMods.Contains(modName))
+        {
+            var gamebananaFile = Path.Combine(modPath, "gamebanana.json");
+            if (File.Exists(gamebananaFile))
+            {
+                var gamebananaInfo = JsonSerializer.Deserialize<GamebananaInfo>(File.ReadAllText(gamebananaFile));
+                modVersions[modName] = gamebananaInfo.Version;
+            }
+        }
     }
 }
 
