@@ -2914,6 +2914,17 @@ YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions,
     g_SteamNetworkingSockets = SteamNetworkingSockets();
     g_SteamNetworkingUtils = SteamNetworkingUtils();
 
+    if (g_SteamUser == nullptr ||
+        g_SteamFriends == nullptr ||
+        g_SteamMatchmaking == nullptr ||
+        g_SteamNetworkingSockets == nullptr ||
+        g_SteamNetworkingUtils == nullptr)
+    {
+        sprintf_s(g_TempBuffer, "PFO 50 requires Steam to run. Please make sure Steam is running and logged in before launching the game.");
+        ShowMessage(g_TempBuffer);
+        ExitProcess(0);
+    }
+
     g_ChecksumRingBuffer = static_cast<uint8_t*>(CreateRingBuffer(c_ChecksumRingBufferSize));
     g_GMLChecksumBuffer1 = CreateBuffer(g_GMLChecksumBufferMaxSize, eBuffer_Format_Grow, 1);
     g_GMLChecksumBuffer2 = CreateBuffer(g_GMLChecksumBufferMaxSize, eBuffer_Format_Grow, 1);

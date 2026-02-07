@@ -205,7 +205,6 @@ function scrUpdateLobbyUsers(lobbyId)
         {
             steam_lobby_set_joinable(false);
             
-            randomize();
             var startGameSettings =
             {
                 seed: int64(irandom(0xffffffff)) | (int64(irandom(0xffffffff)) << int64(32)),

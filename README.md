@@ -1,4 +1,4 @@
-PFO 50 v0.9.2
+PFO 50 v0.9.3
 =============
 
 PFO 50 (Play Forever Online 50) is a mod for UFO 50 that integrates
