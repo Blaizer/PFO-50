@@ -139,8 +139,8 @@ async Task ImportCodeFiles(string[] scriptFiles, string[] globalFiles, bool upda
 }
 
 async Task ImportCodeDir(string dir, bool updateStatus = false, string globalDir = null) {
-    string[] scriptFiles = Directory.GetFiles(dir, "*.gml");
-    string[] globalFiles = globalDir != null ? Directory.GetFiles(globalDir, "*.gml") : Array.Empty<string>();
+    string[] scriptFiles = Directory.GetFiles(dir, "*.gml").OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToArray();
+    string[] globalFiles = globalDir != null ? Directory.GetFiles(globalDir, "*.gml").OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToArray() : Array.Empty<string>();
 
     await ImportCodeFiles(scriptFiles, globalFiles, updateStatus);
 }
