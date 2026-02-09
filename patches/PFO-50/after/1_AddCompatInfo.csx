@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Collections.Concurrent;
 
 struct Settings
 {
@@ -8,9 +9,11 @@ struct Settings
 
 var settings = JsonSerializer.Deserialize<Settings>(File.ReadAllText(Path.Combine(modsPath, "..", "settings.json")));
 var enabledMods = new HashSet<string>(settings.EnabledMods);
-var gmloaderVersion = settings.Version;
+var modLoaderVersion = settings.Version;
 
+var enabledModPaths = new List<string>(); // this just exists on Mod Loader 2.0, won't need to make this
 var modVersions = new Dictionary<string, string>();
+var modHashes = new ConcurrentDictionary<string, string>();
 
 struct DownloadedMods
 {
@@ -41,6 +44,8 @@ if (Directory.Exists(myModsFolder))
         var modName = Path.GetFileName(modPath);
         if (enabledMods.Contains(modName))
         {
+            enabledModPaths.Add(modPath);
+
             var gamebananaFile = Path.Combine(modPath, "gamebanana.json");
             if (File.Exists(gamebananaFile))
             {
@@ -51,21 +56,51 @@ if (Directory.Exists(myModsFolder))
     }
 }
 
-var modsList = new List<string>();
-foreach (var modName in enabledMods)
+IEnumerable<string> GetCanonicallyOrderedFiles(string path, string relativePath = "", bool skipFiles = false)
 {
-    if (modName == "PFO 50") continue;
+    var dirInfo = new DirectoryInfo(path);
 
-    var modVersion = "";
-    if (modVersions.TryGetValue(modName, out var version))
+    if (!skipFiles)
     {
-        modVersion = version;
+        foreach (var file in dirInfo.GetFiles().OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            if ((file.Attributes & (FileAttributes.Hidden | FileAttributes.System)) == 0)
+            {
+                yield return $"{relativePath}/{file.Name}".TrimStart('/');
+            }
+        }
     }
 
-    modsList.Add(modName);
-    modsList.Add(modVersion);
+    foreach (var dir in dirInfo.GetDirectories().OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase))
+    {
+        if ((dir.Attributes & (FileAttributes.Hidden | FileAttributes.System)) == 0)
+        {
+            foreach (var file in GetCanonicallyOrderedFiles(dir.FullName, $"{relativePath}/{dir.Name}".TrimStart('/')))
+            {
+                yield return file;
+            }
+        }
+    }
 }
-Log.Information($"Installed mods are: {JsonSerializer.Serialize(modsList)}");
+
+var hashModsTask = Task.Run(() => Parallel.ForEach(enabledModPaths, modPath =>
+{
+    var hash = Crc32.InitialValue;
+    var buffer = Crc32.CreateBuffer();
+
+    // `skipFiles` is used to skip any files in the root mod directory
+    foreach (var relativePath in GetCanonicallyOrderedFiles(modPath, skipFiles: true))
+    {
+        var canonicalPathBytes = Encoding.UTF8.GetBytes(relativePath.ToUpperInvariant());
+        hash = Crc32.ComputeHash(canonicalPathBytes, hash);
+
+        using var stream = File.OpenRead(Path.Combine(modPath, relativePath));
+        hash = Crc32.ComputeHash(stream, buffer, hash);
+    }
+
+    var hashString = System.Convert.ToBase64String(BitConverter.GetBytes(hash)).TrimEnd('=');
+    modHashes[Path.GetFileName(modPath)] = hashString;
+}));
 
 static byte[] ReadExactly(Stream stream, long length)
 {
@@ -78,11 +113,12 @@ static byte[] ReadExactly(Stream stream, long length)
 // the data.win again, but here for correctness at all steps of the process
 class Crc32
 {
-    static readonly uint[] crc_table = make_crc_table();
+    public const uint InitialValue = 0xffffffffu;
+    static readonly uint[] table = MakeTable();
 
-    static uint[] make_crc_table()
+    static uint[] MakeTable()
     {
-        var crc_table = new uint[256];
+        var table = new uint[256];
         for (int n = 0; n < 256; n++)
         {
             uint c = (uint)n;
@@ -90,19 +126,38 @@ class Crc32
             {
                 c = (c & 1) != 0 ? 0xedb88320u ^ (c >> 1) : c >> 1;
             }
-            crc_table[n] = c;
+            table[n] = c;
         }
-        return crc_table;
+        return table;
     }
 
-    public static uint ComputeHash(byte[] buf)
+    static uint UpdateHash(byte[] buf, int length, uint c)
     {
-        uint c = 0xffffffffu;
-        foreach (byte b in buf)
+        for (int i = 0; i < length; i++)
         {
-            c = crc_table[(c ^ b) & 0xff] ^ (c >> 8);
+            c = table[(c ^ buf[i]) & 0xff] ^ (c >> 8);
         }
-        return System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(c ^ 0xffffffffu);
+        return c;
+    }
+
+    public static uint ComputeHash(byte[] buf, uint c = InitialValue)
+    {
+        return UpdateHash(buf, buf.Length, c) ^ InitialValue;
+    }
+
+    public static uint ComputeHash(Stream stream, byte[] buf, uint c = InitialValue)
+    {
+        int length;
+        while ((length = stream.Read(buf, 0, buf.Length)) > 0)
+        {
+            c = Crc32.UpdateHash(buf, length, c);
+        }
+        return c ^ InitialValue;
+    }
+
+    public static byte[] CreateBuffer()
+    {
+        return new byte[64 * 1024];
     }
 }
 
@@ -117,7 +172,7 @@ using (var stream = new FileStream(gameDataPath, FileMode.Open, FileAccess.Read)
 // To fix this, we read through the chunks of data.win, find the TXTR chunk, then
 // find any timestamps within that, and replace them with a canonical timestamp.
 // Then we can compute a hash for data.win, insert it in, then recompile it again.
-string hash;
+string dataHash;
 using (var stream = new MemoryStream(bytes))
 {
     using var reader = new BinaryReader(stream);
@@ -140,7 +195,7 @@ using (var stream = new MemoryStream(bytes))
         uint chunk = reader.ReadUInt32();
         uint chunkSize = reader.ReadUInt32();
         long chunkEnd = stream.Position + chunkSize;
-        
+
         if (chunk == 0x52545854) // TXTR
         {
             while (stream.Position + 12 <= chunkEnd)
@@ -166,7 +221,7 @@ using (var stream = new MemoryStream(bytes))
                                 Encoding.ASCII.GetBytes(timestamp, 0, timestamp.Length, buffer, i);
                                 stream.Position -= buffer.Length;
                                 stream.Write(buffer, 0, buffer.Length);
-                                uint crc = Crc32.ComputeHash(buffer);
+                                uint crc = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(Crc32.ComputeHash(buffer));
                                 writer.Write(crc);
                                 continue;
                             }
@@ -182,10 +237,35 @@ using (var stream = new MemoryStream(bytes))
     }
 
     stream.Position = 0;
-    using var md5 = System.Security.Cryptography.MD5.Create();
-    hash = Convert.ToHexString(md5.ComputeHash(stream)).ToLowerInvariant();
-    Log.Information($"Canonical hash for data.win is: {hash}");
+    var hash = Crc32.ComputeHash(stream, Crc32.CreateBuffer());
+    dataHash = System.Convert.ToBase64String(BitConverter.GetBytes(hash)).TrimEnd('=');
+    Log.Information($"Canonical hash for data.win is: {dataHash}");
 }
+
+await hashModsTask;
+
+var modsList = new List<string>();
+foreach (var modName in enabledMods)
+{
+    var modVersion = "";
+    if (modVersions.TryGetValue(modName, out var v))
+    {
+        modVersion = v;
+    }
+
+    var modHash = "";
+    if (modHashes.TryGetValue(modName, out var h))
+    {
+        modHash = h;
+    }
+
+    modsList.Add(modName);
+    modsList.Add(modVersion);
+    modsList.Add(modHash);
+}
+
+var jsonOptions = new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+Log.Information($"Installed mods are: {JsonSerializer.Serialize(modsList, jsonOptions)}");
 
 struct CompatInfo
 {
@@ -196,8 +276,8 @@ struct CompatInfo
 
 var compat = new CompatInfo()
 {
-    hash = hash,
-    version = gmloaderVersion,
+    hash = dataHash,
+    version = modLoaderVersion,
     mods = modsList,
 };
 
@@ -210,7 +290,7 @@ if (pfoExtension == null)
 var option = new UndertaleExtensionOption()
 {
     Name = Data.Strings.MakeString("compat"),
-    Value = Data.Strings.MakeString(System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(compat)))),
+    Value = Data.Strings.MakeString(System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(compat, jsonOptions)))),
     Kind = UndertaleExtensionOption.OptionKind.String,
 };
 pfoExtension.Options.Add(option);

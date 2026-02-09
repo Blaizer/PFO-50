@@ -284,15 +284,27 @@ function scrGetCompatibilityDiffList(ours, theirs)
     var comparers = [ [], [] ];
     for (var n = 0; n < 2; n++)
     {
-        for (var i = 0; i < array_length(argument[n].mods); i += 2)
+        for (var i = 0; i < array_length(argument[n].mods); i += 3)
         {
             // for string comparison we use a key that sorts first case-insensitively, then case sensitively
             var cmp = string_lower(argument[n].mods[i]) + argument[n].mods[i];
-            array_push(comparers[n], { name: argument[n].mods[i], version: argument[n].mods[i + 1], cmp: cmp });
+            array_push(comparers[n], { 
+                name: argument[n].mods[i],
+                version: argument[n].mods[i + 1],
+                hash: argument[n].mods[i + 2],
+                cmp: cmp
+            });
         }
 
         array_sort(comparers[n], function (a, b)
         {
+            // sort PFO 50 first in the list of mods
+            var pfoCmp = (b.name == "PFO 50") - (a.name == "PFO 50");
+            if (pfoCmp != 0)
+            {
+                return pfoCmp;
+            }
+
             if (a.cmp < b.cmp)
             {
                 return -1;
@@ -305,13 +317,15 @@ function scrGetCompatibilityDiffList(ours, theirs)
         });
     }
 
-    var gmloaderDiff = { name: "UFO 50 Mod Loader", status: argument[0].version == argument[1].version ? 0 : (argument[0].version == "" || argument[1].version == "" ? 1 : 2), versions: [] };
+    var modLoaderStatus = argument[0].version == argument[1].version ? 0 : (argument[0].version == "" || argument[1].version == "" ? 1 : 2);
+    var modLoaderDiff = { name: "UFO 50 Mod Loader", status: modLoaderStatus, versions: [] };
+
     for (var n = 0; n < 2; n++)
     {
-        gmloaderDiff.versions[n] = argument[n].version == "" ? "UNKNOWN" : argument[n].version;
+        modLoaderDiff.versions[n] = argument[n].version == "" ? "UNKNOWN" : argument[n].version;
     }
 
-    var diffs = [ gmloaderDiff ];
+    var diffs = [ modLoaderDiff ];
 
     var indexes = [ 0, 0 ];
     while (indexes[0] < array_length(comparers[0]) || indexes[1] < array_length(comparers[1]))
@@ -347,7 +361,7 @@ function scrGetCompatibilityDiffList(ours, theirs)
         var nextValue = comparers[next][indexes[next]];
         indexes[next]++;
 
-        var status = both ? (nextValue.version == otherValue.version ? (nextValue.version == "" ? 2 : 0) : 1) : 1;
+        var status = both ? (nextValue.hash == otherValue.hash ? 0 : 1) : 1;
         var diff = { name: nextValue.name, status: status, versions: [] };
 
         for (var n = 0; n < 2; n++)

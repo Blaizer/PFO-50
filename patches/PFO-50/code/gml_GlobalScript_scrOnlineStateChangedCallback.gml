@@ -38,12 +38,13 @@ function scrCreateCompatibilityInfoFromString(compatString)
 
             if (is_array(_info.mods))
             {
-                for (var i = 0; i < array_length(_info.mods) - 1; i += 2)
+                for (var i = 0; i <= array_length(_info.mods) - 3; i += 3)
                 {
-                    if (is_string(_info.mods[i]) && is_string(_info.mods[i + 1]))
+                    if (is_string(_info.mods[i]) && is_string(_info.mods[i + 1]) && is_string(_info.mods[i + 2]))
                     {
                         array_push(_compat.mods, _info.mods[i]);
                         array_push(_compat.mods, _info.mods[i + 1]);
+                        array_push(_compat.mods, _info.mods[i + 2]);
                     }
                 }
             }

@@ -174,7 +174,7 @@ function scrLibraryOnlineLobbyDraw()
             var isDiff = false;
             if (!is_undefined(user.compat))
             {
-                isModded = array_length(user.compat.mods) > 0;
+                isModded = !(array_length(user.compat.mods) == 0 || (array_length(user.compat.mods) == 3 && user.compat.mods[0] == "PFO 50"));
                 isDiff = !is_undefined(myCompat) ? user.compat.hash != myCompat.hash : false;
                 compatWarning |= isDiff;
             }
