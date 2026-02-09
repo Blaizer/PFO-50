@@ -5,7 +5,7 @@ using System.Text.Json;
 using System.Security;
 
 var requiredVersion = new Version("1.3.10");
-var requiredVersionMessage = $"GMLoader version {requiredVersion} or newer is required to install PFO 50.";
+var requiredVersionMessage = $"UFO 50 Mod Loader version {requiredVersion} or newer is required to install PFO 50.";
 
 var gamePatch = ScanGamePatches(GetPatchesDir()).ToList()[0];
 var incompatibleMods = gamePatch.ConflictingMods;
@@ -63,7 +63,7 @@ try
 }
 catch
 {
-    throw new ScriptException(@$"GMLoader version string ""{settings.Version}"" from settings.json is invalid. {requiredVersionMessage}");
+    throw new ScriptException(@$"UFO 50 Mod Loader version string ""{settings.Version}"" from settings.json is invalid. {requiredVersionMessage}");
 }
 
 if (settingsVersion < requiredVersion)
@@ -86,4 +86,4 @@ if (ufo50Version != expectedUfo50Version)
 }
 
 var modVersion = GetModVersion();
-Log.Information($"PFO 50 {modVersion} version check OK. You are using GMLoader version {settings.Version} and UFO 50 version {ufo50Version}");
+Log.Information($"PFO 50 {modVersion} version check OK. You are using UFO 50 Mod Loader version {settings.Version} and UFO 50 version {ufo50Version}");

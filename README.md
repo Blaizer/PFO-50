@@ -1,4 +1,4 @@
-PFO 50 v0.9.3
+PFO 50 v0.9.4
 =============
 
 PFO 50 (Play Forever Online 50) is a mod for UFO 50 that integrates
@@ -7,35 +7,28 @@ online multiplayer support directly into UFO 50 v1.8.9.
 Installation (Recommended)
 --------------------------
 1. Download and extract the latest version of
-   [GMLoader for UFO 50](https://gamebanana.com/tools/20160)
-2. Run the "GMLoader" program, then close it. This step will no longer be
-   required after the 2.0 release of GMLoader for UFO 50
-3. Run "UFO 50 Mod Loader" and ensure it gives no warnings about your
-   UFO 50 installation
-4. Click "Download Mods" and wait for it to fetch the Mod List
-5. Find and tick the checkbox of PFO 50 in the Mod List, then click
-   "Download"
-6. Once installed, tick PFO 50 in the main window and click "Install Mods"
-7. A terminal window will appear, and once installation is complete press
-   any key in the terminal window to close it
-8. Run UFO 50 normally, if you see the correct version of PFO 50 in the
-   lower left corner then the mod installation worked!
+   [UFO 50 Mod Loader](<https://gamebanana.com/tools/20160>)
+2. Run it and ensure it successfully verifies and copies your UFO 50 files
+3. Click "Download Mods" and wait for the list of mods to load
+4. Find and tick the checkbox of “PFO 50”, click "Download", then close the
+   Mod Downloader window
+5. Tick "PFO 50" in the main window, untick "UFO 50 Modding Settings" if
+   it's ticked, then click "Load Mods and Launch Game"
+6. You should see the correct version of PFO 50 in the lower left corner
+   when the game launches
 
 Manual Installation (Not Recommended)
 -------------------------------------
 1. Download and extract the latest version of
-   [GMLoader for UFO 50](https://gamebanana.com/tools/20160)
-2. Run the "GMLoader" program, then close it. This step will no longer be
-   required after the 2.0 release of GMLoader for UFO 50
-3. Run "UFO 50 Mod Loader" and ensure it gives no warnings about your
-   UFO 50 installation
-4. Extract your downloaded PFO 50 zip and copy the "PFO 50" folder into the
-   "my mods" folder of GMLoader for UFO 50
-5. In the Mod Loader, tick PFO 50 and click "Install Mods"
-6. A terminal window will appear, and once installation is complete press
-   any key in the terminal window to close it
-7. Run UFO 50 normally, if you see the correct version of PFO 50 in the
-   lower left corner then the mod installation worked!
+   [UFO 50 Mod Loader](<https://gamebanana.com/tools/20160>)
+2. Run it and ensure it successfully verifies and copies your UFO 50 files
+3. Download and place the PFO 50 zip file directly into the “my mods”
+   folder of UFO 50 Mod Loader, it should automatically appear in the Mod
+   Loader main window
+4. Tick "PFO 50" in the main window, untick "UFO 50 Modding Settings" if
+   it's ticked, then click "Load Mods and Launch Game"
+5. You should see the correct version of PFO 50 in the lower left corner
+   when the game launches
 
 Uninstallation
 --------------
