@@ -4293,7 +4293,7 @@
 --- original/gml_Object_oController_Other_3.gml
 +++ patched/gml_Object_oController_Other_3.gml
 @@ -1,2 +1,3 @@
-+pfo_quit();
++pfo_disconnect();
  steam_shutdown();
  scrQuit();
 --- original/gml_Object_oController_Step_0.gml

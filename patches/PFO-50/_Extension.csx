@@ -102,7 +102,7 @@ void PatchPFO50Extension()
         DefineExtensionFunction("pfo_file_delete");
         DefineExtensionFunction("pfo_file_copy");
         DefineExtensionFunction("pfo_file_status");
-        DefineExtensionFunction("pfo_quit");
+        DefineExtensionFunction("pfo_disconnect");
         DefineExtensionFunction("pfo_steam_lobby_get_member_data");
         DefineExtensionFunction("pfo_steam_lobby_set_member_data");
         DefineExtensionFunction("pfo_steam_request_lobby_data");
@@ -116,7 +116,6 @@ void PatchPFO50Extension()
         DefineExtensionFunction("pfo_game_set_speed");
         DefineExtensionFunction("pfo_client_is_connected");
         DefineExtensionFunction("pfo_show_debug_message");
-
 
         file.InitScript = Data.Strings.MakeString("pfo_init");
         file.CleanupScript = Data.Strings.MakeString("");

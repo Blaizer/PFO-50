@@ -548,9 +548,9 @@ namespace
     enum class EOnlineState
     {
         Offline,
-        StartingGame,
-        InGame,
-        Disconnecting,
+        GoingOnline,
+        Online,
+        GoingOffline,
         Quitting,
     };
 
@@ -925,9 +925,9 @@ namespace
 
         bool Update(CInstance* instance, bool advanceFrame)
         {
-            if (m_OnlineState == EOnlineState::StartingGame)
+            if (m_OnlineState == EOnlineState::GoingOnline)
             {
-                m_OnlineState = EOnlineState::InGame;
+                m_OnlineState = EOnlineState::Online;
                 SetPowersaveEnabled(false);
 
                 {
@@ -938,7 +938,7 @@ namespace
                 }
             }
 
-            if (m_OnlineState == EOnlineState::InGame)
+            if (m_OnlineState == EOnlineState::Online)
             {
                 if (advanceFrame)
                 {
@@ -1463,7 +1463,7 @@ namespace
                                 assert(clientIndex != m_ClientIndex);
                                 assert(clientData.m_PlayerData.m_PlayerIndex >= 0);
                                 LogDebug("Ran out of input from disconnected client %d (player %d): Disconnecting\n", clientIndex, clientData.m_PlayerData.m_PlayerIndex);
-                                m_OnlineState = EOnlineState::Disconnecting;
+                                m_OnlineState = EOnlineState::GoingOffline;
                             }
                         }
                     }
@@ -1473,7 +1473,7 @@ namespace
                         break;
                     }
 
-                    if (m_OnlineState == EOnlineState::InGame)
+                    if (m_OnlineState == EOnlineState::Online)
                     {
                         if (firstTime)
                         {
@@ -1504,7 +1504,7 @@ namespace
                         }
                     }
 
-                    if (m_OnlineState != EOnlineState::InGame)
+                    if (m_OnlineState != EOnlineState::Online)
                     {
                         m_Frame--;
                         break;
@@ -1512,7 +1512,7 @@ namespace
                 }
             }
 
-            if (m_OnlineState == EOnlineState::InGame)
+            if (m_OnlineState == EOnlineState::Online)
             {
                 // update automatic input delay
                 if (advanceFrame)
@@ -1724,7 +1724,7 @@ namespace
                 }
             }
 
-            if (m_OnlineState == EOnlineState::Disconnecting)
+            if (m_OnlineState == EOnlineState::GoingOffline)
             {
                 {
                     RValue result = {};
@@ -1760,6 +1760,8 @@ namespace
 
         void Reset(CInstance* instance)
         {
+            auto oldOnlineState = m_OnlineState;
+
             Close();
 
             for (int i = 0; i < countof(m_FileData); i++)
@@ -1779,8 +1781,12 @@ namespace
 
             reset(*this);
 
-            SetPowersaveEnabled(true);
             SetSpeed(g_BaseGameSpeedFPS, instance);
+
+            if (oldOnlineState >= EOnlineState::Online)
+            {
+                SetPowersaveEnabled(true);
+            }
         }
 
         InputFlags_t PlayerGetInput(CInstance* instance, int playerIndex)
@@ -1921,7 +1927,7 @@ namespace
 
                         {
                             auto map = CreateDsMap(0, 0);
-                            DsMapAddDouble(map, "type", 2);
+                            DsMapAddDouble(map, "type", 2); // network_type_disconnect
                             DsMapAddDouble(map, "success", info.m_eState == k_ESteamNetworkingConnectionState_ClosedByPeer);
                             DsMapAddDouble(map, "reason", info.m_eEndReason);
                             DsMapAddInt64(map, "steam_id", static_cast<int64>(clientData.m_SteamID));
@@ -1933,14 +1939,14 @@ namespace
                 if (info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally &&
                     (info.m_eEndReason == k_ESteamNetConnectionEnd_Remote_Timeout || info.m_eEndReason == k_ESteamNetConnectionEnd_Misc_Timeout))
                 {
-                    if (m_OnlineState == EOnlineState::InGame)
+                    if (m_OnlineState == EOnlineState::Online)
                     {
                         LogDebug("Connection timed out\n");
                     }
                 }
 
                 // disconnect if we're the last player in the session
-                if (m_OnlineState == EOnlineState::InGame)
+                if (m_OnlineState == EOnlineState::Online)
                 {
                     int connectedCount = 0;
 
@@ -1956,7 +1962,7 @@ namespace
                     if (connectedCount == 0)
                     {
                         LogDebug("No more clients connected: Disconnecting\n");
-                        m_OnlineState = EOnlineState::Disconnecting;
+                        m_OnlineState = EOnlineState::GoingOffline;
                     }
                 }
             }
@@ -1965,7 +1971,7 @@ namespace
                 eOldState == k_ESteamNetworkingConnectionState_None &&
                 info.m_eState == k_ESteamNetworkingConnectionState_Connecting)
             {
-                if (m_OnlineState <= EOnlineState::InGame && m_ClientCount > 0)
+                if (m_OnlineState <= EOnlineState::Online && m_ClientCount > 0)
                 {
                     bool found = false;
 
@@ -2032,7 +2038,7 @@ namespace
 
                     if (allClientsConnected)
                     {
-                        m_OnlineState = EOnlineState::StartingGame;
+                        m_OnlineState = EOnlineState::GoingOnline;
                     }
                 }
             }
@@ -2384,7 +2390,7 @@ namespace
                 assert(ret != nullptr);
                 if (ret->m_Status == EFileStatus::None)
                 {
-                    assert(m_OnlineState < EOnlineState::InGame);
+                    assert(m_OnlineState < EOnlineState::Online);
                 }
             }
 
@@ -2397,7 +2403,7 @@ namespace
             int messageSize = 0;
             bool messageSent[countof(m_ClientData)] = {};
 
-            while (m_OnlineState == EOnlineState::InGame && messageRetryCount != 0)
+            while (m_OnlineState == EOnlineState::Online && messageRetryCount != 0)
             {
                 if (messageRetryCount > 0)
                 {
@@ -2475,7 +2481,7 @@ namespace
                         else
                         {
                             LogInfo("SendReliableMessage (size = %d) failed with error code '%lld': Disconnecting\n", messageSize, result);
-                            m_OnlineState = EOnlineState::Disconnecting;
+                            m_OnlineState = EOnlineState::GoingOffline;
                         }
                     }
                 }
@@ -2538,7 +2544,7 @@ namespace
             auto filename = YYGetString(arg, 0);
             auto fileData = FindFileData(filename, clientIndex);
 
-            if (m_OnlineState >= EOnlineState::InGame)
+            if (m_OnlineState >= EOnlineState::Online)
             {
                 if (clientIndex == m_ClientIndex)
                 {
@@ -2549,7 +2555,7 @@ namespace
                     {
                         fileData->m_Status = EFileStatus::Owned;
 
-                        if (m_OnlineState == EOnlineState::InGame)
+                        if (m_OnlineState == EOnlineState::Online)
                         {
                             ReliableMessage reliableMessage;
                             reliableMessage.m_Type = exists ? EReliableMessageType::File : EReliableMessageType::FileDoesNotExist;
@@ -2698,7 +2704,7 @@ namespace
             case EFileStatus::UnownedUnknown:
             {
                 // it's ok to attempt to write to an unknown file during shutdown, just do nothing
-                assert(m_OnlineState != EOnlineState::InGame);
+                assert(m_OnlineState != EOnlineState::Online);
             } break;
             default:
                 assert(false);
@@ -2978,7 +2984,7 @@ YYEXPORT void pfo_is_online(RValue& result, CInstance* selfinst, CInstance* othe
 {
     assert(argc == 0);
 
-    init_bool(result, g_Session.m_OnlineState >= EOnlineState::InGame);
+    init_bool(result, g_Session.m_OnlineState >= EOnlineState::Online);
 }
 
 YYEXPORT void pfo_client_get_input_delay(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -3281,11 +3287,20 @@ YYEXPORT void pfo_file_status(RValue& result, CInstance* selfinst, CInstance* ot
     g_Session.FileStatus(result, YYGetString(arg, 0));
 }
 
-YYEXPORT void pfo_quit(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+YYEXPORT void pfo_disconnect(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
     g_Session.Close();
+
+    if (g_Session.m_OnlineState == EOnlineState::Online)
+    {
+        g_Session.m_OnlineState = EOnlineState::GoingOffline;
+    }
+    else if (g_Session.m_OnlineState == EOnlineState::GoingOnline)
+    {
+        g_Session.m_OnlineState = EOnlineState::Offline;
+    }
 }
 
 YYEXPORT void pfo_steam_lobby_get_member_data(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
