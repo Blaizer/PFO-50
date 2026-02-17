@@ -1287,6 +1287,7 @@ namespace
                         int messageCount = 0;
                         SteamNetworkingMessage_t* netMessages[countof(m_ClientData) - 1];
                         ClientData* netMessageToClientDataMap[countof(netMessages)];
+                        uint32 netMessageToLastInputFrameMap[countof(netMessages)];
 
                         auto& myClientData = m_ClientData[m_ClientIndex];
                         auto& myPlayerData = myClientData.m_PlayerData;
@@ -1341,12 +1342,16 @@ namespace
                                     && // ... and if we have no frames to send them, and they had no frames to send us, and we're not recording samples, there's no need to send a message
                                     (m_AssignedClientsCount > 0 || count > 0 || clientData.m_HasReceivedUnacknowledgedInputFrames))
                                 {
+                                    uint32 first = clientData.m_LastAcknowledgedInputFrame + 1;
+                                    uint32 last = first + count - 1;
+
                                     netMessageToClientDataMap[messageCount] = &clientData;
+                                    netMessageToLastInputFrameMap[messageCount] = last;
+
                                     auto netMessage = netMessages[messageCount++] = g_SteamNetworkingUtils->AllocateMessage(Message::GetMaxSize());
                                     netMessage->m_conn = clientData.m_ConnectSocket;
                                     netMessage->m_nFlags = k_nSteamNetworkingSend_UnreliableNoDelay;
 
-                                    uint32 first = clientData.m_LastAcknowledgedInputFrame + 1;
                                     message.m_LastReceivedMessageNumber = clientData.m_LastReceivedMessageNumber;
                                     message.m_FirstInputFrame = first;
 
@@ -1423,6 +1428,8 @@ namespace
                                 if (messageNumber > 0)
                                 {
                                     auto& clientData = *netMessageToClientDataMap[i];
+                                    uint32 lastInputFrame = netMessageToLastInputFrameMap[i];
+
                                     clientData.m_LastSentMessageNumber = messageNumber;
                                     clientData.m_MessageSendData[messageNumber & (countof(clientData.m_MessageSendData) - 1)] =
                                     {
@@ -1431,14 +1438,14 @@ namespace
                                     };
 
                                     // record the first message number we send for each input frame for the purposes of acknowledgement
-                                    assert(clientData.m_LastSentInputFrame <= myClientData.m_LastInputFrame);
-                                    for (uint32 frame = clientData.m_LastSentInputFrame + 1; frame <= myClientData.m_LastInputFrame; frame++)
+                                    assert(clientData.m_LastSentInputFrame <= lastInputFrame);
+                                    for (uint32 frame = clientData.m_LastSentInputFrame + 1; frame <= lastInputFrame; frame++)
                                     {
                                         clientData.m_InputFrameSentMessageNumbers[frame & (countof(clientData.m_InputFrameSentMessageNumbers) - 1)] = messageNumber;
                                     }
 
                                     clientData.m_LastSentFrame = m_Frame;
-                                    clientData.m_LastSentInputFrame = myClientData.m_LastInputFrame;
+                                    clientData.m_LastSentInputFrame = lastInputFrame;
                                     clientData.m_LastSentTime = time;
                                 }
                             }
