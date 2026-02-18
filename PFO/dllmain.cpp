@@ -230,6 +230,8 @@ namespace
     int g_gml_Script_getInputCallback;
     int g_gml_Script_getChecksumCallback;
 
+    SteamNetworkingMessage_t* g_TempNetMessages[1000];
+
     template<typename T>
     FORCEINLINE void* copy(T& dst, const T& src)
     {
@@ -1123,8 +1125,6 @@ namespace
                 {
                     // receive all messages
                     {
-                        SteamNetworkingMessage_t* netMessages[1000];
-
                         for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
                         {
                             auto& clientData = m_ClientData[clientIndex];
@@ -1132,12 +1132,12 @@ namespace
 
                             if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid)
                             {
-                                int netMessageCount = g_SteamNetworkingSockets->ReceiveMessagesOnConnection(clientData.m_ConnectSocket, netMessages, countof(netMessages));
+                                int netMessageCount = g_SteamNetworkingSockets->ReceiveMessagesOnConnection(clientData.m_ConnectSocket, g_TempNetMessages, countof(g_TempNetMessages));
                                 //trace("Received %d messages\n", count);
 
                                 for (int netMessageIndex = 0; netMessageIndex < netMessageCount; netMessageIndex++)
                                 {
-                                    auto netMessage = netMessages[netMessageIndex];
+                                    auto netMessage = g_TempNetMessages[netMessageIndex];
 
                                     if ((netMessage->m_nFlags & k_nSteamNetworkingSend_Reliable) == 0)
                                     {
