@@ -4252,7 +4252,7 @@
      choice = !sel;
 --- original/gml_Object_oController_Create_0.gml
 +++ patched/gml_Object_oController_Create_0.gml
-@@ -4,4 +4,36 @@
+@@ -4,4 +4,37 @@
      exit;
  }
 +global.ONLINE_MAX_AUTOMATIC_DELAY = pfo_get_max_automatic_input_delay();
@@ -4281,6 +4281,7 @@
 +showFrame = false;
 +showDelay = true;
 +prevGame = 0;
++showingCatchupWarning = false;
 +global.onlineSettings = undefined;
 +global.onlineBackupDefaultLanguage = undefined;
 +global.onlinePlayers = undefined;

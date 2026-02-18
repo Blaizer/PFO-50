@@ -116,7 +116,8 @@ void PatchPFO50Extension()
         DefineExtensionFunction("pfo_game_set_speed");
         DefineExtensionFunction("pfo_client_is_connected");
         DefineExtensionFunction("pfo_show_debug_message");
-
+        DefineExtensionFunction("pfo_get_catchup_speed");
+        
         file.InitScript = Data.Strings.MakeString("pfo_init");
         file.CleanupScript = Data.Strings.MakeString("");
     }

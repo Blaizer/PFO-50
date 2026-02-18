@@ -182,7 +182,7 @@ namespace
     constexpr int c_PingDelayCalculationSafetyMargin = 30;
     constexpr int c_FavoredModeExtraInputDelay = 2;
     constexpr int c_MessageInputCountBits = 6;
-    constexpr int c_FramesToRunBehindUpperLimit = 70;
+    constexpr int c_FramesToRunBehindUpperLimit = 200;
     constexpr int c_FramesToRunBehindLowerLimit = 40;
 
     constexpr int c_CatchupThresholds[] =
@@ -190,12 +190,14 @@ namespace
         8,
         16,
         32,
+        64,
     };
     constexpr double c_CatchupThresholdSpeeds[] =
     {
         1.0,
         1.1,
         1.2,
+        2.0,
     };
 
     YYRunnerInterface g_RunnerInterface;
@@ -600,7 +602,7 @@ namespace
     {
         int m_PlayerIndex = -1;
         uint32 m_TailInputFrame = 0;
-        InputFlags_t m_InputBuffer[128] = {};
+        InputFlags_t m_InputBuffer[256] = {};
     };
 
     struct ClientData
@@ -614,7 +616,7 @@ namespace
         int64 m_PreviousFrameSampleRTT = 0;
         int64 m_InputFrameSentMessageNumbers[countof(PlayerData::m_InputBuffer)] = {};
         MessageSendInfo m_MessageSendData[64] = { { .m_MessageNumber = 1 } };
-        ChecksumBuffer m_ChecksumData[256];
+        ChecksumBuffer m_ChecksumData[countof(PlayerData::m_InputBuffer)];
         HSteamNetConnection m_ConnectSocket = k_HSteamNetConnection_Invalid;
         uint32 m_LastInputFrame = 0;
         uint32 m_LastAcknowledgedInputFrame = 0;
@@ -710,7 +712,7 @@ namespace
         } m_AutomaticInputDelayChanges[countof(m_Inputs)];
 
         uint8 m_InputFrameCount;
-        int8 m_ChecksumFrameDelta;
+        int16 m_ChecksumFrameDelta;
 
         template<typename T>
         constexpr void Serialize(T& writer)
@@ -885,7 +887,7 @@ namespace
 
                             BEGIN_ARRAY("InputBuffer")
                             {
-                                for (int i = 0; i < 2; i++)
+                                for (int i = 0; i < 3; i++)
                                 {
                                     int frame = (m_Frame - i - 1) & (countof(playerData.m_InputBuffer) - 1);
                                     WRITE(playerData.m_InputBuffer[frame]);
@@ -1329,10 +1331,16 @@ namespace
                                 int count = max(0, static_cast<int>(myClientData.m_LastInputFrame - clientData.m_LastAcknowledgedInputFrame));
                                 if (count > countof(message.m_Inputs))
                                 {
-                                    count = countof(message.m_Inputs);
+                                    // if it's possible that going to the next frame could cause us to have more total inputs to send the client than the
+                                    // capacity of the buffer, we need to stay on the current frame and continue sending inputs until they get acknowledged
+                                    if (count + 1 + c_MaxInputDelay * 2 > countof(clientData.m_PlayerData.m_InputBuffer))
+                                    {
+                                        canMoveToNextFrame = false;
+                                    }
 
                                     //trace("Failed to send all inputs for frame: %u\n", myClientData.m_LastInputFrame);
-                                    canMoveToNextFrame = false;
+
+                                    count = countof(message.m_Inputs);
                                 }
 
                                 int64 time = g_SteamNetworkingUtils->GetLocalTimestamp();
@@ -1362,7 +1370,7 @@ namespace
                                     auto& checksumBuffer = myClientData.m_ChecksumData[checksumFrame & (countof(myClientData.m_ChecksumData) - 1)];
                                     assert(checksumBuffer.m_Frame == checksumFrame);
                                     int checksumFrameDelta = static_cast<int>(checksumFrame - first);
-                                    message.m_ChecksumFrameDelta = narrow_cast<int8>(checksumFrameDelta);
+                                    message.m_ChecksumFrameDelta = narrow_cast<int16>(checksumFrameDelta);
                                     message.m_Checksum = checksumBuffer.m_Checksum;
 
                                     {
@@ -3454,4 +3462,11 @@ YYEXPORT void pfo_show_debug_message(RValue& result, CInstance* selfinst, CInsta
 
     auto message = YYGetString(arg, 0);
     log("%s\n", message);
+}
+
+YYEXPORT void pfo_get_catchup_speed(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 0);
+
+    init_real(result, c_CatchupThresholdSpeeds[g_Session.m_CatchupState]);
 }

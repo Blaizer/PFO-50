@@ -108,8 +108,19 @@ if (pfo_is_online())
     }
     pfo_set_input_delay_favored_client_index(favoredClient);
 
+    var catchupSpeed = pfo_get_catchup_speed();
+    if (catchupSpeed >= 2.0)
+    {
+        showingCatchupWarning = true;
+    }
+    else if (catchupSpeed <= 1.0)
+    {
+        showingCatchupWarning = false;
+    }
+
     if (showDelay && pfo_get_frame() > 4)
     {
+        var text;
         if (pfo_client_get_player_index() >= 0)
         {
             var mode = pfo_get_input_delay_mode();
@@ -123,17 +134,43 @@ if (pfo_is_online())
                 draw_set_color(global.palette[12]);
             }
 
-            var delayPrefix = favoredPlayer == -2 ? "Delay: 0/" : "Delay: ";
-            draw_text(xx, yy, delayPrefix + string(pfo_client_get_input_delay()) + "f");
-            yy += ydelta;
-
-            draw_set_color(c_white);
+            text = (favoredPlayer == -2 ? "Delay: 0/" : "Delay: ") + string(pfo_client_get_input_delay()) + "f";
         }
         else
         {
-            draw_text(xx, yy, "Spectating");
-            yy += ydelta;
+            text = "Spectating";
         }
+
+        if (showingCatchupWarning)
+        {
+            var iconX;
+            if (halign == fa_center)
+            {
+                iconX = xx + string_length(text) * 3 - 1;
+            }
+            else if (halign == fa_right)
+            {
+                iconX = xx - string_length(text) * 6 - 9;
+            }
+            else
+            {
+                iconX = xx + string_length(text) * 6;
+            }
+
+            var iconY = yy;
+            if (valign == fa_bottom)
+            {
+                iconY -= 8;
+            }
+
+            draw_set_color(global.palette[10]);
+            draw_sprite_ext(sOnlineWarningIcon, 0, iconX, iconY, 1, 1, 0, global.palette[10], 1);
+        }
+
+        draw_text(xx, yy, text);
+        yy += ydelta;
+
+        draw_set_color(c_white);
     }
     
     if (showPing)
