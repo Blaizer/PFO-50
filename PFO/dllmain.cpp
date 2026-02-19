@@ -1868,7 +1868,7 @@ namespace
 
         void DiffChecksums(ChecksumBuffer& a, int aClientIndex, ChecksumBuffer& b, int bClientIndex, CInstance* instance)
         {
-            LogInfo("Diffing checksums (frame=%u): Ours (client=%d), Theirs (client=%d)\n", a.m_Frame, aClientIndex, bClientIndex);
+            LogInfo("-----------------------\nDiffing checksums (frame=%u): Ours (client=%d), Theirs (client=%d)\n", a.m_Frame, aClientIndex, bClientIndex);
 
             assert(max(m_ChecksumRingBufferHead, m_TempChecksumRingBufferHead) - a.m_BufferOffset <= c_ChecksumRingBufferSize);
             assert(max(m_ChecksumRingBufferHead, m_TempChecksumRingBufferHead) - b.m_BufferOffset <= c_ChecksumRingBufferSize);

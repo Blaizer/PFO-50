@@ -90,7 +90,7 @@ function scrGetChecksumCallback()
 
         if (array_contains(differ.differences, "instance_count"))
         {
-            LOG_INFO("=== INSTANCE COUNTS ===");
+            LOG_INFO("=== INSTANCE COUNTS === (frame " + string(pfo_get_frame()) + ")");
 
             var map = ds_map_create();
 
@@ -109,7 +109,7 @@ function scrGetChecksumCallback()
 
             ds_map_destroy(map);
 
-            LOG_INFO("========================");
+            LOG_INFO("=======================");
         }
     }
 }
