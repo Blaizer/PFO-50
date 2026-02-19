@@ -7,7 +7,7 @@
 using System.Threading.Tasks;
 using System.Diagnostics;
 
-void PatchPFO50Extension()
+async Task PatchPFO50Extension()
 {
     var extDllName = "PFO.dll";
     var extensionName = "PFO";
@@ -166,25 +166,23 @@ void PatchPFO50Extension()
         DefineFunction("steam_lobby_list_is_loading");
         DefineFunction("steam_lobby_list_join");
     }
-}
 
-async Task ImportCode()
-{
-    var dllPath = Path.Join(GetRootDir(), "UFO 50/PFO.dll");
-    if (File.Exists(dllPath))
     {
-        var dllVersionInfo = FileVersionInfo.GetVersionInfo(dllPath);
-        Environment.SetEnvironmentVariable("DEBUG", dllVersionInfo.IsDebug ? "1" : "");
+        var scriptDir = Path.GetDirectoryName(GetCurrentScript());
+        ImportGraphics(scriptDir, true);
     }
 
-    var scriptDir = Path.GetDirectoryName(GetCurrentScript());
-    var codeDir = Path.Join(scriptDir, "code");
-    var globalDir = Path.Join(scriptDir, "globals");
-    await ImportCodeDir(codeDir, true, globalDir);
-}
+    {
+        var dllPath = Path.Join(GetRootDir(), "UFO 50/PFO.dll");
+        if (File.Exists(dllPath))
+        {
+            var dllVersionInfo = FileVersionInfo.GetVersionInfo(dllPath);
+            Environment.SetEnvironmentVariable("DEBUG", dllVersionInfo.IsDebug ? "1" : "");
+        }
 
-void ImportSprites()
-{
-    var scriptDir = Path.GetDirectoryName(GetCurrentScript());
-    ImportGraphics(scriptDir, true);
+        var scriptDir = Path.GetDirectoryName(GetCurrentScript());
+        var codeDir = Path.Join(scriptDir, "code");
+        var globalDir = Path.Join(scriptDir, "globals");
+        await ImportCodeDir(codeDir, true, globalDir);
+    }
 }

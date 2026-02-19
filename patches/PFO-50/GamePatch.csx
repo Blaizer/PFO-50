@@ -13,11 +13,7 @@ var ufo50Version = GetUFO50Version(Data);
 var expectedUfo50Version = GetGameVersion();
 var scriptDir = Path.GetDirectoryName(GetCurrentScript());
 
-PatchPFO50Extension();
-
-ImportSprites();
-
-await ImportCode();
+await PatchPFO50Extension();
 
 await ApplyCompatibleCodePatch(ufo50Version, scriptDir, new[] {
     new PatchVersionRange(expectedUfo50Version, expectedUfo50Version)
