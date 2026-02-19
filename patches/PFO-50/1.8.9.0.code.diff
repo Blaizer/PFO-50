@@ -4807,16 +4807,20 @@
      }
 --- original/gml_Object_oLibrary_Step_1.gml
 +++ patched/gml_Object_oLibrary_Step_1.gml
-@@ -21,4 +21,8 @@
+@@ -21,4 +21,12 @@
      pauseAvail = false;
  }
++if ((state == STATE_LOGO || state == STATE_PROFILE) && substate == 0)
++{
++    pauseAvail = false;
++}
 +if (state == STATE_ONLINE_LOBBY_LIST || state == STATE_ONLINE_LOBBY || state == STATE_ONLINE_CONNECTING)
 +{
 +    pauseAvail = false;
 +}
  if (global.all50 > 0)
  {
-@@ -30,19 +34,20 @@
+@@ -30,19 +38,20 @@
      scrInputClear();
  }
 -if (pauseAvail && (pressStart || global.steamOverlayActivated))
