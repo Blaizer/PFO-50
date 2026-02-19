@@ -1,3 +1,5 @@
+#load "../../PFO-50/patcher/lib/_Utils.csx"
+
 using System.Text.Json;
 using System.Collections.Concurrent;
 
@@ -21,10 +23,10 @@ struct DownloadedMods
     public string Version { get; set; }
 }
 
-var downloadedModsFile = Path.Combine(modsPath, "..", "downloaded_mods.json");
-if (File.Exists(downloadedModsFile))
+var legacyDownloadedModsFile = Path.Combine(modsPath, "..", "downloaded_mods.json");
+if (File.Exists(legacyDownloadedModsFile))
 {
-    var downloadedMods = JsonSerializer.Deserialize<List<DownloadedMods>>(File.ReadAllText(downloadedModsFile));
+    var downloadedMods = JsonSerializer.Deserialize<List<DownloadedMods>>(File.ReadAllText(legacyDownloadedModsFile));
     foreach (var mod in downloadedMods)
     {
         modVersions[mod.Name] = mod.Version;
@@ -52,6 +54,19 @@ if (Directory.Exists(myModsFolder))
                 var gamebananaInfo = JsonSerializer.Deserialize<GamebananaInfo>(File.ReadAllText(gamebananaFile));
                 modVersions[modName] = gamebananaInfo.Version;
             }
+        }
+    }
+}
+
+var legacyMyModsFolder = Path.Combine(modsPath, "..", "my mods");
+if (Directory.Exists(legacyMyModsFolder))
+{
+    foreach (var modPath in Directory.GetDirectories(legacyMyModsFolder))
+    {
+        var modName = Path.GetFileName(modPath);
+        if (enabledMods.Contains(modName))
+        {
+            enabledModPaths.Add(modPath);
         }
     }
 }
@@ -85,24 +100,28 @@ IEnumerable<string> GetCanonicallyOrderedFiles(string path, string relativePath 
 
 var hashModsTask = Task.Run(() => Parallel.ForEach(enabledModPaths, modPath =>
 {
-    var hash = Crc32.InitialValue;
-    var buffer = Crc32.CreateBuffer();
-
-    // `skipFiles` is used to skip any files in the root mod directory
-    foreach (var relativePath in GetCanonicallyOrderedFiles(modPath, skipFiles: true))
+    try
     {
-        var canonicalPathBytes = Encoding.UTF8.GetBytes(relativePath.ToUpperInvariant());
-        hash = Crc32.ComputeHash(canonicalPathBytes, hash);
+        var hash = Crc32.InitialValue;
+        var buffer = Crc32.CreateBuffer();
 
-        using var stream = File.OpenRead(Path.Combine(modPath, relativePath));
-        hash = Crc32.ComputeHash(stream, buffer, hash);
+        // `skipFiles` is used to skip any files in the root mod directory
+        foreach (var relativePath in GetCanonicallyOrderedFiles(modPath, skipFiles: true))
+        {
+            var canonicalPathBytes = Encoding.UTF8.GetBytes(relativePath.ToUpperInvariant());
+            hash = Crc32.ComputeHash(canonicalPathBytes, hash);
+
+            using var stream = File.OpenRead(Path.Combine(modPath, relativePath));
+            hash = Crc32.ComputeHash(stream, buffer, hash);
+        }
+
+        var hashString = System.Convert.ToBase64String(BitConverter.GetBytes(hash)).TrimEnd('=');
+        modHashes[Path.GetFileName(modPath)] = hashString;
     }
-
-    var hashString = System.Convert.ToBase64String(BitConverter.GetBytes(hash)).TrimEnd('=');
-    modHashes[Path.GetFileName(modPath)] = hashString;
+    catch {}
 }));
 
-static byte[] ReadExactly(Stream stream, long length)
+byte[] ReadExactly(Stream stream, long length)
 {
     byte[] buffer = new byte[length];
     stream.ReadExactly(buffer);
@@ -248,7 +267,15 @@ var modsList = new List<string>();
 foreach (var modName in enabledMods)
 {
     var modVersion = "";
-    if (modVersions.TryGetValue(modName, out var v))
+    if (modName == "PFO 50")
+    {
+        modVersion = GetModVersion();
+        if (modVersion.EndsWith(".0"))
+        {
+            modVersion = modVersion.Substring(0, modVersion.Length - 2);
+        }
+    }
+    else if (modVersions.TryGetValue(modName, out var v))
     {
         modVersion = v;
     }

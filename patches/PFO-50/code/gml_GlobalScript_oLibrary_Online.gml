@@ -361,7 +361,20 @@ function scrGetCompatibilityDiffList(ours, theirs)
         var nextValue = comparers[next][indexes[next]];
         indexes[next]++;
 
-        var status = both ? (nextValue.hash == otherValue.hash ? 0 : 1) : 1;
+        var status;
+        if (!both)
+        {
+            status = 1;
+        }
+        else if (nextValue.hash == "" || otherValue.hash == "")
+        {
+            status = nextValue.version == otherValue.version ? (nextValue.version == "" ? 2 : 0) : 1;
+        }
+        else
+        {
+            status = nextValue.hash == otherValue.hash ? 0 : 1;
+        }
+
         var diff = { name: nextValue.name, status: status, versions: [] };
 
         for (var n = 0; n < 2; n++)
