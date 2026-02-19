@@ -49,7 +49,8 @@ string ReplaceVariables(string text)
 {
     return text
         .Replace("$ModVersion", modVersion)
-        .Replace("$GameVersion", gameVersion);
+        .Replace("$GameVersion", gameVersion)
+        .Replace("$DebugPostfix", isDebug ? "-DEBUG" : "");
 }
 
 var readmeText = File.ReadAllText(readme);
