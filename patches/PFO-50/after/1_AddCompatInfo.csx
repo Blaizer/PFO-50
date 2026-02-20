@@ -6,68 +6,30 @@ using System.Collections.Concurrent;
 struct Settings
 {
     public string Version { get; set; }
-    public List<string> EnabledMods { get; set; }
 }
 
 var settings = JsonSerializer.Deserialize<Settings>(File.ReadAllText(Path.Combine(modsPath, "..", "settings.json")));
-var enabledMods = new HashSet<string>(settings.EnabledMods);
 var modLoaderVersion = settings.Version;
 
-var enabledModPaths = new List<string>(); // this just exists on Mod Loader 2.0, won't need to make this
+var enabledMods = new List<string>();
 var modVersions = new Dictionary<string, string>();
 var modHashes = new ConcurrentDictionary<string, string>();
-
-struct DownloadedMods
-{
-    public string Name { get; set; }
-    public string Version { get; set; }
-}
-
-var legacyDownloadedModsFile = Path.Combine(modsPath, "..", "downloaded_mods.json");
-if (File.Exists(legacyDownloadedModsFile))
-{
-    var downloadedMods = JsonSerializer.Deserialize<List<DownloadedMods>>(File.ReadAllText(legacyDownloadedModsFile));
-    foreach (var mod in downloadedMods)
-    {
-        modVersions[mod.Name] = mod.Version;
-    }
-}
 
 struct GamebananaInfo
 {
     public string Version { get; set; }
 }
 
-var myModsFolder = Path.Combine(modsPath, "..", "..", "my mods");
-if (Directory.Exists(myModsFolder))
+foreach (var modPath in enabledModPaths)
 {
-    foreach (var modPath in Directory.GetDirectories(myModsFolder))
-    {
-        var modName = Path.GetFileName(modPath);
-        if (enabledMods.Contains(modName))
-        {
-            enabledModPaths.Add(modPath);
+    var modName = Path.GetFileName(modPath);
+    enabledMods.Add(modName);
 
-            var gamebananaFile = Path.Combine(modPath, "gamebanana.json");
-            if (File.Exists(gamebananaFile))
-            {
-                var gamebananaInfo = JsonSerializer.Deserialize<GamebananaInfo>(File.ReadAllText(gamebananaFile));
-                modVersions[modName] = gamebananaInfo.Version;
-            }
-        }
-    }
-}
-
-var legacyMyModsFolder = Path.Combine(modsPath, "..", "my mods");
-if (Directory.Exists(legacyMyModsFolder))
-{
-    foreach (var modPath in Directory.GetDirectories(legacyMyModsFolder))
+    var gamebananaFile = Path.Combine(modPath, "gamebanana.json");
+    if (File.Exists(gamebananaFile))
     {
-        var modName = Path.GetFileName(modPath);
-        if (enabledMods.Contains(modName))
-        {
-            enabledModPaths.Add(modPath);
-        }
+        var gamebananaInfo = JsonSerializer.Deserialize<GamebananaInfo>(File.ReadAllText(gamebananaFile));
+        modVersions[modName] = gamebananaInfo.Version;
     }
 }
 

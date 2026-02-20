@@ -1,19 +1,14 @@
 #load "../../PFO-50/patcher/lib/_UFO50.csx"
-#load "../../PFO-50/patcher/lib/_Patch.csx"
 
 using System.Text.Json;
 using System.Security;
 
-var requiredVersion = new Version("1.3.10");
+var requiredVersion = new Version("2.0.3");
 var requiredVersionMessage = $"UFO 50 Mod Loader version {requiredVersion} or newer is required to install PFO 50.";
-
-var gamePatch = ScanGamePatches(GetPatchesDir()).ToList()[0];
-var incompatibleMods = gamePatch.ConflictingMods;
 
 struct Settings
 {
     public string Version { get; set; }
-    public List<string> EnabledMods { get; set; }
 }
 
 string settingsText;
@@ -49,11 +44,6 @@ if (string.IsNullOrEmpty(settings.Version))
     throw new ScriptException($"The settings.json file doesn't contain a Version string. {requiredVersionMessage}");
 }
 
-if (settings.EnabledMods is null)
-{
-    throw new ScriptException($"The settings.json file doesn't contain a list of EnabledMods. {requiredVersionMessage}");
-}
-
 Version settingsVersion;
 try
 {
@@ -69,12 +59,6 @@ catch
 if (settingsVersion < requiredVersion)
 {
     throw new ScriptException($"{requiredVersionMessage} You are using version {settings.Version}");
-}
-
-var modsToDisable = settings.EnabledMods.Intersect(incompatibleMods).ToList();
-if (modsToDisable.Count > 0)
-{
-    throw new ScriptException($"The following mods are incompatible with PFO 50 and should be disabled: {string.Join(", ", modsToDisable)}");
 }
 
 var ufo50Version = GetUFO50Version(Data);

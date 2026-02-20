@@ -248,6 +248,7 @@ function scrOnlineStateChangedCallback(state)
         global.numPlayers = 1;
         global.playIntro = false;
         global.resetGame = false;
+        global.textboxExists = false;
 
         global.attractMode = false;
         global.attractModeLibrary = false;
