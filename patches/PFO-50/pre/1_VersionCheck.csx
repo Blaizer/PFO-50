@@ -66,7 +66,7 @@ var expectedUfo50Version = new Version(GetGameVersion());
 
 if (ufo50Version != expectedUfo50Version)
 {
-    throw new ScriptException($"UFO 50 version {expectedUfo50Version} is required to install PFO 50. The version of your vanilla.win is {ufo50Version}");
+    throw new ScriptException($"UFO 50 version {expectedUfo50Version} is required to install PFO 50 but yours is currently version {ufo50Version}. Verify integrity of UFO 50 in Steam and select 'Verify Vanilla Copy' in the Mod Loader.");
 }
 
 var modVersion = GetModVersion();
