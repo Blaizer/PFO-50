@@ -33,6 +33,7 @@ namespace
     #endif
 
     char g_TempBuffer[0x2000];
+    char g_TempBuffer2[0x2000];
     const char* g_LogFileName = "pfo.log";
 
     void handle_assert(const char* message);
@@ -149,7 +150,7 @@ namespace
 
     void handle_assert(const char* message)
     {
-        trace("Assertion failed: %s", message);
+        trace("Assertion failed: %s\n", message);
 
         if (!IsDebuggerPresent())
         {
@@ -169,8 +170,8 @@ namespace
             function += anonymousLength;
         }
 
-        sprintf_s(g_TempBuffer, "'%s' at %s %s() line %d\n", assertion, file, function, line);
-        handle_assert(g_TempBuffer);
+        sprintf_s(g_TempBuffer2, "'%s' at %s %s() line %d", assertion, file, function, line);
+        handle_assert(g_TempBuffer2);
     }
 
     constexpr char c_ExtensionName[] = "PFO";
