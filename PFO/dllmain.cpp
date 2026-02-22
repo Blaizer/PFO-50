@@ -35,11 +35,14 @@ namespace
     char g_TempBuffer[0x2000];
     const char* g_LogFileName = "pfo.log";
 
+    void handle_assert(const char* message);
     void handle_assert(const char* assertion, const char* file, const char* function, int line);
 
     #if !defined(NDEBUG) || 1
     #define breakpoint() (IsDebuggerPresent() && (__debugbreak(), false))
-    #define assert(a) if (!(a)) [[unlikely]] { handle_assert(#a, __FILE__, __FUNCTION__, __LINE__); __debugbreak(); __assume(false); } else {}
+    #define _handle_assert(a) handle_assert(#a, __FILE__, __FUNCTION__, __LINE__)
+    #define _handle_assert_direct(a, ...) handle_assert(__VA_ARGS__)
+    #define assert(a, ...) if (!(a)) [[unlikely]] { _handle_assert##__VA_OPT__(_direct)(a __VA_OPT__(, __VA_ARGS__)); __debugbreak(); __assume(false); } else {}
     #else
     #define breakpoint() (false)
     #define assert(a) __assume(a)
@@ -144,6 +147,16 @@ namespace
         OutputDebugStringA(g_TempBuffer);
     }
 
+    void handle_assert(const char* message)
+    {
+        trace("Assertion failed: %s", message);
+
+        if (!IsDebuggerPresent())
+        {
+            LogError("Assertion failed!\n\n%s", message);
+        }
+    }
+
     void handle_assert(const char* assertion, const char* file, const char* function, int line)
     {
         file = max(file, strrchr(file, '/') + 1);
@@ -156,13 +169,8 @@ namespace
             function += anonymousLength;
         }
 
-        trace("Assertion failed (%s) at %s %s() line %d\n", assertion, file, function, line);
-
-        if (!IsDebuggerPresent())
-        {
-            sprintf_s(g_TempBuffer, "Assertion failed! (%s)\n\nAt %s %s() line %d", assertion, file, function, line);
-            LogError("%s", g_TempBuffer);
-        }
+        sprintf_s(g_TempBuffer, "'%s' at %s %s() line %d\n", assertion, file, function, line);
+        handle_assert(g_TempBuffer);
     }
 
     constexpr char c_ExtensionName[] = "PFO";
@@ -275,14 +283,14 @@ namespace
         template<typename T>
         void Write(const T& value)
         {
-            assert(m_Offset + ssizeof(T) <= m_Size);
+            assert(m_Offset + ssizeof(T) <= m_Size, "Out of bounds write");
             memcpy(m_Buffer + m_Offset, &value, sizeof(T));
             m_Offset += sizeof(T);
         }
 
         void Write(const void* buffer, int size)
         {
-            assert(m_Offset + size <= m_Size);
+            assert(m_Offset + size <= m_Size, "Out of bounds write");
             memcpy(m_Buffer + m_Offset, buffer, size);
             m_Offset += size;
         }
@@ -300,14 +308,14 @@ namespace
         template<typename T>
         void Write(T& value)
         {
-            assert(m_Offset + ssizeof(T) <= m_Size);
+            assert(m_Offset + ssizeof(T) <= m_Size, "Out of bounds read");
             memcpy(&value, m_Buffer + m_Offset, sizeof(T));
             m_Offset += sizeof(T);
         }
 
         void Write(void* buffer, int size)
         {
-            assert(m_Offset + size <= m_Size);
+            assert(m_Offset + size <= m_Size, "Out of bounds read");
             memcpy(buffer, m_Buffer + m_Offset, size);
             m_Offset += size;
         }
@@ -433,7 +441,7 @@ namespace
         template<typename T>
         void Write(const T& value)
         {
-            assert(m_Offset + ssizeof(T) <= m_Size);
+            assert(m_Offset + ssizeof(T) <= m_Size, "Out of bounds diff in " __FUNCTION__);
 
             if (memcmp(m_Buffer1 + m_Offset, m_Buffer2 + m_Offset, sizeof(T)) != 0)
             {
@@ -838,7 +846,7 @@ namespace
         int m_MaxAutomaticInputDelay = c_MaxInputDelay;
         int m_CatchupState = 0;
 
-        constexpr Session() : m_PlayerIndexToClientIndexMap{}
+        constexpr Session()
         {
             for (int i = 0; i < countof(m_PlayerIndexToClientIndexMap); i++)
             {
@@ -1071,7 +1079,8 @@ namespace
                             RValue arg;
                             init_real(arg, frame);
                             Script_Perform(g_gml_Script_getInputCallback, instance, instance, 1, &result, &arg);
-                            input = bitwise_cast<InputFlags_t>(YYGetInt64(&result, 0));
+                            assert(result.kind == VALUE_INT64);
+                            input = bitwise_cast<InputFlags_t>(result.v64);
                         }
 
                         // if we have more inputs than we need, only keep the input if it's different than the previous
@@ -1087,7 +1096,8 @@ namespace
                                 init_int64(args[1], previousInput);
                                 init_int64(args[2], input);
                                 Script_Perform(g_gml_Script_getInputCallback, instance, instance, countof(args), &result, args);
-                                keepInput = YYGetBool(&result, 0);
+                                assert(result.kind == VALUE_BOOL || result.kind == VALUE_REAL);
+                                keepInput = static_cast<bool>(result.val);
                             }
                         }
 
@@ -1110,7 +1120,8 @@ namespace
                                     init_real(args[0], frame);
                                     init_int64(args[1], input);
                                     Script_Perform(g_gml_Script_getInputCallback, instance, instance, countof(args), &result, args);
-                                    input = bitwise_cast<InputFlags_t>(YYGetInt64(&result, 0));
+                                    assert(result.kind == VALUE_INT64);
+                                    input = bitwise_cast<InputFlags_t>(result.v64);
                                 }
                             }
 
@@ -1286,6 +1297,8 @@ namespace
 
                     // send all messages
                     {
+                        int64 time = g_SteamNetworkingUtils->GetLocalTimestamp();
+
                         int messageCount = 0;
                         SteamNetworkingMessage_t* netMessages[countof(m_ClientData) - 1];
                         ClientData* netMessageToClientDataMap[countof(netMessages)];
@@ -1342,8 +1355,6 @@ namespace
 
                                     count = countof(message.m_Inputs);
                                 }
-
-                                int64 time = g_SteamNetworkingUtils->GetLocalTimestamp();
 
                                 if ( // if we are sending a new frame, or we are allowed to resend it
                                     (m_Frame > clientData.m_LastSentFrame || time >= clientData.m_LastSentTime + c_TimeBeforeResendingMessage)
@@ -1421,7 +1432,6 @@ namespace
 
                         if (messageCount > 0)
                         {
-                            int64 time = g_SteamNetworkingUtils->GetLocalTimestamp();
                             int64 outResults[countof(netMessages)];
 
                             g_SteamNetworkingSockets->SendMessages(messageCount, netMessages, outResults);
