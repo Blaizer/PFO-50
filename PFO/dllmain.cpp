@@ -1518,6 +1518,7 @@ namespace
                                 if (msg.message == WM_QUIT || msg.message == WM_CLOSE)
                                 {
                                     PostMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
+                                    Close();
                                     m_OnlineState = EOnlineState::Quitting;
                                     break;
                                 }
@@ -1812,6 +1813,20 @@ namespace
             }
         }
 
+        void Disconnect()
+        {
+            Close();
+
+            if (m_OnlineState == EOnlineState::Online)
+            {
+                m_OnlineState = EOnlineState::GoingOffline;
+            }
+            else if (m_OnlineState == EOnlineState::GoingOnline)
+            {
+                m_OnlineState = EOnlineState::Offline;
+            }
+        }
+
         InputFlags_t PlayerGetInput(CInstance* instance, int playerIndex)
         {
             InputFlags_t in = 0;
@@ -1868,6 +1883,7 @@ namespace
 
                         // we quit when a checksum failure happens, could change this in the future
                         PostMessageW(nullptr, WM_QUIT, 0, 0);
+                        Close();
                         m_OnlineState = EOnlineState::Quitting;
                     }
                 }
@@ -3314,16 +3330,7 @@ YYEXPORT void pfo_disconnect(RValue& result, CInstance* selfinst, CInstance* oth
 {
     assert(argc == 0);
 
-    g_Session.Close();
-
-    if (g_Session.m_OnlineState == EOnlineState::Online)
-    {
-        g_Session.m_OnlineState = EOnlineState::GoingOffline;
-    }
-    else if (g_Session.m_OnlineState == EOnlineState::GoingOnline)
-    {
-        g_Session.m_OnlineState = EOnlineState::Offline;
-    }
+    g_Session.Disconnect();
 }
 
 YYEXPORT void pfo_steam_lobby_get_member_data(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
