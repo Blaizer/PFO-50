@@ -127,10 +127,7 @@ namespace
             {
                 DWORD bytesToWrite = narrow_cast<DWORD>(length);
                 DWORD bytesWritten;
-                if (WriteFile(logFile, g_TempBuffer, bytesToWrite, &bytesWritten, nullptr) || bytesWritten != bytesToWrite)
-                {
-                    // ok
-                }
+                WriteFile(logFile, g_TempBuffer, bytesToWrite, &bytesWritten, nullptr);
             }
 
             CloseHandle(logFile);
@@ -274,8 +271,8 @@ namespace
 
     struct Writer
     {
-        uint8* m_Buffer;
-        int m_Size;
+        uint8* const m_Buffer;
+        int const m_Size;
         int m_Offset = 0;
 
         Writer() = delete;
@@ -299,8 +296,8 @@ namespace
 
     struct Reader
     {
-        const uint8* m_Buffer;
-        int m_Size;
+        const uint8* const m_Buffer;
+        int const m_Size;
         int m_Offset = 0;
 
         Reader() = delete;
@@ -339,8 +336,8 @@ namespace
 
     struct StringWriter
     {
-        char* m_String;
-        int m_Size;
+        char* const m_String;
+        int const m_Size;
         int m_Offset = 0;
         int m_Depth = 0;
         bool m_HasValue = false;
@@ -424,10 +421,10 @@ namespace
     template<typename TDiffable>
     struct Differ
     {
-        const uint8* m_Buffer1;
-        const uint8* m_Buffer2;
+        const uint8* const m_Buffer1;
+        const uint8* const m_Buffer2;
         const char* m_Name = nullptr;
-        int m_Size;
+        int const m_Size;
         int m_Offset = 0;
         int m_TextOffset = 0;
         int m_Differences = 0;
@@ -979,7 +976,7 @@ namespace
 
                     {
                         Writer writer(g_ChecksumRingBuffer + (checksumRingBufferHead & (c_ChecksumRingBufferSize - 1)), GetMaxSize());
-                        Serialize(writer);
+                        [[msvc::forceinline_calls]] Serialize(writer); // this generates way better code when inlined
                         checksumBuffer.m_SessionBufferSize = writer.m_Offset;
                         checksumRingBufferHead += writer.m_Offset;
                     }
