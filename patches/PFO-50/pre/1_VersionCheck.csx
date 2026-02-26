@@ -3,7 +3,7 @@
 using System.Text.Json;
 using System.Security;
 
-var requiredVersion = new Version("2.0.3");
+var requiredVersion = new Version("2.0.4");
 var requiredVersionMessage = $"UFO 50 Mod Loader version {requiredVersion} or newer is required to install PFO 50.";
 
 struct Settings
@@ -64,7 +64,11 @@ if (settingsVersion < requiredVersion)
 var ufo50Version = GetUFO50Version(Data);
 var expectedUfo50Version = new Version(GetGameVersion());
 
-if (ufo50Version != expectedUfo50Version)
+if (ufo50Version > expectedUfo50Version)
+{
+    throw new ScriptException($"Your UFO 50 version {ufo50Version} is newer than the version supported by this release of PFO 50 (supports {expectedUfo50Version}). Please try downloading the latest version of PFO 50.");
+}
+else if (ufo50Version != expectedUfo50Version)
 {
     throw new ScriptException($"UFO 50 version {expectedUfo50Version} is required to install PFO 50 but yours is currently version {ufo50Version}. Verify integrity of UFO 50 in Steam and select 'Verify Vanilla Copy' in the Mod Loader.");
 }
