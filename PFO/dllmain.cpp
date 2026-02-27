@@ -721,7 +721,7 @@ namespace
         int16 m_ChecksumFrameDelta;
 
         template<typename T>
-        constexpr void Serialize(T& writer)
+        FORCEINLINE constexpr void Serialize(T& writer)
         {
             writer.Write(m_LastReceivedMessageNumber);
             writer.Write(m_FirstInputFrame);
