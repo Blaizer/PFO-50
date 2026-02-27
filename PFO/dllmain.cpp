@@ -881,6 +881,7 @@ namespace
 
                 BEGIN_ARRAY("ClientData")
                 {
+                    assert(m_ClientCount <= countof(m_ClientData));
                     for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
                     {
                         BEGIN_STRUCT()
