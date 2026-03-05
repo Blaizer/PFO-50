@@ -6,7 +6,7 @@
 #include "YYRValue.h"
 #define YYEXPORT __declspec(dllexport)
 
-//#pragma warning(default: 4365)
+#pragma warning(default: 4365)
 #pragma warning(default: 4388)
 #pragma warning(default: 4800)
 //#pragma warning(default: 4820)
@@ -49,8 +49,8 @@ namespace
     #define assert(a) __assume(a)
     #endif
 
-    #define countof(a) static_cast<ptrdiff_t>(sizeof(a) / sizeof((a)[0]))
-    #define ssizeof(a) static_cast<ptrdiff_t>(sizeof(a))
+    #define countof(a) static_cast<int>(sizeof(a) / sizeof((a)[0]))
+    #define ssizeof(a) static_cast<int>(sizeof(a))
 
     template<typename T>
     FORCEINLINE constexpr T min(T a, T b)
@@ -288,8 +288,8 @@ namespace
 
         void Write(const void* buffer, int size)
         {
-            assert(m_Offset + size <= m_Size, "Out of bounds write");
-            memcpy(m_Buffer + m_Offset, buffer, size);
+            assert(static_cast<size_t>(size) <= static_cast<size_t>(m_Size - m_Offset), "Out of bounds write");
+            memcpy(m_Buffer + m_Offset, buffer, static_cast<size_t>(size));
             m_Offset += size;
         }
     };
@@ -313,8 +313,8 @@ namespace
 
         void Write(void* buffer, int size)
         {
-            assert(m_Offset + size <= m_Size, "Out of bounds read");
-            memcpy(buffer, m_Buffer + m_Offset, size);
+            assert(static_cast<size_t>(size) <= static_cast<size_t>(m_Size - m_Offset), "Out of bounds read");
+            memcpy(buffer, m_Buffer + m_Offset, static_cast<size_t>(size));
             m_Offset += size;
         }
     };
@@ -361,42 +361,42 @@ namespace
 
             if (m_HasValue)
             {
-                m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, ", ");
+                m_Offset += sprintf_s(m_String + m_Offset, narrow_cast<size_t>(m_Size - m_Offset), ", ");
             }
             m_HasValue = true;
-            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, fmt, value);
+            m_Offset += sprintf_s(m_String + m_Offset, narrow_cast<size_t>(m_Size - m_Offset), fmt, value);
         }
 
         void WriteField(const char* name)
         {
             if (m_HasValue)
             {
-                m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, ", ");
+                m_Offset += sprintf_s(m_String + m_Offset, narrow_cast<size_t>(m_Size - m_Offset), ", ");
             }
             m_HasValue = false;
-            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, "%s: ", name);
+            m_Offset += sprintf_s(m_String + m_Offset, narrow_cast<size_t>(m_Size - m_Offset), "%s: ", name);
         }
 
         void BeginStruct()
         {
             if (m_HasValue)
             {
-                m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, ", ");
+                m_Offset += sprintf_s(m_String + m_Offset, narrow_cast<size_t>(m_Size - m_Offset), ", ");
             }
             if (m_InArrayAtDepth[m_Depth])
             {
-                m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, "\n");
+                m_Offset += sprintf_s(m_String + m_Offset, narrow_cast<size_t>(m_Size - m_Offset), "\n");
             }
             m_InArrayAtDepth[++m_Depth] = false;
             m_HasValue = false;
-            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, "{ ");
+            m_Offset += sprintf_s(m_String + m_Offset, narrow_cast<size_t>(m_Size - m_Offset), "{ ");
         }
 
         void EndStruct()
         {
             m_Depth--;
             m_HasValue = true;
-            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, " }");
+            m_Offset += sprintf_s(m_String + m_Offset, narrow_cast<size_t>(m_Size - m_Offset), " }");
         }
 
         void BeginArray()
@@ -404,17 +404,17 @@ namespace
             m_InArrayAtDepth[++m_Depth] = true;
             if (m_HasValue)
             {
-                m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, ", ");
+                m_Offset += sprintf_s(m_String + m_Offset, narrow_cast<size_t>(m_Size - m_Offset), ", ");
             }
             m_HasValue = false;
-            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, "[ ");
+            m_Offset += sprintf_s(m_String + m_Offset, narrow_cast<size_t>(m_Size - m_Offset), "[ ");
         }
 
         void EndArray()
         {
             m_Depth--;
             m_HasValue = true;
-            m_Offset += sprintf_s(m_String + m_Offset, m_Size - m_Offset, " ]");
+            m_Offset += sprintf_s(m_String + m_Offset, narrow_cast<size_t>(m_Size - m_Offset), " ]");
         }
     };
 
@@ -445,10 +445,10 @@ namespace
             {
                 if (m_Differences++ > 0)
                 {
-                    m_TextOffset += sprintf_s(g_TempBuffer + m_TextOffset, countof(g_TempBuffer) - m_TextOffset, ", ");
+                    m_TextOffset += sprintf_s(g_TempBuffer + m_TextOffset, narrow_cast<size_t>(countof(g_TempBuffer) - m_TextOffset), ", ");
                 }
 
-                m_TextOffset += sprintf_s(g_TempBuffer + m_TextOffset, countof(g_TempBuffer) - m_TextOffset, "\"%s\"", m_Name);
+                m_TextOffset += sprintf_s(g_TempBuffer + m_TextOffset, narrow_cast<size_t>(countof(g_TempBuffer) - m_TextOffset), "\"%s\"", m_Name);
             }
 
             m_Offset += sizeof(T);
@@ -472,21 +472,20 @@ namespace
                 diff2.Serialize(reader2);
 
                 char* str = g_TempBuffer;
-                constexpr int size = countof(g_TempBuffer);
 
-                m_TextOffset += sprintf_s(str + m_TextOffset, size - m_TextOffset, " ]\n\nOurs: ");
+                m_TextOffset += sprintf_s(str + m_TextOffset, narrow_cast<size_t>(countof(g_TempBuffer) - m_TextOffset), " ]\n\nOurs: ");
 
-                StringWriter stringWriter1(str + m_TextOffset, size - m_TextOffset);
+                StringWriter stringWriter1(str + m_TextOffset, countof(g_TempBuffer) - m_TextOffset);
                 diff1.Serialize(stringWriter1);
                 m_TextOffset += stringWriter1.m_Offset;
 
-                m_TextOffset += sprintf_s(str + m_TextOffset, size - m_TextOffset, "\n\nTheirs: ");
+                m_TextOffset += sprintf_s(str + m_TextOffset, narrow_cast<size_t>(countof(g_TempBuffer) - m_TextOffset), "\n\nTheirs: ");
 
-                StringWriter stringWriter2(str + m_TextOffset, size - m_TextOffset);
+                StringWriter stringWriter2(str + m_TextOffset, countof(g_TempBuffer) - m_TextOffset);
                 diff2.Serialize(stringWriter2);
                 m_TextOffset += stringWriter2.m_Offset;
 
-                m_TextOffset += sprintf_s(str + m_TextOffset, size - m_TextOffset, "\n");
+                m_TextOffset += sprintf_s(str + m_TextOffset, narrow_cast<size_t>(countof(g_TempBuffer) - m_TextOffset), "\n");
 
                 LogInfo("%s", g_TempBuffer);
                 ShowMessage(g_TempBuffer);
@@ -896,7 +895,7 @@ namespace
                             {
                                 for (int i = 0; i < 3; i++)
                                 {
-                                    int frame = (m_Frame - i - 1) & (countof(playerData.m_InputBuffer) - 1);
+                                    uint32_t frame = (m_Frame - i - 1) & static_cast<uint32_t>(countof(playerData.m_InputBuffer) - 1);
                                     WRITE(playerData.m_InputBuffer[frame]);
                                 }
                             }
@@ -904,7 +903,7 @@ namespace
 
                             BEGIN_STRUCT("AutomaticInputDelayChanges")
                             {
-                                int frame = (m_Frame - 1) & (countof(clientData.m_AutomaticInputDelayChanges) - 1);
+                                uint32_t frame = (m_Frame - 1) & static_cast<uint32_t>(countof(clientData.m_AutomaticInputDelayChanges) - 1);
                                 WRITE(clientData.m_AutomaticInputDelayChanges[frame].m_InputFrame, "InputFrame");
                                 WRITE(clientData.m_AutomaticInputDelayChanges[frame].m_InputDelay, "InputDelay");
                             }
@@ -996,10 +995,10 @@ namespace
                         }
 
                         int dataSize = BufferTELL(ibuffer);
-                        assert(dataSize <= g_GMLChecksumBufferMaxSize);
+                        assert(static_cast<size_t>(dataSize) <= static_cast<size_t>(g_GMLChecksumBufferMaxSize));
                         uint8* data = BufferGet(ibuffer);
 
-                        memcpy(g_ChecksumRingBuffer + (checksumRingBufferHead & (c_ChecksumRingBufferSize - 1)), data, dataSize);
+                        memcpy(g_ChecksumRingBuffer + (checksumRingBufferHead & (c_ChecksumRingBufferSize - 1)), data, static_cast<size_t>(dataSize));
                         checksumBuffer.m_GMLBufferSize = dataSize;
                         checksumRingBufferHead += dataSize;
                     }
@@ -1904,7 +1903,7 @@ namespace
             // compare pfo checksum
             uint8* aSessionBuffer = g_ChecksumRingBuffer + (a.m_BufferOffset & (c_ChecksumRingBufferSize - 1));
             uint8* bSessionBuffer = g_ChecksumRingBuffer + (b.m_BufferOffset & (c_ChecksumRingBufferSize - 1));
-            if (a.m_SessionBufferSize != b.m_SessionBufferSize || memcmp(aSessionBuffer, bSessionBuffer, a.m_SessionBufferSize) != 0)
+            if (a.m_SessionBufferSize != b.m_SessionBufferSize || memcmp(aSessionBuffer, bSessionBuffer, static_cast<size_t>(a.m_SessionBufferSize)) != 0)
             {
                 diffInSession = true;
                 Reader readerA(aSessionBuffer, a.m_SessionBufferSize);
@@ -1918,7 +1917,7 @@ namespace
             // compare gml checksum
             uint8* aGMLBuffer = aSessionBuffer + a.m_SessionBufferSize;
             uint8* bGMLBuffer = bSessionBuffer + b.m_SessionBufferSize;
-            if (a.m_GMLBufferSize != b.m_GMLBufferSize || memcmp(aGMLBuffer, bGMLBuffer, a.m_GMLBufferSize) != 0)
+            if (a.m_GMLBufferSize != b.m_GMLBufferSize || memcmp(aGMLBuffer, bGMLBuffer, static_cast<size_t>(a.m_GMLBufferSize)) != 0)
             {
                 diffInGML = true;
                 BufferWriteContent(g_GMLChecksumBuffer1, 0, aGMLBuffer, a.m_GMLBufferSize);
@@ -2812,7 +2811,7 @@ namespace
                 int dataSize = fileData->m_Size;
                 auto data = YYAlloc(dataSize);
                 assert(data != nullptr);
-                memcpy(data, fileData->m_Data, dataSize);
+                memcpy(data, fileData->m_Data, static_cast<size_t>(dataSize));
                 newData->m_Status = EFileStatus::UnownedExists;
                 newData->m_Size = dataSize;
                 newData->m_Data = data;
@@ -2902,11 +2901,11 @@ YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions,
                 while (*cmd == ' ') cmd++;
                 auto start = cmd;
                 while (*cmd != ' ' && *cmd != '\0') cmd++;
-                auto len = narrow_cast<size_t>(cmd - start);
+                auto len = narrow_cast<rsize_t>(cmd - start);
                 auto size = narrow_cast<int>(len + countof(prefix));
                 auto fileName = static_cast<char*>(YYAlloc(size));
                 strcpy_s(fileName, len, prefix);
-                strncpy_s(fileName + countof(prefix) - 1, size, start, len);
+                strncpy_s(fileName + countof(prefix) - 1, static_cast<rsize_t>(size), start, len);
                 g_LogFileName = fileName;
                 break;
             }
