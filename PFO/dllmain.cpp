@@ -6,10 +6,9 @@
 #include "YYRValue.h"
 #define YYEXPORT __declspec(dllexport)
 
-#pragma warning(default: 4365)
-#pragma warning(default: 4388)
-#pragma warning(default: 4800)
-//#pragma warning(default: 4820)
+// informational warnings
+//#pragma warning(error: 4820) // check struct padding
+//#pragma warning(error: 5045) // see where Spectre mitigation would be inserted
 
 #include "../version.h"
 

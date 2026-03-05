@@ -1475,7 +1475,7 @@ inline void AddDirectoryToSaveWhitelist(const char* _pszFilename) { g_pYYRunnerI
 inline void AddFileToSaveWhitelist(const char* _pszFilename) { g_pYYRunnerInterface->AddFileToSaveWhitelist(_pszFilename); }
 
 inline void YYStructCreate(RValue* _pStruct) { g_pYYRunnerInterface->StructCreate(_pStruct); }
-inline void YYStructAddBool(RValue* _pStruct, const char* _pKey, double _value) { return g_pYYRunnerInterface->StructAddBool(_pStruct, _pKey, _value); }
+inline void YYStructAddBool(RValue* _pStruct, const char* _pKey, double _value) { return g_pYYRunnerInterface->StructAddBool(_pStruct, _pKey, static_cast<bool>(_value)); }
 inline void YYStructAddDouble(RValue* _pStruct, const char* _pKey, double _value) { return g_pYYRunnerInterface->StructAddDouble(_pStruct, _pKey, _value); }
 inline void YYStructAddInt(RValue* _pStruct, const char* _pKey, int _value) { return g_pYYRunnerInterface->StructAddInt(_pStruct, _pKey, _value); }
 inline void YYStructAddRValue(RValue* _pStruct, const char* _pKey, RValue* _pValue) { return g_pYYRunnerInterface->StructAddRValue(_pStruct, _pKey, _pValue); }

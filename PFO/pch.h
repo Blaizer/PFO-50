@@ -11,6 +11,10 @@
 #include <stddef.h>
 #include <new>
 #include "framework.h"
+
+#pragma warning(push)
+#pragma warning(disable: 4365) // signed/unsigned mismatch
 #include "steam/steam_api.h"
+#pragma warning(pop)
 
 #endif //PCH_H
