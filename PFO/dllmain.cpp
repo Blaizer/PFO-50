@@ -276,7 +276,10 @@ namespace
         int m_Offset = 0;
 
         Writer() = delete;
-        Writer(uint8* buffer, int size) : m_Buffer(buffer), m_Size(size) {}
+        Writer(uint8* buffer, int size) : m_Buffer(buffer), m_Size(size)
+        {
+            assert(m_Size >= 0);
+        }
 
         template<typename T>
         void Write(const T& value)
@@ -301,7 +304,10 @@ namespace
         int m_Offset = 0;
 
         Reader() = delete;
-        Reader(const uint8* buffer, int size) : m_Buffer(buffer), m_Size(size) {}
+        Reader(const uint8* buffer, int size) : m_Buffer(buffer), m_Size(size)
+        {
+            assert(m_Size >= 0);
+        }
 
         template<typename T>
         void Write(T& value)
@@ -344,7 +350,10 @@ namespace
         bool m_InArrayAtDepth[43] = {};
 
         StringWriter() = delete;
-        StringWriter(char* str, int count) : m_String(str), m_Size(count) {}
+        StringWriter(char* str, int count) : m_String(str), m_Size(count)
+        {
+            assert(m_Size >= 0);
+        }
 
         template<typename T>
         void Write(const T& value)
@@ -1412,7 +1421,7 @@ namespace
                                         }
                                     }
 
-                                    Writer writer(static_cast<uint8*>(netMessage->m_pData), netMessage->m_cbSize);
+                                    Writer writer(static_cast<uint8*>(netMessage->m_pData), Message::GetMaxSize());
                                     message.Serialize(writer);
                                     netMessage->m_cbSize = writer.m_Offset;
 
@@ -2462,7 +2471,7 @@ namespace
                         netMessageToClientIndexMap[messageCount] = clientIndex;
                         auto netMessage = netMessages[messageCount++] = g_SteamNetworkingUtils->AllocateMessage(k_cbMaxSteamNetworkingSocketsMessageSizeSend);
 
-                        Writer writer(static_cast<uint8*>(netMessage->m_pData), netMessage->m_cbSize);
+                        Writer writer(static_cast<uint8*>(netMessage->m_pData), k_cbMaxSteamNetworkingSocketsMessageSizeSend);
 
                         if (reliableMessage.m_Type == EReliableMessageType::File)
                         {
