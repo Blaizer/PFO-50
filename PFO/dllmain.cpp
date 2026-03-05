@@ -716,8 +716,8 @@ namespace
             uint8 m_InputDelay;
         } m_AutomaticInputDelayChanges[countof(m_Inputs)];
 
-        uint8 m_InputFrameCount;
         int16 m_ChecksumFrameDelta;
+        uint8 m_InputFrameCount;
 
         template<typename T>
         FORCEINLINE constexpr void Serialize(T& writer)
