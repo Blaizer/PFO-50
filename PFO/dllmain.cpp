@@ -862,11 +862,11 @@ namespace
         template<typename T>
         constexpr void Serialize(T& writer)
         {
-#define BEGIN_STRUCT(...) __VA_OPT__(if constexpr (HasAnnotation<T>) { writer.WriteField(__VA_ARGS__); }) if constexpr (HasFullAnnotation<T>) { writer.BeginStruct(); }
-#define END_STRUCT() if constexpr (HasFullAnnotation<T>) { writer.EndStruct(); }
-#define BEGIN_ARRAY(...) __VA_OPT__(if constexpr (HasAnnotation<T>) { writer.WriteField(__VA_ARGS__); }) if constexpr (HasFullAnnotation<T>) { writer.BeginArray(); }
-#define END_ARRAY() if constexpr (HasFullAnnotation<T>) { writer.EndArray(); }
-#define WRITE(val, ...) __VA_OPT__(if constexpr (HasAnnotation<T>) { writer.WriteField(__VA_ARGS__); }) writer.Write(val);
+            #define BEGIN_STRUCT(...) __VA_OPT__(if constexpr (HasAnnotation<T>) { writer.WriteField(__VA_ARGS__); }) if constexpr (HasFullAnnotation<T>) { writer.BeginStruct(); }
+            #define END_STRUCT() if constexpr (HasFullAnnotation<T>) { writer.EndStruct(); }
+            #define BEGIN_ARRAY(...) __VA_OPT__(if constexpr (HasAnnotation<T>) { writer.WriteField(__VA_ARGS__); }) if constexpr (HasFullAnnotation<T>) { writer.BeginArray(); }
+            #define END_ARRAY() if constexpr (HasFullAnnotation<T>) { writer.EndArray(); }
+            #define WRITE(val, ...) __VA_OPT__(if constexpr (HasAnnotation<T>) { writer.WriteField(__VA_ARGS__); }) writer.Write(val);
 
             BEGIN_STRUCT()
             {
@@ -924,11 +924,11 @@ namespace
             }
             END_STRUCT()
 
-#undef BEGIN_STRUCT
-#undef END_STRUCT
-#undef BEGIN_ARRAY
-#undef END_ARRAY
-#undef WRITE
+            #undef BEGIN_STRUCT
+            #undef END_STRUCT
+            #undef BEGIN_ARRAY
+            #undef END_ARRAY
+            #undef WRITE
         }
 
         static consteval int GetMaxSize()
