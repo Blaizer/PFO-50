@@ -1,8 +1,8 @@
-PFO 50 v0.9.8
+PFO 50 v0.9.9
 =============
 
 PFO 50 (Play Forever Online 50) is a mod for UFO 50 that integrates
-online multiplayer support directly into UFO 50 v1.8.44.
+online multiplayer support directly into UFO 50 v1.9.1.
 
 Installation (Recommended)
 --------------------------

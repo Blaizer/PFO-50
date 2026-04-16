@@ -6186,11 +6186,15 @@
 +    draw_surface(application_surface, 0, 0);
      shader_reset();
      surface_reset_target();
-@@ -88,5 +84,5 @@
+@@ -88,5 +84,9 @@
      else
      {
 -        draw_surface_stretched(buffer_surfaces[0], screenX, screenY, screenWidth, screenHeight);
-+        draw_surface_stretched(buffer_surfaces[0], screenX, screenY, screenWidth * _scale, screenHeight * _scale);
++        var _scale_3 = min(_scale, global.scaleFill);
++        var _scissor = gpu_get_scissor();
++        gpu_set_scissor(screenX, screenY, screenWidth, screenHeight);
++        draw_surface_stretched(buffer_surfaces[0], screenX, screenY, screenWidth * _scale_3, screenHeight * _scale_3);
++        gpu_set_scissor(_scissor);
      }
  }
 --- original/gml_Object_oTitleScreens_Create_0.gml

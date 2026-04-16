@@ -128,6 +128,9 @@ async Task PatchPFO50Extension()
             Data.Functions.EnsureDefined(name, Data.Strings);
         }
 
+        DefineFunction("gpu_get_scissor");
+        DefineFunction("gpu_set_scissor");
+
         DefineFunction("steam_get_user_steam_id");
         DefineFunction("steam_get_user_persona_name");
         DefineFunction("steam_get_user_persona_name_sync");
