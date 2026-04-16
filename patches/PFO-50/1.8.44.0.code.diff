@@ -681,137 +681,6 @@
 +        }
 +    }
  }
---- original/gml_GlobalScript_scrDrawCRTSetup.gml
-+++ patched/gml_GlobalScript_scrDrawCRTSetup.gml
-@@ -1,4 +1,5 @@
- function scrDrawCRTSetup()
- {
-+    global.paletteSurface = -1;
-     global.bufferSurface = [-1, -1];
-     global.CRTScaleMax = 8;
-@@ -28,9 +29,3 @@
-     CRT_blurBiDirection = shader_get_uniform(CRTShaderBlur, "BLUR_BI");
-     CRT_blurResolution = shader_get_uniform(CRTShaderBlur, "RES");
--    CRTShaderGlow = shd_CRT_Glow;
--    CRT_glowRadius = shader_get_uniform(CRTShaderGlow, "BLOOM_RADIUS");
--    CRT_glowSampleCount = shader_get_uniform(CRTShaderGlow, "BLOOM_SAMPLES");
--    CRT_glowEffectBase = shader_get_uniform(CRTShaderGlow, "BLOOM_BASE");
--    CRT_glowEffectDirs = shader_get_uniform(CRTShaderGlow, "BLOOM_DIRECTIONS");
--    CRT_glowResolution = shader_get_uniform(CRTShaderGlow, "RES");
- }
---- original/gml_GlobalScript_scrDrawCRT_2xScale.gml
-+++ patched/gml_GlobalScript_scrDrawCRT_2xScale.gml
-@@ -1,6 +1,4 @@
- function scrDrawCRT_2xScale()
- {
--    static paletteSurface = undefined;
--    
-     scrScaleDisplay();
-     var surfaceFlag = 1;
-@@ -10,24 +8,14 @@
-     {
-         _effectIntensity = 2;
--        if (!surface_exists(paletteSurface))
--        {
--            paletteSurface = surface_create(384, 216);
-         }
--        surface_copy(paletteSurface, 0, 0, global.bufferSurface[0]);
--    }
-     else
-     {
-         _effectIntensity = global.scanlines;
-     }
--    surface_set_target(global.bufferSurface[surfaceFlag]);
--    gpu_set_tex_filter(false);
--    draw_surface_ext(global.bufferSurface[0], 0, 0, 2, 2, 0, c_white, 1);
--    surface_reset_target();
--    surfaceFlag = !surfaceFlag;
-     shader_set(CRTShaderGrid_2x);
-     shader_set_uniform_f(CRT_2x_scanLineForce, (_effectIntensity == 1) ? 0.07 : 0.25);
-     shader_set_uniform_f(CRT_2x_scanRGBForce, (_effectIntensity == 1) ? 0.05 : 0.1);
-     surface_set_target(global.bufferSurface[surfaceFlag]);
--    draw_surface_ext(global.bufferSurface[!surfaceFlag], 0, 0, 1, 1, 0, c_white, 1);
-+    draw_surface_ext(global.paletteSurface, 0, 0, 2, 2, 0, c_white, 1);
-     surface_reset_target();
-     shader_reset();
-@@ -42,5 +30,5 @@
-     shader_set_uniform_f_array(CRT_blurResolution, [768, 432]);
-     surface_set_target(global.bufferSurface[surfaceFlag]);
--    draw_surface_ext(global.bufferSurface[!surfaceFlag], 0, 0, 1, 1, 0, c_white, 1);
-+    draw_surface(global.bufferSurface[!surfaceFlag], 0, 0);
-     surface_reset_target();
-     shader_reset();
-@@ -61,5 +49,5 @@
-     if (global.scanlines == 1 && softType == 0)
-     {
--        draw_surface_stretched(paletteSurface, screenX, screenY, screenWidth, screenHeight);
-+        draw_surface_stretched(global.paletteSurface, screenX, screenY, screenWidth, screenHeight);
-         gpu_set_tex_filter(true);
-         draw_surface_stretched_ext(global.bufferSurface[!surfaceFlag], screenX, screenY, screenWidth, screenHeight, 16777215, 0.6);
---- original/gml_GlobalScript_scrDrawCRT_NxScale.gml
-+++ patched/gml_GlobalScript_scrDrawCRT_NxScale.gml
-@@ -1,6 +1,4 @@
- function scrDrawCRT_NxScale(arg0)
- {
--    static paletteSurface = undefined;
--    
-     scrScaleDisplay();
-     var surfaceFlag = 1;
-@@ -11,21 +9,11 @@
-     {
-         _effectIntensity = 2;
--        if (!surface_exists(paletteSurface))
--        {
--            paletteSurface = surface_create(384, 216);
-         }
--        surface_copy(paletteSurface, 0, 0, global.bufferSurface[0]);
--    }
-     else
-     {
-         _effectIntensity = global.scanlines;
-     }
--    surface_set_target(global.bufferSurface[surfaceFlag]);
--    gpu_set_tex_filter(false);
-     var _scalex = window_get_fullscreen() ? min(arg0, window_get_width() / 384, global.CRTScaleMax) : min(global.CRTScaleMax, window_get_width() / 384);
-     var _scaley = window_get_fullscreen() ? min(arg0, window_get_height() / 216, global.CRTScaleMax) : min(global.CRTScaleMax, window_get_height() / 216);
--    draw_surface_stretched(global.bufferSurface[0], 0, 0, surface_get_width(global.bufferSurface[0]) * _scalex, surface_get_height(global.bufferSurface[0]) * _scaley);
--    surface_reset_target();
--    surfaceFlag = !surfaceFlag;
-     shader_set(CRTShaderGrid_Nx);
-     var _gridSettings = [[0.4, 1, 2 * ((_effectIntensity == 1) ? 0.5 : 1)], [0.6, 1, 0.5 * ((_effectIntensity == 1) ? 0.3 : 1)], [1.2, 1, 0.15 * ((_effectIntensity == 1) ? 0.35 : 1)], [1, 1, 0.2 * ((_effectIntensity == 1) ? 0.35 : 1)], [1.2, 1, 0.15 * ((_effectIntensity == 1) ? 0.35 : 1)], [1.2, 1, 0.15 * ((_effectIntensity == 1) ? 0.35 : 1)]];
-@@ -38,5 +26,5 @@
-     shader_set_uniform_f_array(CRT_Nx_resolution, [384 * _scalex, 216 * _scaley]);
-     surface_set_target(global.bufferSurface[surfaceFlag]);
--    draw_surface(global.bufferSurface[!surfaceFlag], 0, 0);
-+    draw_surface_stretched(global.paletteSurface, 0, 0, surface_get_width(global.bufferSurface[0]), surface_get_height(global.bufferSurface[0]));
-     surface_reset_target();
-     shader_reset();
-@@ -102,5 +90,5 @@
-     if (global.scanlines == 1 && softType == 0)
-     {
--        draw_surface_stretched(paletteSurface, screenX, screenY, screenWidth, screenHeight);
-+        draw_surface_stretched(global.paletteSurface, screenX, screenY, screenWidth, screenHeight);
-         gpu_set_tex_filter(true);
-         draw_surface_stretched_ext(global.bufferSurface[!surfaceFlag], screenX, screenY, screenWidth, screenHeight, 16777215, 0.6);
---- original/gml_GlobalScript_scrDrawCRT_Off.gml
-+++ patched/gml_GlobalScript_scrDrawCRT_Off.gml
-@@ -2,4 +2,4 @@
- {
-     scrScaleDisplay();
--    draw_surface_stretched(global.bufferSurface[0], screenX, screenY, screenWidth, screenHeight);
-+    draw_surface_stretched(global.paletteSurface, screenX, screenY, screenWidth, screenHeight);
- }
---- original/gml_GlobalScript_scrDrawCheckSurfaces.gml
-+++ patched/gml_GlobalScript_scrDrawCheckSurfaces.gml
-@@ -11,4 +11,8 @@
-     var _window_height_limit = (global.scale == 1) ? 216 : clamp(window_height, 216, 216 * _scale);
-     var surfaceFlag = 0;
-+    if (!surface_exists(global.paletteSurface))
-+    {
-+        global.paletteSurface = surface_create(384, 216);
-+    }
-     for (var i = 0; i < 2; i++)
-     {
 --- original/gml_GlobalScript_scrDrawJoyIcon.gml
 +++ patched/gml_GlobalScript_scrDrawJoyIcon.gml
 @@ -1,4 +1,8 @@
@@ -822,14 +691,6 @@
 +        arg3 = 0;
 +    }
      draw_sprite(global.JOY_TYPE_SPRITE[global.joyType[arg3]], scrGetJoyIndex(arg2), arg0, arg1);
- }
---- original/gml_GlobalScript_scrDrawPaletteSetup.gml
-+++ patched/gml_GlobalScript_scrDrawPaletteSetup.gml
-@@ -2,5 +2,4 @@
- {
-     PaletteShader = shd_pal;
--    u_res = shader_get_uniform(PaletteShader, "u_resolution");
-     u_bri = shader_get_uniform(PaletteShader, "u_brightness");
  }
 --- original/gml_GlobalScript_scrDrawProfile.gml
 +++ patched/gml_GlobalScript_scrDrawProfile.gml
@@ -934,14 +795,12 @@
  }
 --- original/gml_GlobalScript_scrGetInput.gml
 +++ patched/gml_GlobalScript_scrGetInput.gml
-@@ -1,8 +1,20 @@
+@@ -1,10 +1,22 @@
  function scrGetInput(arg0)
  {
--    var _slot = global.joySlot[arg0];
--    if (global.playbackMode && is_array(global.inputPlayback) && instance_exists(oGame))
 +    var _getInputType = (argument_count > 1) ? argument[1] : UnknownEnum.Value_0;
 +    if ((_getInputType & UnknownEnum.Value_1) != 0 && pfo_is_online())
-     {
++    {
 +        arg0 = 0;
 +    }
 +    if ((_getInputType & UnknownEnum.Value_2) == 0 && global.playbackMode && is_array(global.inputPlayback) && instance_exists(oGame))
@@ -952,12 +811,16 @@
 +        }
 +        else
 +        {
-+            var _slot = global.joySlot[arg0];
-         pressStart = keyboard_check_pressed(global.keyMap[arg0][global.INP_START]) || gamepad_button_check_pressed(_slot, global.joyMap[arg0][global.INP_START]) || keyboard_check_pressed(vk_escape);
+     var key_map = global.keyMap[arg0];
+     var joy_map = global.joyMap[arg0];
+     var _slot = global.joySlot[arg0];
+-    if (global.playbackMode && is_array(global.inputPlayback) && instance_exists(oGame))
+-    {
+         pressStart = keyboard_check_pressed(key_map[6]) || gamepad_button_check_pressed(_slot, joy_map[6]) || keyboard_check_pressed(vk_escape);
 +        }
          if (pressStart)
          {
-@@ -13,4 +25,11 @@
+@@ -15,4 +27,13 @@
          exit;
      }
 +    if ((_getInputType & UnknownEnum.Value_1) == 0 && pfo_is_online())
@@ -966,16 +829,18 @@
 +    }
 +    else
 +    {
++        var key_map = global.keyMap[arg0];
++        var joy_map = global.joyMap[arg0];
 +        var _slot = global.joySlot[arg0];
-     holdUp = keyboard_check(global.keyMap[arg0][global.INP_UP]);
-     holdDown = keyboard_check(global.keyMap[arg0][global.INP_DOWN]);
-@@ -145,4 +164,5 @@
+     holdUp = keyboard_check(key_map[0]);
+     holdDown = keyboard_check(key_map[1]);
+@@ -135,4 +156,5 @@
      }
-     pressStart = keyboard_check_pressed(global.keyMap[arg0][global.INP_START]) || gamepad_button_check_pressed(_slot, global.joyMap[arg0][global.INP_START]) || keyboard_check_pressed(vk_escape);
+     pressStart = keyboard_check_pressed(key_map[6]) || gamepad_button_check_pressed(_slot, joy_map[6]) || keyboard_check_pressed(vk_escape);
 +        forcePause = global.steamOverlayActivated;
      if (holdLeft && holdRight)
      {
-@@ -184,3 +204,12 @@
+@@ -174,3 +196,12 @@
          global.inputFocus = 2;
      }
 +    }
@@ -1015,8 +880,8 @@
  {
 +    scrGetInputBoth();
 +    exit;
-     for (var p = 1; p >= 0; p--)
-     {
+     var key_map = global.keyMap;
+     var joy_map = global.joyMap;
 --- original/gml_GlobalScript_scrGetInputIconWidth.gml
 +++ patched/gml_GlobalScript_scrGetInputIconWidth.gml
 @@ -1,4 +1,8 @@
@@ -1054,8 +919,8 @@
  {
 +    scrGetInputMerged();
 +    exit;
-     for (var p = 1; p >= 0; p--)
-     {
+     var key_map = global.keyMap;
+     var joy_map = global.joyMap;
 --- original/gml_GlobalScript_scrGetOkay.gml
 +++ patched/gml_GlobalScript_scrGetOkay.gml
 @@ -3,9 +3,21 @@
@@ -1105,13 +970,13 @@
  }
 --- original/gml_GlobalScript_scrInit.gml
 +++ patched/gml_GlobalScript_scrInit.gml
-@@ -54,4 +54,5 @@
+@@ -53,4 +53,5 @@
      scrInitTerminal();
      global.NUM_LIBRARY_GAMES = 50;
 +    global.MAX_PLAYERS_SUPPORTED = 0;
      global.currGame = 0;
      global.currGameID = 0;
-@@ -77,4 +78,9 @@
+@@ -76,4 +77,9 @@
      }
      scrInitInput();
 +    pfo_start();
@@ -1121,7 +986,7 @@
 +    global.s35_enemyAttackSwoopAttToY = undefined;
      global.attractMode = false;
      global.attractModeLibrary = false;
-@@ -83,11 +89,4 @@
+@@ -82,11 +88,4 @@
      global.AM_LIB_TIME_PER_GAME = 1200;
      global.attractModePlaylist = ds_list_create();
 -    for (var i = 1; i <= global.NUM_LIBRARY_GAMES; i++)
@@ -1133,7 +998,7 @@
 -    }
      global.attractModeIndex = 0;
      global.playbackMode = false;
-@@ -134,5 +133,5 @@
+@@ -133,5 +132,5 @@
      scrInitAch();
      scrInitRandomness();
 -    scrShuffle(global.attractModePlaylist);
@@ -1154,13 +1019,7 @@
      for (var i = 0; i < global.ACH_TOTAL; i++)
 --- original/gml_GlobalScript_scrInitDisplay.gml
 +++ patched/gml_GlobalScript_scrInitDisplay.gml
-@@ -2,4 +2,5 @@
- {
-     display_reset(0, true);
-+    surface_depth_disable(true);
-     global.SCREEN_WIDTH = 384;
-     global.SCREEN_HEIGHT = 216;
-@@ -15,4 +16,8 @@
+@@ -14,4 +14,8 @@
      global.scale = min(global.scale, (global.scaleFill <= global.scaleMax) ? global.scaleMax : (global.scaleMax + 1));
      global.canDoShaders = shaders_are_supported();
 +    if (global.canDoShaders)
@@ -1171,74 +1030,68 @@
      window_set_size(384 * global.scale, 216 * global.scale);
 --- original/gml_GlobalScript_scrInputAny.gml
 +++ patched/gml_GlobalScript_scrInputAny.gml
-@@ -1,23 +1,22 @@
- function scrInputAny()
- {
--    var _slot0 = global.joySlot[0];
+@@ -3,17 +3,20 @@
      if (!global.playbackMode)
      {
 -        if (holdUp || holdDown || holdLeft || holdRight || fire1 || fire2 || pressStart)
--        {
--            return true;
 +        return holdUp || holdDown || holdLeft || holdRight || fire1 || fire2 || pressStart;
-         }
-         else
++    }
++    else
          {
--            return false;
+-            return true;
 +        with (oScreenHandler)
 +        {
 +            scrInputClear();
 +            scrGetInput(0, UnknownEnum.Value_2 | ((argument_count > 0) ? argument[0] : UnknownEnum.Value_0));
 +            return pressUp || pressDown || pressLeft || pressRight || fire1pressed || fire2pressed || pressStart;
          }
+-        return false;
      }
--    else if (keyboard_check_pressed(global.keyMap[0][global.INP_UP]) || keyboard_check_pressed(global.keyMap[0][global.INP_DOWN]) || keyboard_check_pressed(global.keyMap[0][global.INP_LEFT]) || keyboard_check_pressed(global.keyMap[0][global.INP_RIGHT]) || keyboard_check_pressed(global.keyMap[0][global.INP_FIRE1]) || keyboard_check_pressed(global.keyMap[0][global.INP_FIRE2]) || keyboard_check_pressed(global.keyMap[0][global.INP_START]) || keyboard_check_pressed(vk_escape) || gamepad_button_check_pressed(_slot0, gp_padu) || gamepad_button_check_pressed(_slot0, gp_padd) || gamepad_button_check_pressed(_slot0, gp_padl) || gamepad_button_check_pressed(_slot0, gp_padr) || gamepad_button_check_pressed(_slot0, global.joyMap[0][global.INP_FIRE1]) || gamepad_button_check_pressed(_slot0, global.joyMap[0][global.INP_FIRE2]) || gamepad_button_check_pressed(_slot0, global.joyMap[0][global.INP_START]))
+-    var key_map = global.keyMap;
+-    var joy_map = global.joyMap;
+-    var _slot0 = global.joySlot[0];
+-    if (keyboard_check_pressed(key_map[0][0]) || keyboard_check_pressed(key_map[0][1]) || keyboard_check_pressed(key_map[0][2]) || keyboard_check_pressed(key_map[0][3]) || keyboard_check_pressed(key_map[0][4]) || keyboard_check_pressed(key_map[0][5]) || keyboard_check_pressed(key_map[0][6]) || keyboard_check_pressed(vk_escape) || gamepad_button_check_pressed(_slot0, gp_padu) || gamepad_button_check_pressed(_slot0, gp_padd) || gamepad_button_check_pressed(_slot0, gp_padl) || gamepad_button_check_pressed(_slot0, gp_padr) || gamepad_button_check_pressed(_slot0, joy_map[0][4]) || gamepad_button_check_pressed(_slot0, joy_map[0][5]) || gamepad_button_check_pressed(_slot0, joy_map[0][6]))
 -    {
 -        return true;
      }
--    else
+-    return false;
 +
 +enum UnknownEnum
-     {
--        return false;
--    }
++{
 +    Value_0,
 +    Value_2 = 2
  }
 --- original/gml_GlobalScript_scrInputAnyBoth.gml
 +++ patched/gml_GlobalScript_scrInputAnyBoth.gml
-@@ -1,24 +1,22 @@
- function scrInputAnyBoth()
- {
--    var _slot0 = global.joySlot[0];
--    var _slot1 = global.joySlot[1];
+@@ -3,18 +3,20 @@
      if (!global.playbackMode)
      {
 -        if (holdUp || holdDown || holdLeft || holdRight || fire1 || fire2 || pressStart)
--        {
--            return true;
 +        return holdUp || holdDown || holdLeft || holdRight || fire1 || fire2 || pressStart;
-         }
-         else
++    }
++    else
          {
--            return false;
+-            return true;
 +        with (oScreenHandler)
 +        {
 +            scrInputClear();
 +            scrGetInputBoth(UnknownEnum.Value_2 | ((argument_count > 0) ? argument[0] : UnknownEnum.Value_0));
 +            return bPressUp[0] || bPressDown[0] || bPressLeft[0] || bPressRight[0] || bFire1pressed[0] || bFire2pressed[0] || bPressStart[0] || bPressUp[1] || bPressDown[1] || bPressLeft[1] || bPressRight[1] || bFire1pressed[1] || bFire2pressed[1] || bPressStart[1];
          }
+-        return false;
      }
--    else if (keyboard_check_pressed(global.keyMap[0][global.INP_UP]) || keyboard_check_pressed(global.keyMap[0][global.INP_DOWN]) || keyboard_check_pressed(global.keyMap[0][global.INP_LEFT]) || keyboard_check_pressed(global.keyMap[0][global.INP_RIGHT]) || keyboard_check_pressed(global.keyMap[0][global.INP_FIRE1]) || keyboard_check_pressed(global.keyMap[0][global.INP_FIRE2]) || keyboard_check_pressed(global.keyMap[0][global.INP_START]) || keyboard_check_pressed(vk_escape) || gamepad_button_check_pressed(_slot0, gp_padu) || gamepad_button_check_pressed(_slot0, gp_padd) || gamepad_button_check_pressed(_slot0, gp_padl) || gamepad_button_check_pressed(_slot0, gp_padr) || gamepad_button_check_pressed(_slot0, global.joyMap[0][global.INP_FIRE1]) || gamepad_button_check_pressed(_slot0, global.joyMap[0][global.INP_FIRE2]) || gamepad_button_check_pressed(_slot0, global.joyMap[0][global.INP_START]) || keyboard_check_pressed(global.keyMap[1][global.INP_UP]) || keyboard_check_pressed(global.keyMap[1][global.INP_DOWN]) || keyboard_check_pressed(global.keyMap[1][global.INP_LEFT]) || keyboard_check_pressed(global.keyMap[1][global.INP_RIGHT]) || keyboard_check_pressed(global.keyMap[1][global.INP_FIRE1]) || keyboard_check_pressed(global.keyMap[1][global.INP_FIRE2]) || keyboard_check_pressed(global.keyMap[1][global.INP_START]) || gamepad_button_check_pressed(_slot1, gp_padu) || gamepad_button_check_pressed(_slot1, gp_padd) || gamepad_button_check_pressed(_slot1, gp_padl) || gamepad_button_check_pressed(_slot1, gp_padr) || gamepad_button_check_pressed(_slot1, global.joyMap[0][global.INP_FIRE1]) || gamepad_button_check_pressed(_slot1, global.joyMap[0][global.INP_FIRE2]) || gamepad_button_check_pressed(_slot1, global.joyMap[0][global.INP_START]))
+-    var key_map = global.keyMap;
+-    var joy_map = global.joyMap;
+-    var _slot0 = global.joySlot[0];
+-    var _slot1 = global.joySlot[1];
+-    if (keyboard_check_pressed(key_map[0][0]) || keyboard_check_pressed(key_map[0][1]) || keyboard_check_pressed(key_map[0][2]) || keyboard_check_pressed(key_map[0][3]) || keyboard_check_pressed(key_map[0][4]) || keyboard_check_pressed(key_map[0][5]) || keyboard_check_pressed(key_map[0][6]) || keyboard_check_pressed(vk_escape) || gamepad_button_check_pressed(_slot0, gp_padu) || gamepad_button_check_pressed(_slot0, gp_padd) || gamepad_button_check_pressed(_slot0, gp_padl) || gamepad_button_check_pressed(_slot0, gp_padr) || gamepad_button_check_pressed(_slot0, joy_map[0][4]) || gamepad_button_check_pressed(_slot0, joy_map[0][5]) || gamepad_button_check_pressed(_slot0, joy_map[0][6]) || keyboard_check_pressed(key_map[1][0]) || keyboard_check_pressed(key_map[1][1]) || keyboard_check_pressed(key_map[1][2]) || keyboard_check_pressed(key_map[1][3]) || keyboard_check_pressed(key_map[1][4]) || keyboard_check_pressed(key_map[1][5]) || keyboard_check_pressed(key_map[1][6]) || gamepad_button_check_pressed(_slot1, gp_padu) || gamepad_button_check_pressed(_slot1, gp_padd) || gamepad_button_check_pressed(_slot1, gp_padl) || gamepad_button_check_pressed(_slot1, gp_padr) || gamepad_button_check_pressed(_slot1, joy_map[0][4]) || gamepad_button_check_pressed(_slot1, joy_map[0][5]) || gamepad_button_check_pressed(_slot1, joy_map[0][6]))
 -    {
 -        return true;
      }
--    else
+-    return false;
 +
 +enum UnknownEnum
-     {
--        return false;
--    }
++{
 +    Value_0,
 +    Value_2 = 2
  }
@@ -2148,29 +2001,35 @@
      }
 -    numSponsees = scr14_GetSponsee();
 -    scr14_GetStable();
+-    for (i = 0; i < 2; i++)
 +    if (!onlineOtherHumanTurn)
-+    {
+     {
+-        if (stable[i] != -4)
 +        var sponseeCandidates = ds_list_create();
 +        for (var listPos = 0; listPos < NUM_QUIBBLES; listPos++)
-+        {
+         {
+-            if (!stable[i].trained)
 +            var inCurrentRace = false;
 +            if (ds_list_find_value(quibbles, listPos) == currQ[0] || ds_list_find_value(quibbles, listPos) == currQ[1] || ds_list_find_value(quibbles, listPos) == currQ[2])
-+            {
+             {
+-                stable[i].qSpeed -= TRAIN_AMOUNT;
 +                inCurrentRace = true;
-+            }
+             }
+-            else
 +            var alreadySponsored = false;
 +            if (ds_list_find_value(quibbles, listPos).sponsor != -1)
-+            {
+             {
+-                stable[i].trained = false;
 +                alreadySponsored = true;
-+            }
+             }
 +            var inFutureRace = false;
 +            for (var j = deckIndex; j < (roundsToWin * 3); j++)
 +            {
 +                if (ds_list_find_value(quibbleDeck, j) == ds_list_find_value(quibbles, listPos))
 +                {
 +                    inFutureRace = true;
-+                }
-+            }
+         }
+     }
 +            if (!inCurrentRace && !alreadySponsored && inFutureRace)
 +            {
 +                ds_list_add(sponseeCandidates, ds_list_find_value(quibbles, listPos));
@@ -2180,32 +2039,27 @@
 +        if (onlineFirstHumanTurn)
 +        {
 +            var numPlayersNeedingSponsees = 2;
-     for (var i = 0; i < 2; i++)
-     {
--        if (stable[i] != -4)
++            for (var i = 0; i < 2; i++)
++            {
 +                if (stable[i][0] != -4 && stable[i][1] != -4)
-         {
--            if (!stable[i].trained)
++                {
 +                    numPlayersNeedingSponsees--;
 +                }
 +            }
 +            var numSponseesPerPlayer = 3;
 +            if (numPlayersNeedingSponsees == 2)
-             {
--                stable[i].qSpeed -= TRAIN_AMOUNT;
++            {
 +                numSponseesPerPlayer = min(3, floor(ds_list_size(sponseeCandidates) / 2));
-             }
--            else
++            }
 +            for (var i = 0; i < 2; i++)
-             {
--                stable[i].trained = false;
++            {
 +                var num = scr14_GetSponsee(i, sponseeCandidates, (stable[i][0] != -4 && stable[i][1] != -4) ? 0 : numSponseesPerPlayer);
 +                if (i == currPlayer)
 +                {
 +                    numSponsees = num;
-             }
-         }
-     }
++                }
++            }
++        }
 +        else
 +        {
 +            numSponsees = scr14_GetSponsee(currPlayer, sponseeCandidates, 3);
@@ -3071,12 +2925,13 @@
 +    }
      else if (numPlayers == 1 || numPlayers == 3 || (numPlayers == 2 && currPlayer == 0))
      {
-@@ -85,4 +96,313 @@
+@@ -85,6 +96,315 @@
          break;
  }
+-for (i = 0; i < 3; i++)
 +
 +function scr14_CurrentPlayerIsLocal()
-+{
+ {
 +    return numPlayers != 2 || !global.onlineSimultaneousTurns || currPlayer == pfo_client_get_player_index();
 +}
 +
@@ -3383,10 +3238,15 @@
 +    commandPlayer++;
 +}
 +currPlayer = savedCurrPlayer;
- for (var i = 0; i < 3; i++)
- {
-@@ -125,11 +445,43 @@
- for (var i = 0; i < 3; i++)
++for (var i = 0; i < 3; i++)
++{
+     var numRepeats = 1;
+     if (state == STATE_GAME_RESULTS)
+@@ -123,13 +443,45 @@
+     }
+ }
+-for (i = 0; i < 3; i++)
++for (var i = 0; i < 3; i++)
  {
 +    if (bet[i] > scr14_GetCash(i))
 +    {
@@ -5654,22 +5514,22 @@
      drawMenu = true;
 -    scrMenuCreate(scrString("menu_head_keyboard_config"), menuSel);
 -    OP_PLAYER = scrMenuItem(TYPE_PLAYER, scrString("menu_item_player"), currPlayer);
--    OP_UP = scrMenuItem(TYPE_DUAL_KEY, scrString("menu_item_up"), 0, keyMap[currPlayer][global.INP_UP]);
--    OP_DOWN = scrMenuItem(TYPE_DUAL_KEY, scrString("menu_item_down"), 0, keyMap[currPlayer][global.INP_DOWN]);
--    OP_LEFT = scrMenuItem(TYPE_DUAL_KEY, scrString("menu_item_left"), 0, keyMap[currPlayer][global.INP_LEFT]);
--    OP_RIGHT = scrMenuItem(TYPE_DUAL_KEY, scrString("menu_item_right"), 0, keyMap[currPlayer][global.INP_RIGHT]);
--    OP_FIRE1 = scrMenuItem(TYPE_DUAL_KEY, scrStringVal("menu_item_fire1", "{1}"), 0, keyMap[currPlayer][global.INP_FIRE1]);
--    OP_FIRE2 = scrMenuItem(TYPE_DUAL_KEY, scrStringVal("menu_item_fire2", "{2}"), 0, keyMap[currPlayer][global.INP_FIRE2]);
--    OP_START = scrMenuItem(TYPE_DUAL_KEY, scrString("menu_item_start"), 0, keyMap[currPlayer][global.INP_START]);
+-    OP_UP = scrMenuItem(TYPE_DUAL_KEY, scrString("menu_item_up"), 0, keyMap[currPlayer][0]);
+-    OP_DOWN = scrMenuItem(TYPE_DUAL_KEY, scrString("menu_item_down"), 0, keyMap[currPlayer][1]);
+-    OP_LEFT = scrMenuItem(TYPE_DUAL_KEY, scrString("menu_item_left"), 0, keyMap[currPlayer][2]);
+-    OP_RIGHT = scrMenuItem(TYPE_DUAL_KEY, scrString("menu_item_right"), 0, keyMap[currPlayer][3]);
+-    OP_FIRE1 = scrMenuItem(TYPE_DUAL_KEY, scrStringVal("menu_item_fire1", "{1}"), 0, keyMap[currPlayer][4]);
+-    OP_FIRE2 = scrMenuItem(TYPE_DUAL_KEY, scrStringVal("menu_item_fire2", "{2}"), 0, keyMap[currPlayer][5]);
+-    OP_START = scrMenuItem(TYPE_DUAL_KEY, scrString("menu_item_start"), 0, keyMap[currPlayer][6]);
 +    scrMenuCreate(scrStringManual("menu_head_keyboard_config", 0), menuSel);
 +    OP_PLAYER = scrMenuItem(TYPE_PLAYER, scrStringManual("menu_item_player", 0), currPlayer);
-+    OP_UP = scrMenuItem(TYPE_DUAL_KEY, scrStringManual("menu_item_up", 0), 0, keyMap[currPlayer][global.INP_UP]);
-+    OP_DOWN = scrMenuItem(TYPE_DUAL_KEY, scrStringManual("menu_item_down", 0), 0, keyMap[currPlayer][global.INP_DOWN]);
-+    OP_LEFT = scrMenuItem(TYPE_DUAL_KEY, scrStringManual("menu_item_left", 0), 0, keyMap[currPlayer][global.INP_LEFT]);
-+    OP_RIGHT = scrMenuItem(TYPE_DUAL_KEY, scrStringManual("menu_item_right", 0), 0, keyMap[currPlayer][global.INP_RIGHT]);
-+    OP_FIRE1 = scrMenuItem(TYPE_DUAL_KEY, scrStringValManual("menu_item_fire1", 0, "{1}"), 0, keyMap[currPlayer][global.INP_FIRE1]);
-+    OP_FIRE2 = scrMenuItem(TYPE_DUAL_KEY, scrStringValManual("menu_item_fire2", 0, "{2}"), 0, keyMap[currPlayer][global.INP_FIRE2]);
-+    OP_START = scrMenuItem(TYPE_DUAL_KEY, scrStringManual("menu_item_start", 0), 0, keyMap[currPlayer][global.INP_START]);
++    OP_UP = scrMenuItem(TYPE_DUAL_KEY, scrStringManual("menu_item_up", 0), 0, keyMap[currPlayer][0]);
++    OP_DOWN = scrMenuItem(TYPE_DUAL_KEY, scrStringManual("menu_item_down", 0), 0, keyMap[currPlayer][1]);
++    OP_LEFT = scrMenuItem(TYPE_DUAL_KEY, scrStringManual("menu_item_left", 0), 0, keyMap[currPlayer][2]);
++    OP_RIGHT = scrMenuItem(TYPE_DUAL_KEY, scrStringManual("menu_item_right", 0), 0, keyMap[currPlayer][3]);
++    OP_FIRE1 = scrMenuItem(TYPE_DUAL_KEY, scrStringValManual("menu_item_fire1", 0, "{1}"), 0, keyMap[currPlayer][4]);
++    OP_FIRE2 = scrMenuItem(TYPE_DUAL_KEY, scrStringValManual("menu_item_fire2", 0, "{2}"), 0, keyMap[currPlayer][5]);
++    OP_START = scrMenuItem(TYPE_DUAL_KEY, scrStringManual("menu_item_start", 0), 0, keyMap[currPlayer][6]);
      scrMenuSpacer(MENU_MEDIUM_SPACER);
      scrMenuSpacer(MENU_MEDIUM_SPACER);
 -    OP_BACK = scrMenuItem(TYPE_SINGLE, scrString("menu_item_back_to_settings"));
@@ -5758,22 +5618,22 @@
      {
 -        OP_SLOT = scrMenuItem(TYPE_DUAL_DETECT, scrString("menu_item_joypad_pairing"), 0, scrStringVal("menu_op_pad_num", global.joySlot[currPlayer]));
 -        OP_CONTROLLER = scrMenuItem(TYPE_DUAL, scrString("menu_item_controller_type"), global.joyType[currPlayer], global.JOY_TYPE_NAME);
--        OP_UP = scrMenuItem(TYPE_DUAL_JOY, scrString("menu_item_up"), 0, joyMap[currPlayer][global.INP_UP]);
--        OP_DOWN = scrMenuItem(TYPE_DUAL_JOY, scrString("menu_item_down"), 0, joyMap[currPlayer][global.INP_DOWN]);
--        OP_LEFT = scrMenuItem(TYPE_DUAL_JOY, scrString("menu_item_left"), 0, joyMap[currPlayer][global.INP_LEFT]);
--        OP_RIGHT = scrMenuItem(TYPE_DUAL_JOY, scrString("menu_item_right"), 0, joyMap[currPlayer][global.INP_RIGHT]);
--        OP_FIRE1 = scrMenuItem(TYPE_DUAL_JOY, scrStringVal("menu_item_fire1", "{1}"), 0, joyMap[currPlayer][global.INP_FIRE1]);
--        OP_FIRE2 = scrMenuItem(TYPE_DUAL_JOY, scrStringVal("menu_item_fire2", "{2}"), 0, joyMap[currPlayer][global.INP_FIRE2]);
--        OP_START = scrMenuItem(TYPE_DUAL_JOY, scrString("menu_item_start"), 0, joyMap[currPlayer][global.INP_START]);
+-        OP_UP = scrMenuItem(TYPE_DUAL_JOY, scrString("menu_item_up"), 0, joyMap[currPlayer][0]);
+-        OP_DOWN = scrMenuItem(TYPE_DUAL_JOY, scrString("menu_item_down"), 0, joyMap[currPlayer][1]);
+-        OP_LEFT = scrMenuItem(TYPE_DUAL_JOY, scrString("menu_item_left"), 0, joyMap[currPlayer][2]);
+-        OP_RIGHT = scrMenuItem(TYPE_DUAL_JOY, scrString("menu_item_right"), 0, joyMap[currPlayer][3]);
+-        OP_FIRE1 = scrMenuItem(TYPE_DUAL_JOY, scrStringVal("menu_item_fire1", "{1}"), 0, joyMap[currPlayer][4]);
+-        OP_FIRE2 = scrMenuItem(TYPE_DUAL_JOY, scrStringVal("menu_item_fire2", "{2}"), 0, joyMap[currPlayer][5]);
+-        OP_START = scrMenuItem(TYPE_DUAL_JOY, scrString("menu_item_start"), 0, joyMap[currPlayer][6]);
 +        OP_SLOT = scrMenuItem(TYPE_DUAL_DETECT, scrStringManual("menu_item_joypad_pairing", 0), 0, scrStringValManual("menu_op_pad_num", 0, global.joySlot[currPlayer]));
 +        OP_CONTROLLER = scrMenuItem(TYPE_DUAL, scrStringManual("menu_item_controller_type", 0), global.joyType[currPlayer], global.JOY_TYPE_NAME);
-+        OP_UP = scrMenuItem(TYPE_DUAL_JOY, scrStringManual("menu_item_up", 0), 0, joyMap[currPlayer][global.INP_UP]);
-+        OP_DOWN = scrMenuItem(TYPE_DUAL_JOY, scrStringManual("menu_item_down", 0), 0, joyMap[currPlayer][global.INP_DOWN]);
-+        OP_LEFT = scrMenuItem(TYPE_DUAL_JOY, scrStringManual("menu_item_left", 0), 0, joyMap[currPlayer][global.INP_LEFT]);
-+        OP_RIGHT = scrMenuItem(TYPE_DUAL_JOY, scrStringManual("menu_item_right", 0), 0, joyMap[currPlayer][global.INP_RIGHT]);
-+        OP_FIRE1 = scrMenuItem(TYPE_DUAL_JOY, scrStringValManual("menu_item_fire1", 0, "{1}"), 0, joyMap[currPlayer][global.INP_FIRE1]);
-+        OP_FIRE2 = scrMenuItem(TYPE_DUAL_JOY, scrStringValManual("menu_item_fire2", 0, "{2}"), 0, joyMap[currPlayer][global.INP_FIRE2]);
-+        OP_START = scrMenuItem(TYPE_DUAL_JOY, scrStringManual("menu_item_start", 0), 0, joyMap[currPlayer][global.INP_START]);
++        OP_UP = scrMenuItem(TYPE_DUAL_JOY, scrStringManual("menu_item_up", 0), 0, joyMap[currPlayer][0]);
++        OP_DOWN = scrMenuItem(TYPE_DUAL_JOY, scrStringManual("menu_item_down", 0), 0, joyMap[currPlayer][1]);
++        OP_LEFT = scrMenuItem(TYPE_DUAL_JOY, scrStringManual("menu_item_left", 0), 0, joyMap[currPlayer][2]);
++        OP_RIGHT = scrMenuItem(TYPE_DUAL_JOY, scrStringManual("menu_item_right", 0), 0, joyMap[currPlayer][3]);
++        OP_FIRE1 = scrMenuItem(TYPE_DUAL_JOY, scrStringValManual("menu_item_fire1", 0, "{1}"), 0, joyMap[currPlayer][4]);
++        OP_FIRE2 = scrMenuItem(TYPE_DUAL_JOY, scrStringValManual("menu_item_fire2", 0, "{2}"), 0, joyMap[currPlayer][5]);
++        OP_START = scrMenuItem(TYPE_DUAL_JOY, scrStringManual("menu_item_start", 0), 0, joyMap[currPlayer][6]);
      }
      else
      {
@@ -6308,26 +6168,31 @@
 +}
 --- original/gml_Object_oScreenHandler_Draw_75.gml
 +++ patched/gml_Object_oScreenHandler_Draw_75.gml
-@@ -10,16 +10,11 @@
- }
- var _scale = scrDrawCheckSurfaces();
--if (do_screen && surface_exists(global.bufferSurface[0]) && surface_exists(global.bufferSurface[1]))
-+if (do_screen && surface_exists(global.paletteSurface) && surface_exists(global.bufferSurface[0]) && surface_exists(global.bufferSurface[1]))
+@@ -40,10 +40,6 @@
+ if (do_screen && surface_exists(buffer_surfaces[0]) && surface_exists(buffer_surfaces[1]))
  {
 -    gpu_set_tex_filter(false);
      draw_clear(c_black);
--    var _plainScaleX = global.scanlines ? 1 : (surface_get_width(global.bufferSurface[0]) / 384);
--    var _plainScaleY = global.scanlines ? 1 : (surface_get_height(global.bufferSurface[0]) / 216);
--    surface_set_target(global.bufferSurface[0]);
+-    var _plainScaleX = global_scanlines ? 1 : (surface_get_width(buffer_surfaces[0]) / 384);
+-    var _plainScaleY = global_scanlines ? 1 : (surface_get_height(buffer_surfaces[0]) / 216);
+     surface_set_target(buffer_surfaces[0]);
 -    draw_clear_alpha(c_black, 0);
-+    surface_set_target(global.paletteSurface);
-     shader_set(PaletteShader);
--    shader_set_uniform_f_array(u_res, screenRes);
-     shader_set_uniform_f(u_bri, pal_bright);
+     if (pal_bright <= 1)
+     {
+@@ -56,5 +52,5 @@
+         shader_set_uniform_f(u_brighten_bri, pal_bright);
+     }
 -    draw_surface_ext(application_surface, 0, 0, _plainScaleX, _plainScaleY, 0, c_white, 1);
 +    draw_surface(application_surface, 0, 0);
      shader_reset();
      surface_reset_target();
+@@ -88,5 +84,5 @@
+     else
+     {
+-        draw_surface_stretched(buffer_surfaces[0], screenX, screenY, screenWidth, screenHeight);
++        draw_surface_stretched(buffer_surfaces[0], screenX, screenY, screenWidth * _scale, screenHeight * _scale);
+     }
+ }
 --- original/gml_Object_oTitleScreens_Create_0.gml
 +++ patched/gml_Object_oTitleScreens_Create_0.gml
 @@ -1,3 +1,3 @@
