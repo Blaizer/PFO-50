@@ -256,8 +256,11 @@ function scrLibraryOnlineStateDraw()
             draw_text(listX + 16, _textTop, lobbyName);
 
             scrSetFont(global.fontDefault);
-            draw_text(listX + listWidth - 48, _textTop + 0, "P " + string(data.memberCount) + "/" + string(data.memberLimit));
-            draw_text(listX + listWidth - 48, _textTop + 8, data.pfoVersion);
+            
+            draw_set_halign(fa_right);
+            draw_text(listX + listWidth - 7, _textTop + 0, "P " + string(data.memberCount) + "/" + string(data.memberLimit));
+            draw_text(listX + listWidth - 7, _textTop + 8, data.pfoVersion);
+            draw_set_halign(fa_left);
 
             if (selected)
             {

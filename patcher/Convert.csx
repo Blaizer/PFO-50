@@ -15,7 +15,7 @@ if (modVersion.EndsWith(".0"))
     modVersion = modVersion.Substring(0, modVersion.Length - 2);
 }
 var gameVersion = GetGameVersion();
-if (gameVersion.EndsWith(".0"))
+while (gameVersion.EndsWith(".0"))
 {
     gameVersion = gameVersion.Substring(0, gameVersion.Length - 2);
 }

@@ -4274,7 +4274,7 @@
 -totalTime = 0;
 +global.ufoVersion = extension_get_option_value("PFO", "gameVersion");
 +global.pfoVersion = extension_get_version("PFO");
-+if (string_ends_with(global.ufoVersion, ".0"))
++while (string_ends_with(global.ufoVersion, ".0"))
 +{
 +    global.ufoVersion = string_copy(global.ufoVersion, 1, string_length(global.ufoVersion) - 2);
 +}
