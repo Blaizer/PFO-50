@@ -2864,20 +2864,21 @@ namespace
         GetSystemInfo(&sysInfo);
         assert((bufferSize % sysInfo.dwAllocationGranularity) == 0);
 
-        void* placeholder1 = VirtualAlloc2FromApp(nullptr, nullptr, bufferSize * 2, MEM_RESERVE | MEM_RESERVE_PLACEHOLDER, PAGE_NOACCESS, nullptr, 0);
+        void* placeholder1 = VirtualAlloc2(nullptr, nullptr, bufferSize * 2, MEM_RESERVE | MEM_RESERVE_PLACEHOLDER, PAGE_NOACCESS, nullptr, 0);
         assert(placeholder1 != nullptr);
 
         BOOL result = VirtualFree(placeholder1, bufferSize, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER);
         assert(result);
         void* placeholder2 = static_cast<void*>(static_cast<uint8_t*>(placeholder1) + bufferSize);
 
-        HANDLE section = CreateFileMappingFromApp(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, bufferSize, nullptr);
+        ULARGE_INTEGER size = { .QuadPart = bufferSize };
+        HANDLE section = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, size.HighPart, size.LowPart, nullptr);
         assert(section != nullptr);
 
-        void* view1 = MapViewOfFile3FromApp(section, nullptr, placeholder1, 0, bufferSize, MEM_REPLACE_PLACEHOLDER, PAGE_READWRITE, nullptr, 0);
+        void* view1 = MapViewOfFile3(section, nullptr, placeholder1, 0, bufferSize, MEM_REPLACE_PLACEHOLDER, PAGE_READWRITE, nullptr, 0);
         assert(view1 != nullptr);
 
-        void* view2 = MapViewOfFile3FromApp(section, nullptr, placeholder2, 0, bufferSize, MEM_REPLACE_PLACEHOLDER, PAGE_READWRITE, nullptr, 0);
+        void* view2 = MapViewOfFile3(section, nullptr, placeholder2, 0, bufferSize, MEM_REPLACE_PLACEHOLDER, PAGE_READWRITE, nullptr, 0);
         assert(view2 != nullptr);
 
         return view1;
