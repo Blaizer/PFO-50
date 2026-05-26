@@ -1322,8 +1322,11 @@ namespace
                                 // log some networking info to debug startup issues
                                 //if (m_AssignedClientsCount <= 0)
                                 //{
+                                //    SteamNetConnectionRealTimeStatus_t status;
                                 //    SteamNetConnectionRealTimeLaneStatus_t lanes[2];
-                                //    g_SteamNetworkingSockets->GetConnectionRealTimeStatus(clientData.m_ConnectSocket, nullptr, countof(lanes), lanes);
+                                //    g_SteamNetworkingSockets->GetConnectionRealTimeStatus(clientData.m_ConnectSocket, &status, countof(lanes), lanes);
+
+                                //    trace("Quality: L%f R%f, SendRate: %dB/s, Out: %fB/s %fp/s, In: %fB/s %fp/s\n", status.m_flConnectionQualityLocal, status.m_flConnectionQualityRemote, status.m_nSendRateBytesPerSecond, status.m_flOutBytesPerSec, status.m_flOutPacketsPerSec, status.m_flInBytesPerSec, status.m_flInPacketsPerSec);
 
                                 //    trace("[0].PendingUnreliable: %d, [0].QueueTime: %lld, [1].PendingReliable: %d, [1].SentUnackedReliable: %d, [1].QueueTime: %lld\n",
                                 //        lanes[0].m_cbPendingUnreliable, lanes[0].m_usecQueueTime,
@@ -1423,6 +1426,17 @@ namespace
                                     Writer writer(static_cast<uint8*>(netMessage->m_pData), Message::GetMaxSize());
                                     message.Serialize(writer);
                                     netMessage->m_cbSize = writer.m_Offset;
+
+                                    // cancel sending the message if we still have a full message-size worth of bytes pending to be sent
+                                    // this should help avoid queueing up a ton of data and help recover faster after an intermittent drop in bandwidth
+                                    SteamNetConnectionRealTimeStatus_t status;
+                                    g_SteamNetworkingSockets->GetConnectionRealTimeStatus(clientData.m_ConnectSocket, &status, 0, nullptr);
+                                    if (status.m_cbPendingUnreliable >= netMessage->m_cbSize)
+                                    {
+                                        //trace("Dropping message, queue too full\n");
+                                        netMessages[--messageCount] = nullptr;
+                                        netMessage->Release();
+                                    }
 
                                     //if (m_Frame <= clientData.m_LastSentFrame)
                                     //{
