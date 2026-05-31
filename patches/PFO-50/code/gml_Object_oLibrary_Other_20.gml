@@ -130,14 +130,6 @@ else
             scrSwitchState(STATE_PROFILE);
         }
     }
-    else if (substate == SUB_ONLINE_COMPAT_WARNING)
-    {
-        var _okay = scrGetOkay("WARNING: YOUR MODS DIFFER FROM LOBBY OWNER.");
-        if (_okay == true)
-        {
-            scrSwitchSub(SUB_ONLINE_LOBBY);
-        }
-    }
 }
 
 function scrLibraryOnlineLobbyDraw()
