@@ -25,7 +25,7 @@ if (global.onlineRunUpdate)
     pfo_update_time();
 }
 
-pfo_update(global.onlineRunUpdate)
+pfo_update(global.onlineRunUpdate);
 
 if (global.onlineRunUpdate)
 {

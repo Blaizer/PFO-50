@@ -10,6 +10,7 @@
 // add headers that you want to pre-compile here
 #include <stddef.h>
 #include <new>
+#include <type_traits>
 #include "framework.h"
 
 #pragma warning(push)

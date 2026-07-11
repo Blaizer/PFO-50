@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #define __YYDEFINE_EXTENSION_FUNCTIONS__
+#undef FORCEINLINE
 #include "Extension_Interface.h"
 #include "Ref.h"
 #include "YYRValue.h"
@@ -38,14 +39,24 @@ namespace
     void handle_assert(const char* message);
     void handle_assert(const char* assertion, const char* file, const char* function, int line);
 
+    #if defined(_MSC_VER)
+    #define ASSUME(expr) __assume(expr)
+    #define FORCEINLINE_CALLS [[msvc::forceinline_calls]]
+    #define RESTRICT __restrict
+    #elif defined(__GNUC__)
+    #define ASSUME(expr) if (expr) {} else { __builtin_unreachable(); }
+    #define FORCEINLINE_CALLS
+    #define RESTRICT __restrict
+    #endif
+
     #if !defined(NDEBUG) || 1
     #define breakpoint() (IsDebuggerPresent() && (__debugbreak(), false))
     #define _handle_assert(a) handle_assert(#a, __FILE__, __FUNCTION__, __LINE__)
     #define _handle_assert_direct(a, ...) handle_assert(__VA_ARGS__)
-    #define assert(a, ...) if (!(a)) [[unlikely]] { _handle_assert##__VA_OPT__(_direct)(a __VA_OPT__(, __VA_ARGS__)); __debugbreak(); __assume(false); } else {}
+    #define assert(a, ...) if (!(a)) [[unlikely]] { _handle_assert##__VA_OPT__(_direct)(a __VA_OPT__(, __VA_ARGS__)); __debugbreak(); ASSUME(false); } else {}
     #else
     #define breakpoint() (false)
-    #define assert(a) __assume(a)
+    #define assert(a) ASSUME(a)
     #endif
 
     #define countof(a) static_cast<int>(sizeof(a) / sizeof((a)[0]))
@@ -984,7 +995,7 @@ namespace
 
                     {
                         Writer writer(g_ChecksumRingBuffer + (checksumRingBufferHead & (c_ChecksumRingBufferSize - 1)), GetMaxSize());
-                        [[msvc::forceinline_calls]] Serialize(writer); // this generates way better code when inlined
+                        FORCEINLINE_CALLS Serialize(writer); // this generates way better code when inlined
                         checksumBuffer.m_SessionBufferSize = writer.m_Offset;
                         checksumRingBufferHead += writer.m_Offset;
                     }
