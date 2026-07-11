@@ -171,7 +171,7 @@ foreach (var d in new[] { "pre", "post", "after" })
 var libDir = Path.Join(mainDir, "patcher", "lib");
 File.Delete(Path.Join(libDir, "busybox.exe"));
 
-var modLoaderInstallDir = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "UFO-50-Mod-Loader", "my mods");
+var modLoaderInstallDir = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "UFO-50-Mod-Loader", "UFO 50 mods");
 if (Directory.Exists(modLoaderInstallDir))
 {
     CopyDir(convertRootDir, modLoaderInstallDir, modPrettyName, deleteExisting: true);
