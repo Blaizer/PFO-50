@@ -191,11 +191,13 @@ namespace
     constexpr int c_PlayerLimit = c_ClientLimit;
     constexpr int c_TargetFPS = 60;
     constexpr int c_MaxInputDelay = 20;
-    constexpr int c_SamplesNeededBeforeRaisingDelay = 60 * 15;
-    constexpr int c_SamplesNeededBeforeLoweringDelay = 60 * 40;
+    constexpr int c_CollectSamplesInterval = 4;
+    constexpr int c_SamplesNeededBeforeRaisingDelay = 60 * 12 / c_CollectSamplesInterval;
+    constexpr int c_SamplesNeededBeforeLoweringDelay = 60 * 45 / c_CollectSamplesInterval;
     constexpr int c_PercentSamplesWithinDelayToMaintainDelay = 91;
     constexpr int c_PercentSamplesBelowDelayToLowerDelay = 99;
     constexpr int c_PingDelayCalculationSafetyMargin = 30;
+    constexpr int c_FastLowerInputDelayFrames = 2;
     constexpr int c_FavoredModeExtraInputDelay = 2;
     constexpr int c_MessageInputCountBits = 6;
     constexpr int c_FramesToRunBehindUpperLimit = 200;
@@ -1597,10 +1599,12 @@ namespace
                 }
 
                 // calculate new automatic input delay
-                if (advanceFrame)
+                if (advanceFrame && (m_Frame % c_CollectSamplesInterval) == 0)
                 {
-                    int newDelay = 0;
-                    bool hasDelay = false;
+                    int maxRaiseDelay = 0;
+                    int maxLowerDelay = 0;
+                    bool hasRaiseDelay = false;
+                    bool hasLowerDelay = false;
 
                     for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
                     {
@@ -1629,18 +1633,22 @@ namespace
                                 }
                             }
 
-                            // no acks since last frame, so just use last sample rtt
+                            // no acks since last frame
                             if (rtt == 0)
                             {
-                                rtt = clientData.m_PreviousFrameSampleRTT;
-                            }
-
-                            // use the current time since the first non-acked message if that's greater
-                            int64 firstNonAcked = clientData.m_LastAcknowledgedMessageNumber + 1;
-                            auto& messageInfo = clientData.m_MessageSendData[firstNonAcked & (countof(clientData.m_MessageSendData) - 1)];
-                            if (messageInfo.m_MessageNumber == firstNonAcked)
-                            {
-                                rtt = max(rtt, g_SteamNetworkingUtils->GetLocalTimestamp() - messageInfo.m_MessageSendTime);
+                                int64 firstNonAcked = clientData.m_LastAcknowledgedMessageNumber + 1;
+                                auto& messageInfo = clientData.m_MessageSendData[firstNonAcked & (countof(clientData.m_MessageSendData) - 1)];
+                                if (clientData.m_LastSentMessageNumber >= firstNonAcked && messageInfo.m_MessageNumber != firstNonAcked)
+                                {
+                                    // this can only happen if our delay is high enough that our sent messages have been overwritten by the time they got acknowledged
+                                    // our send data array should be big enough to handle delays we care about, so if we have rolled off the end we can just record the maximum delay possible
+                                    rtt = static_cast<int64>(INT32_MAX);
+                                }
+                                else
+                                {
+                                    // normally we just use previous frames result
+                                    rtt = clientData.m_PreviousFrameSampleRTT;
+                                }
                             }
 
                             // add the sample
@@ -1714,29 +1722,44 @@ namespace
                                 if (clientData.m_SampleCount >= c_SamplesNeededBeforeRaisingDelay)
                                 {
                                     int raiseDelay = CalculatePercentile(clientData.m_RaiseDelayHistogram, c_SamplesNeededBeforeRaisingDelay, c_PercentSamplesWithinDelayToMaintainDelay);
-                                    if (raiseDelay >= m_RequestedAutomaticInputDelay)
-                                    {
-                                        newDelay = max(newDelay, raiseDelay);
-                                        hasDelay = true;
-                                    }
+                                    maxRaiseDelay = max(maxRaiseDelay, raiseDelay);
+                                    hasRaiseDelay = true;
                                 }
 
-                                if (newDelay < m_RequestedAutomaticInputDelay && clientData.m_SampleCount >= c_SamplesNeededBeforeLoweringDelay)
+                                if (clientData.m_SampleCount >= c_SamplesNeededBeforeLoweringDelay)
                                 {
                                     int lowerDelay = CalculatePercentile(clientData.m_LowerDelayHistogram, clientData.m_SampleCount, c_PercentSamplesBelowDelayToLowerDelay);
-                                    if (lowerDelay <= m_RequestedAutomaticInputDelay)
-                                    {
-                                        newDelay = max(newDelay, lowerDelay);
-                                        hasDelay = true;
-                                    }
+                                    maxLowerDelay = max(maxRaiseDelay, lowerDelay);
+                                    hasLowerDelay = true;
                                 }
                             }
                         }
                     }
 
-                    if (hasDelay)
+                    if (hasRaiseDelay)
                     {
-                        RequestAutomaticInputDelayChange(newDelay);
+                        if (maxRaiseDelay >= m_RequestedAutomaticInputDelay)
+                        {
+                            RequestAutomaticInputDelayChange(maxRaiseDelay);
+                        }
+                        else
+                        {
+                            // lower the delay with the "fast" raise delay value for all but the last X frames, after which we use the slower-changing lower delay value
+                            int fastLowerDelay = min(maxRaiseDelay + c_FastLowerInputDelayFrames, c_MaxInputDelay);
+                            if (hasLowerDelay)
+                            {
+                                maxLowerDelay = min(maxLowerDelay, fastLowerDelay);
+                            }
+                            else
+                            {
+                                maxLowerDelay = fastLowerDelay;
+                            }
+
+                            if (maxLowerDelay < m_RequestedAutomaticInputDelay)
+                            {
+                                RequestAutomaticInputDelayChange(maxLowerDelay);
+                            }
+                        }
                     }
                 }
 
