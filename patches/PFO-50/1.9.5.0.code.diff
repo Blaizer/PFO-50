@@ -200,7 +200,7 @@
 @@ -1,4 +1,8 @@
  function scr14_MessageSet(arg0)
  {
-+    if (numPlayers == 2 && global.onlineSimultaneousTurns && currPlayer != pfo_client_get_player_index())
++    if (global.onlineSimultaneousTurns && currPlayer != pfo_client_get_player_index())
 +    {
 +        exit;
 +    }
@@ -1717,7 +1717,7 @@
  if (shotCount < 20 && state == 1)
 --- original/gml_Object_o14_Game_Create_0.gml
 +++ patched/gml_Object_o14_Game_Create_0.gml
-@@ -185,16 +185,5 @@
+@@ -185,18 +185,12 @@
  eventType = 0;
  readyTimer = 100;
 -sponsee[0] = -4;
@@ -1734,7 +1734,14 @@
 -trainDelta[2] = 0;
  numPlayers = global.numPlayers;
  numHumanPlayers = numPlayers;
-@@ -210,5 +199,9 @@
++hotseat = numPlayers == 3;
++if (variable_global_exists("hotseat"))
++{
++    hotseat = global.hotseat;
++}
+ if (numPlayers == 1)
+ {
+@@ -210,5 +204,9 @@
      ai[1] = false;
      ai[2] = true;
 +    if (pfo_get_client_count() == numPlayers)
@@ -1744,7 +1751,17 @@
 +}
  else if (numPlayers == 3)
  {
-@@ -239,4 +232,15 @@
+@@ -221,5 +219,9 @@
+         ai[2] = true;
+     }
++    else if (!hotseat && pfo_get_client_count() == numPlayers && global.MAX_PLAYERS_SUPPORTED >= 3)
++    {
++        global.onlineSimultaneousTurns = true;
+ }
++}
+ aiTrain[0][0] = true;
+ aiTrain[0][1] = true;
+@@ -239,4 +241,15 @@
      debt[i] = 0;
      result[i] = 0;
 +    sponsee[i][0] = -4;
@@ -1773,13 +1790,18 @@
      if (currPlayer <= 2)
      {
 -        if (!ai[currPlayer] && numHumanPlayers > 1)
-+        if (!ai[currPlayer] && numHumanPlayers > 1 && !(numPlayers == 2 && global.onlineSimultaneousTurns && currPlayer == pfo_client_get_player_index()) && !(state == STATE_TURN_SETUP && numPlayers == 2 && !global.onlineSimultaneousTurns && pfo_is_online() && !scr14_OnlineHideInfo()))
++        if (!ai[currPlayer] && numHumanPlayers >= 2 && !(global.onlineSimultaneousTurns && currPlayer == pfo_client_get_player_index()) && !(state == STATE_TURN_SETUP && numHumanPlayers >= 2 && !hotseat && !global.onlineSimultaneousTurns && pfo_is_online() && !scr14_OnlineHideInfo()))
          {
              if (portrait[currPlayer] == NUM_PORTRAITS)
-@@ -106,5 +106,12 @@
+@@ -102,11 +102,18 @@
+             scrSetFont(global.fontTall);
+             draw_text_centered(viewx + 192, viewy + 104, scrStringExt("whose_turn", name[currPlayer], 0, 4) + " (" + scrString("p" + string(currPlayer + 1)) + ")", 8);
+-            if (numHumanPlayers > 1)
++            if (numHumanPlayers >= 2)
+             {
                  scrSetFont(global.fontDefault);
                  draw_set_color(c_white);
-+                if (numPlayers == 2 && (pfo_is_online() || global.onlineSimultaneousTurns))
++                if (numHumanPlayers >= 2 && !hotseat && (pfo_is_online() || global.onlineSimultaneousTurns))
 +                {
 +                    draw_text_centered(viewx + 192, viewy + 136, "WAITING FOR PLAYER TO FINISH TURN", 8);
 +                }
@@ -1788,7 +1810,10 @@
                  scrStringDrawCenterAltExt(viewx + 192, viewy + 136, "look_away", 0, 0, 2);
 +                }
                  var pname = scrString("p" + string(currPlayer + 1));
-                 if (numPlayers == 3)
+-                if (numPlayers == 3)
++                if (hotseat)
+                 {
+                     draw_text_ce(viewx + 192, viewy + 144, scrStringVal("give_controller", name[currPlayer]), 2);
 @@ -283,10 +290,10 @@
          }
      }
@@ -1921,6 +1946,18 @@
 +            else if (stable[currPlayer][i].clumsy > 2)
              {
                  cs = scrString("steady");
+--- original/gml_Object_o14_Game_Other_10.gml
++++ patched/gml_Object_o14_Game_Other_10.gml
+@@ -361,4 +361,9 @@
+ if (substate == 2)
+ {
++    if (numPlayers == 3 && global.cheatID > 0 && numHumanPlayers >= 2 && pfo_get_client_count() == numHumanPlayers && global.MAX_PLAYERS_SUPPORTED >= numHumanPlayers)
++    {
++        hotseat = false;
++        global.onlineSimultaneousTurns = true;
++    }
+     if (stateTimer == 0)
+     {
 --- original/gml_Object_o14_Game_Other_11.gml
 +++ patched/gml_Object_o14_Game_Other_11.gml
 @@ -9,8 +9,15 @@
@@ -1963,27 +2000,43 @@
  scr14_ChangeState(STATE_TURN_SETUP);
 --- original/gml_Object_o14_Game_Other_12.gml
 +++ patched/gml_Object_o14_Game_Other_12.gml
-@@ -2,8 +2,31 @@
+@@ -2,8 +2,47 @@
  {
      substate = 1;
 +    var onlineFirstHumanTurn = false;
 +    var onlineOtherHumanTurn = false;
-+    if (numPlayers == 2 && global.onlineSimultaneousTurns && currPlayer < numPlayers)
++    if (global.onlineSimultaneousTurns)
 +    {
-+        var playerIndex = !!pfo_client_get_player_index();
-+        if (turnDone[0] && turnDone[1])
-+        {
-+            currPlayer = 2;
-+        }
-+        else if (!turnDone[playerIndex])
++        var playerIndex = pfo_client_get_player_index();
++        if (!turnDone[playerIndex])
 +        {
 +            currPlayer = playerIndex;
 +            onlineFirstHumanTurn = true;
 +        }
 +        else
 +        {
-+            currPlayer = !playerIndex;
-+            onlineOtherHumanTurn = true;
++            for (var i = 0; i < 3; i++)
++            {
++                if (!turnDone[i] && !ai[i])
++                {
++                    currPlayer = i;
++                    onlineOtherHumanTurn = true;
++                    break;
++                }
++            }
++            if (!onlineOtherHumanTurn)
++            {
++                currPlayer = 3;
++                for (var i = 0; i < 3; i++)
++                {
++                    if (!turnDone[i] && ai[i])
++                    {
++                        currPlayer = i;
++                        turnDone[i] = true;
++                        break;
++                    }
++                }
++            }
 +        }
 +    }
 +    else
@@ -1993,10 +2046,10 @@
      if (currPlayer >= 3)
      {
 -        if (numHumanPlayers <= 1)
-+        if (numHumanPlayers <= 1 || (numPlayers == 2 && (global.onlineSimultaneousTurns || pfo_is_online())))
++        if (numHumanPlayers < 2 || (numHumanPlayers >= 2 && !hotseat && (global.onlineSimultaneousTurns || pfo_is_online())))
          {
              scr14_ChangeState(STATE_RACE_NEWS);
-@@ -19,36 +42,83 @@
+@@ -19,36 +58,87 @@
          visible = false;
      }
 -    numSponsees = scr14_GetSponsee();
@@ -2038,25 +2091,29 @@
 +        scrShuffle(sponseeCandidates);
 +        if (onlineFirstHumanTurn)
 +        {
-+            var numPlayersNeedingSponsees = 2;
-+            for (var i = 0; i < 2; i++)
++            var numPlayersNeedingSponsees = numHumanPlayers;
++            for (var i = 0; i < 3; i++)
 +            {
-+                if (stable[i][0] != -4 && stable[i][1] != -4)
++                if (!ai[i] && stable[i][0] != -4 && stable[i][1] != -4)
 +                {
 +                    numPlayersNeedingSponsees--;
 +                }
 +            }
 +            var numSponseesPerPlayer = 3;
-+            if (numPlayersNeedingSponsees == 2)
++            if (numPlayersNeedingSponsees > 1)
 +            {
-+                numSponseesPerPlayer = min(3, floor(ds_list_size(sponseeCandidates) / 2));
++                numSponseesPerPlayer = min(3, floor(ds_list_size(sponseeCandidates) / numPlayersNeedingSponsees));
 +            }
-+            for (var i = 0; i < 2; i++)
++            numSponsees = 0;
++            for (var i = 0; i < 3; i++)
 +            {
-+                var num = scr14_GetSponsee(i, sponseeCandidates, (stable[i][0] != -4 && stable[i][1] != -4) ? 0 : numSponseesPerPlayer);
-+                if (i == currPlayer)
++                if (!ai[i])
 +                {
-+                    numSponsees = num;
++                    var num = scr14_GetSponsee(i, sponseeCandidates, (stable[i][0] != -4 && stable[i][1] != -4) ? 0 : numSponseesPerPlayer);
++                    if (i == currPlayer)
++                    {
++                        numSponsees = num;
++                    }
 +                }
 +            }
 +        }
@@ -2094,11 +2151,11 @@
 +}
  if (ai[currPlayer])
  {
-@@ -56,5 +126,5 @@
+@@ -56,5 +146,5 @@
      exit;
  }
 -if (fire2pressed || numHumanPlayers == 1)
-+if ((numPlayers == 2 && global.onlineSimultaneousTurns) ? (currPlayer == pfo_client_get_player_index()) : (fire2pressed || numHumanPlayers == 1 || (numPlayers == 2 && pfo_is_online())))
++if (global.onlineSimultaneousTurns ? (currPlayer == pfo_client_get_player_index()) : (fire2pressed || numHumanPlayers < 2 || (numHumanPlayers >= 2 && !hotseat && pfo_is_online())))
  {
      musicTrig = false;
 --- original/gml_Object_o14_Game_Other_13.gml
@@ -2907,10 +2964,35 @@
          }
 --- original/gml_Object_o14_Game_Step_0.gml
 +++ patched/gml_Object_o14_Game_Step_0.gml
-@@ -14,6 +14,17 @@
+@@ -10,14 +10,50 @@
+     if (state == STATE_GAME_SETUP)
+     {
++        if (global.MAX_PLAYERS_SUPPORTED >= 3)
++        {
++            var p = 2;
++            scrGetInput(p);
++            bHoldUp[p] = holdUp;
++            bHoldDown[p] = holdDown;
++            bHoldLeft[p] = holdLeft;
++            bHoldRight[p] = holdRight;
++            bPressUp[p] = pressUp;
++            bPressDown[p] = pressDown;
++            bPressLeft[p] = pressLeft;
++            bPressRight[p] = pressRight;
++            bFire1[p] = fire1;
++            bFire2[p] = fire2;
++            bFire1pressed[p] = fire1pressed;
++            bFire2pressed[p] = fire2pressed;
++            bFire1released[p] = fire1released;
++            bFire2released[p] = fire2released;
++            bPressStart[p] = pressStart;
++            bForcePause[p] = forcePause;
++        }
+         scrGetInputBoth();
+     }
      else if (state == STATE_TURN_AI || state == STATE_RACE_NEWS || state == STATE_RACE || state == STATE_RACE_RESULTS || state == STATE_GAME_END || state == STATE_GAME_RESULTS || state == STATE_RACE_LOOK_AT_SCREEN)
      {
-+        if (numPlayers == 2 && global.onlineSimultaneousTurns)
++        if (global.onlineSimultaneousTurns)
 +        {
 +            scrGetInputMerged();
 +        }
@@ -2918,21 +3000,30 @@
 +        {
          scrGetInput(0);
      }
+-    else if (numPlayers == 1 || numPlayers == 3 || (numPlayers == 2 && currPlayer == 0))
 +    }
-+    else if (numPlayers == 2 && global.onlineSimultaneousTurns)
-+    {
++    else if (global.onlineSimultaneousTurns)
+     {
 +        scrGetInput(0, UnknownEnum.Value_1);
 +    }
-     else if (numPlayers == 1 || numPlayers == 3 || (numPlayers == 2 && currPlayer == 0))
++    else if (numHumanPlayers < 2 || hotseat || currPlayer == 0)
++    {
+         scrGetInput(0);
+     }
++    else if (numHumanPlayers == 3 && currPlayer == 2)
++    {
++        scrGetInput(2);
++    }
+     else
      {
-@@ -85,6 +96,315 @@
+@@ -85,6 +121,315 @@
          break;
  }
 -for (i = 0; i < 3; i++)
 +
 +function scr14_CurrentPlayerIsLocal()
  {
-+    return numPlayers != 2 || !global.onlineSimultaneousTurns || currPlayer == pfo_client_get_player_index();
++    return numHumanPlayers < 2 || hotseat || !global.onlineSimultaneousTurns || currPlayer == pfo_client_get_player_index();
 +}
 +
 +var savedCurrPlayer = currPlayer;
@@ -2940,7 +3031,7 @@
 +var commandPlayer = -1;
 +if (global.onlineSimultaneousTurns)
 +{
-+    repeatCount = 2;
++    repeatCount = numHumanPlayers;
 +    currPlayer = 0;
 +    commandPlayer = 0;
 +}
@@ -2999,7 +3090,7 @@
 +    else if (pfo_receive_command(UnknownEnum.Value_20, 0, commandPlayer))
 +    {
 +        turnDone[currPlayer] = true;
-+        if (numPlayers != 2 || !global.onlineSimultaneousTurns || turnDone[!!pfo_client_get_player_index()])
++        if (numHumanPlayers < 2 || hotseat || !global.onlineSimultaneousTurns || turnDone[pfo_client_get_player_index()])
 +        {
 +            if (state == STATE_TURN_SETUP)
 +            {
@@ -3242,7 +3333,7 @@
 +{
      var numRepeats = 1;
      if (state == STATE_GAME_RESULTS)
-@@ -123,13 +443,45 @@
+@@ -123,13 +468,45 @@
      }
  }
 -for (i = 0; i < 3; i++)

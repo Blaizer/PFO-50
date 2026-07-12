@@ -51,10 +51,10 @@ function scr13_GetFavoredPlayer()
 
 function scr14_GetFavoredPlayer()
 {
-    if (numPlayers == 1 || numPlayers == 3)
+    if (numHumanPlayers < 2 || hotseat)
         return 0;
 
-    if (state >= STATE_TURN_MAIN && state <= STATE_TURN_STABLE && currPlayer < numPlayers)
+    if (state >= STATE_TURN_MAIN && state <= STATE_TURN_STABLE && !ai[currPlayer])
     {
         if (!global.onlineSimultaneousTurns)
             return currPlayer;
