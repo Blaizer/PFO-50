@@ -1737,7 +1737,7 @@
 +hotseat = numPlayers == 3;
 +if (variable_global_exists("hotseat"))
 +{
-+    hotseat = global.hotseat;
++    hotseat = global.hotseat || (numPlayers == 3 && global.cheatID > 0);
 +}
  if (numPlayers == 1)
  {
@@ -1948,13 +1948,16 @@
                  cs = scrString("steady");
 --- original/gml_Object_o14_Game_Other_10.gml
 +++ patched/gml_Object_o14_Game_Other_10.gml
-@@ -361,4 +361,9 @@
+@@ -361,4 +361,12 @@
  if (substate == 2)
  {
-+    if (numPlayers == 3 && global.cheatID > 0 && numHumanPlayers >= 2 && pfo_get_client_count() == numHumanPlayers && global.MAX_PLAYERS_SUPPORTED >= numHumanPlayers)
++    if (numPlayers == 3 && global.cheatID > 0 && numHumanPlayers >= 2 && global.MAX_PLAYERS_SUPPORTED >= numHumanPlayers && !ai[0] && !ai[1] && pfo_is_online())
 +    {
 +        hotseat = false;
-+        global.onlineSimultaneousTurns = true;
++        if (pfo_get_client_count() == numHumanPlayers)
++        {
++            global.onlineSimultaneousTurns = true;
++        }
 +    }
      if (stateTimer == 0)
      {
@@ -2000,7 +2003,7 @@
  scr14_ChangeState(STATE_TURN_SETUP);
 --- original/gml_Object_o14_Game_Other_12.gml
 +++ patched/gml_Object_o14_Game_Other_12.gml
-@@ -2,8 +2,47 @@
+@@ -2,8 +2,42 @@
  {
      substate = 1;
 +    var onlineFirstHumanTurn = false;
@@ -2015,26 +2018,21 @@
 +        }
 +        else
 +        {
++            currPlayer = 3;
 +            for (var i = 0; i < 3; i++)
 +            {
-+                if (!turnDone[i] && !ai[i])
++                if (!turnDone[i])
 +                {
-+                    currPlayer = i;
-+                    onlineOtherHumanTurn = true;
-+                    break;
-+                }
-+            }
-+            if (!onlineOtherHumanTurn)
-+            {
-+                currPlayer = 3;
-+                for (var i = 0; i < 3; i++)
-+                {
-+                    if (!turnDone[i] && ai[i])
++                    if (ai[i])
 +                    {
-+                        currPlayer = i;
 +                        turnDone[i] = true;
-+                        break;
 +                    }
++                    else
++                    {
++                        onlineOtherHumanTurn = true;
++                    }
++                    currPlayer = i;
++                    break;
 +                }
 +            }
 +        }
@@ -2049,7 +2047,7 @@
 +        if (numHumanPlayers < 2 || (numHumanPlayers >= 2 && !hotseat && (global.onlineSimultaneousTurns || pfo_is_online())))
          {
              scr14_ChangeState(STATE_RACE_NEWS);
-@@ -19,36 +58,87 @@
+@@ -19,36 +53,87 @@
          visible = false;
      }
 -    numSponsees = scr14_GetSponsee();
@@ -2151,7 +2149,7 @@
 +}
  if (ai[currPlayer])
  {
-@@ -56,5 +146,5 @@
+@@ -56,5 +141,5 @@
      exit;
  }
 -if (fire2pressed || numHumanPlayers == 1)
