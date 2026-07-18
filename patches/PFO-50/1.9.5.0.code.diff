@@ -1948,7 +1948,40 @@
                  cs = scrString("steady");
 --- original/gml_Object_o14_Game_Other_10.gml
 +++ patched/gml_Object_o14_Game_Other_10.gml
-@@ -361,4 +361,12 @@
+@@ -36,4 +36,6 @@
+     poolIndex = NUM_QUIBBLES;
+     quibbleDeck = ds_list_create();
++    while (true)
++    {
+     for (var i = 0; i < 12; i++)
+     {
+@@ -43,5 +45,25 @@
+         ds_list_add(quibbleDeck, currQ[2]);
+     }
++        if (!global.onlineSimultaneousTurns || roundsToWin < 6)
++        {
++            break;
++        }
+     deckIndex = 0;
++        scr14_GetCurrQ(true);
++        var sponseeCandidateCount = 0;
++        for (var listPos = 0; listPos < NUM_QUIBBLES; listPos++)
++        {
++            if (scr14_IsSponseeCandidate(listPos))
++            {
++                sponseeCandidateCount++;
++            }
++        }
++        if (sponseeCandidateCount >= 6)
++        {
++            break;
++        }
++        ds_list_clear(quibbleDeck);
++    }
++    deckIndex = 0;
+     for (var i = 0; i < NUM_FAKE_RACES; i++)
+     {
+@@ -361,4 +383,12 @@
  if (substate == 2)
  {
 +    if (numPlayers == 3 && global.cheatID > 0 && numHumanPlayers >= 2 && global.MAX_PLAYERS_SUPPORTED >= numHumanPlayers && !ai[0] && !ai[1] && pfo_is_online())
@@ -2047,7 +2080,7 @@
 +        if (numHumanPlayers < 2 || (numHumanPlayers >= 2 && !hotseat && (global.onlineSimultaneousTurns || pfo_is_online())))
          {
              scr14_ChangeState(STATE_RACE_NEWS);
-@@ -19,36 +53,87 @@
+@@ -19,36 +53,69 @@
          visible = false;
      }
 -    numSponsees = scr14_GetSponsee();
@@ -2060,48 +2093,30 @@
 +        for (var listPos = 0; listPos < NUM_QUIBBLES; listPos++)
          {
 -            if (!stable[i].trained)
-+            var inCurrentRace = false;
-+            if (ds_list_find_value(quibbles, listPos) == currQ[0] || ds_list_find_value(quibbles, listPos) == currQ[1] || ds_list_find_value(quibbles, listPos) == currQ[2])
++            if (scr14_IsSponseeCandidate(listPos))
              {
 -                stable[i].qSpeed -= TRAIN_AMOUNT;
-+                inCurrentRace = true;
++                ds_list_add(sponseeCandidates, ds_list_find_value(quibbles, listPos));
              }
 -            else
-+            var alreadySponsored = false;
-+            if (ds_list_find_value(quibbles, listPos).sponsor != -1)
-             {
--                stable[i].trained = false;
-+                alreadySponsored = true;
-             }
-+            var inFutureRace = false;
-+            for (var j = deckIndex; j < (roundsToWin * 3); j++)
-+            {
-+                if (ds_list_find_value(quibbleDeck, j) == ds_list_find_value(quibbles, listPos))
-+                {
-+                    inFutureRace = true;
-         }
-     }
-+            if (!inCurrentRace && !alreadySponsored && inFutureRace)
-+            {
-+                ds_list_add(sponseeCandidates, ds_list_find_value(quibbles, listPos));
-+            }
 +        }
 +        scrShuffle(sponseeCandidates);
 +        if (onlineFirstHumanTurn)
-+        {
+             {
+-                stable[i].trained = false;
 +            var numPlayersNeedingSponsees = numHumanPlayers;
 +            for (var i = 0; i < 3; i++)
 +            {
 +                if (!ai[i] && stable[i][0] != -4 && stable[i][1] != -4)
 +                {
 +                    numPlayersNeedingSponsees--;
-+                }
-+            }
+             }
+         }
 +            var numSponseesPerPlayer = 3;
 +            if (numPlayersNeedingSponsees > 1)
 +            {
 +                numSponseesPerPlayer = min(3, floor(ds_list_size(sponseeCandidates) / numPlayersNeedingSponsees));
-+            }
+     }
 +            numSponsees = 0;
 +            for (var i = 0; i < 3; i++)
 +            {
@@ -2149,7 +2164,7 @@
 +}
  if (ai[currPlayer])
  {
-@@ -56,5 +141,5 @@
+@@ -56,5 +123,5 @@
      exit;
  }
 -if (fire2pressed || numHumanPlayers == 1)
