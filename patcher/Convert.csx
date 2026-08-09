@@ -25,6 +25,7 @@ var dllOutputDir = Path.Join(rootDir, "UFO 50");
 var extDllName = Path.GetFileName(Directory.GetFiles(dllOutputDir, "*.dll")[0]);
 var dllVersionInfo = FileVersionInfo.GetVersionInfo(extDllName);
 var isDebug = dllVersionInfo.IsDebug;
+var fullModVersion = modVersion + (isDebug ? "-DEBUG" : "");
 
 var convertDirName = $"{modPrettyName} v{modVersion}" + (isDebug ? "D" : "");
 convertDirName = convertDirName.Replace(" ", "_").Replace(".", "-");
@@ -50,7 +51,7 @@ string ReplaceVariables(string text)
     return text
         .Replace("$ModVersion", modVersion)
         .Replace("$GameVersion", gameVersion)
-        .Replace("$DebugPostfix", isDebug ? "-DEBUG" : "");
+        .Replace("$FullModVersion", fullModVersion);
 }
 
 var readmeText = File.ReadAllText(readme);
@@ -75,6 +76,13 @@ CopyFile(rootDir, convertDir, "icon.png");
 
 var infoText = $"{gamePatch.Author}\n{ReplaceVariables(gamePatch.Description)}";
 File.WriteAllText(Path.Join(convertDir, "info.txt"), infoText);
+
+var modData = $@"{{
+  ""ID"": ""{gamePatch.ID}"",
+  ""Name"": ""{modPrettyName}"",
+  ""Version"": ""{fullModVersion}""
+}}";
+File.WriteAllText(Path.Join(convertDir, "mod_data.json"), modData);
 
 var codeDir = Path.Join(convertDir, "code");
 var buildDir = GetBuildDir();

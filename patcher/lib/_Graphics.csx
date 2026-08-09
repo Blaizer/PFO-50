@@ -346,7 +346,7 @@ public class Packer
     {
         DirectoryInfo di = new(_Path);
         FileInfo[] files = di.GetFiles(_Wildcard, SearchOption.AllDirectories);
-        foreach (FileInfo fi in files)
+        foreach (FileInfo fi in files.OrderBy(fi => fi.FullName, StringComparer.OrdinalIgnoreCase))
         {
             (int width, int height) = TextureWorker.GetImageSizeFromFile(fi.FullName);
             if (width == -1 || height == -1)

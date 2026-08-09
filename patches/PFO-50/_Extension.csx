@@ -59,6 +59,7 @@ async Task PatchPFO50Extension()
         DefineExtensionOption("onlineStateChangedCallback", "scrOnlineStateChangedCallback");
         DefineExtensionOption("getInputCallback", "scrGetInputCallback");
         DefineExtensionOption("getChecksumCallback", "scrGetChecksumCallback");
+        DefineExtensionOption("fileCompressionCallback", "scrFileCompressionCallback");
         DefineExtensionOption("checksumBufferMaxSize", "128");
     }
 
@@ -99,6 +100,7 @@ async Task PatchPFO50Extension()
         DefineExtensionFunction("pfo_file_exists");
         DefineExtensionFunction("pfo_buffer_load");
         DefineExtensionFunction("pfo_buffer_save");
+        DefineExtensionFunction("pfo_buffer_send");
         DefineExtensionFunction("pfo_file_delete");
         DefineExtensionFunction("pfo_file_copy");
         DefineExtensionFunction("pfo_file_status");
@@ -116,8 +118,9 @@ async Task PatchPFO50Extension()
         DefineExtensionFunction("pfo_game_set_speed");
         DefineExtensionFunction("pfo_client_is_connected");
         DefineExtensionFunction("pfo_show_debug_message");
-        DefineExtensionFunction("pfo_get_catchup_speed");
-        
+        DefineExtensionFunction("pfo_play_replay");
+        DefineExtensionFunction("pfo_is_playing_replay");
+
         file.InitScript = Data.Strings.MakeString("pfo_init");
         file.CleanupScript = Data.Strings.MakeString("");
     }

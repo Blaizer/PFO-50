@@ -795,19 +795,23 @@
  }
 --- original/gml_GlobalScript_scrGetInput.gml
 +++ patched/gml_GlobalScript_scrGetInput.gml
-@@ -1,10 +1,22 @@
+@@ -1,10 +1,26 @@
  function scrGetInput(arg0)
  {
 +    var _getInputType = (argument_count > 1) ? argument[1] : UnknownEnum.Value_0;
-+    if ((_getInputType & UnknownEnum.Value_1) != 0 && pfo_is_online())
++    if ((_getInputType & UnknownEnum.Value_1) != UnknownEnum.Value_0 && pfo_is_online())
 +    {
 +        arg0 = 0;
 +    }
-+    if ((_getInputType & UnknownEnum.Value_2) == 0 && global.playbackMode && is_array(global.inputPlayback) && instance_exists(oGame))
++    if ((_getInputType & UnknownEnum.Value_2) == UnknownEnum.Value_0 && global.playbackMode && is_array(global.inputPlayback) && instance_exists(oGame))
 +    {
-+        if ((_getInputType & UnknownEnum.Value_1) == 0 && pfo_is_online())
++        if ((_getInputType & UnknownEnum.Value_1) == UnknownEnum.Value_0 && pfo_is_online())
 +        {
-+            pressStart = (pfo_remove_extra_input(pfo_player_get_input(arg0)) & UnknownEnum.Value_8192) != 0;
++            pressStart = (pfo_player_get_input(arg0) & UnknownEnum.Value_16384) != UnknownEnum.Value_0;
++        }
++        else if (pfo_is_playing_replay())
++        {
++            pressStart = false;
 +        }
 +        else
 +        {
@@ -820,12 +824,31 @@
 +        }
          if (pressStart)
          {
-@@ -15,4 +27,13 @@
+@@ -15,4 +31,32 @@
          exit;
      }
-+    if ((_getInputType & UnknownEnum.Value_1) == 0 && pfo_is_online())
++    if ((_getInputType & UnknownEnum.Value_1) == UnknownEnum.Value_0 && pfo_is_online())
 +    {
-+        scrSetInputFromPFOFlags(pfo_remove_extra_input(pfo_player_get_input(arg0)));
++        scrSetInputFromPFOFlags(pfo_player_get_input(arg0));
++    }
++    else if (pfo_is_playing_replay())
++    {
++        holdUp = false;
++        holdDown = false;
++        holdLeft = false;
++        holdRight = false;
++        pressUp = false;
++        pressDown = false;
++        pressLeft = false;
++        pressRight = false;
++        fire1 = false;
++        fire2 = false;
++        fire1pressed = false;
++        fire2pressed = false;
++        fire1released = false;
++        fire2released = false;
++        pressStart = false;
++        forcePause = false;
 +    }
 +    else
 +    {
@@ -834,13 +857,13 @@
 +        var _slot = global.joySlot[arg0];
      holdUp = keyboard_check(key_map[0]);
      holdDown = keyboard_check(key_map[1]);
-@@ -135,4 +156,5 @@
+@@ -135,4 +179,5 @@
      }
      pressStart = keyboard_check_pressed(key_map[6]) || gamepad_button_check_pressed(_slot, joy_map[6]) || keyboard_check_pressed(vk_escape);
 +        forcePause = global.steamOverlayActivated;
      if (holdLeft && holdRight)
      {
-@@ -174,3 +196,12 @@
+@@ -174,3 +219,12 @@
          global.inputFocus = 2;
      }
 +    }
@@ -851,18 +874,21 @@
 +    Value_0,
 +    Value_1,
 +    Value_2,
-+    Value_8192 = 8192
++    Value_16384 = 16384
  }
 --- original/gml_GlobalScript_scrGetInputBoth.gml
 +++ patched/gml_GlobalScript_scrGetInputBoth.gml
-@@ -3,5 +3,5 @@
+@@ -1,7 +1,8 @@
+ function scrGetInputBoth()
+ {
++    var _getInputType = (argument_count > 0) ? argument[0] : UnknownEnum.Value_0;
      for (var p = 1; p >= 0; p--)
      {
 -        scrGetInput(p);
-+        scrGetInput(p, (argument_count > 0) ? argument[0] : UnknownEnum.Value_0);
++        scrGetInput(p, _getInputType);
          bHoldUp[p] = holdUp;
          bHoldDown[p] = holdDown;
-@@ -19,4 +19,10 @@
+@@ -19,4 +20,10 @@
          bFire2released[p] = fire2released;
          bPressStart[p] = pressStart;
 +        bForcePause[p] = forcePause;
@@ -970,12 +996,12 @@
  }
 --- original/gml_GlobalScript_scrInit.gml
 +++ patched/gml_GlobalScript_scrInit.gml
-@@ -53,4 +53,5 @@
-     scrInitTerminal();
-     global.NUM_LIBRARY_GAMES = 50;
+@@ -9,4 +9,5 @@
+     global.steamReady = false;
+     global.steamOverlayActivated = false;
 +    global.MAX_PLAYERS_SUPPORTED = 0;
-     global.currGame = 0;
-     global.currGameID = 0;
+     instance_create_depth(-32, -32, -10000, oController);
+     global.screenShotNum = 1;
 @@ -76,4 +77,9 @@
      }
      scrInitInput();
@@ -1028,6 +1054,71 @@
 +    }
      instance_create_depth(-32, -32, 0, oScreenHandler);
      window_set_size(384 * global.scale, 216 * global.scale);
+--- original/gml_GlobalScript_scrInitInput.gml
++++ patched/gml_GlobalScript_scrInitInput.gml
+@@ -2,6 +2,4 @@
+ {
+     scrOpenConfig();
+-    global.joySlot[0] = 0;
+-    global.joySlot[1] = 1;
+     global.joyConnected = gamepad_is_connected(0);
+     global.inputFocus = scrReadConfig("inputFocus", global.joyConnected + 1);
+@@ -38,25 +36,32 @@
+     global.DEFAULT_JOY[1][5] = 32769;
+     global.DEFAULT_JOY[1][6] = 32778;
+-    for (var p = 0; p <= 1; p++)
++    for (var p = 2; p < global.MAX_PLAYERS_SUPPORTED; p++)
+     {
+         for (var i = 0; i < 7; i++)
+         {
+-            global.keyMap[p][i] = scrReadConfig("P" + string(p + 1) + "key" + string(i), global.DEFAULT_KEY[p][i]);
++            global.DEFAULT_KEY[p][i] = 2;
++            global.DEFAULT_JOY[p][i] = global.DEFAULT_JOY[0][i];
+         }
++    }
++    var _keyAssigned = array_create(223);
++    for (var p = 0; p < global.MAX_PLAYERS_SUPPORTED; p++)
++    {
++        global.joySlot[p] = p;
+         for (var i = 0; i < 7; i++)
+         {
++            var key = scrReadConfig("P" + string(p + 1) + "key" + string(i), global.DEFAULT_KEY[p][i]);
++            global.keyMap[p][i] = _keyAssigned[key] ? 2 : key;
++            _keyAssigned[key] = 1;
++        }
++        for (var i = 0; i < 7; i++)
++        {
+             global.joyMap[p][i] = scrReadConfig("P" + string(p + 1) + "joy" + string(i), global.DEFAULT_JOY[p][i]);
+         }
++        global.doubledUpButtons[p] = scrReadConfig("doubledUpButtonsP" + string(p + 1), true);
++        global.altFire1[p] = scrReadConfig("altFire1P" + string(p + 1), 32770);
++        global.altFire2[p] = scrReadConfig("altFire2P" + string(p + 1), 32772);
++        global.invertedButtons[p] = scrReadConfig("invertedButtonsP" + string(p + 1), false);
++        gamepad_set_axis_deadzone(p, 0);
+     }
+-    global.doubledUpButtons[0] = scrReadConfig("doubledUpButtonsP1", true);
+-    global.doubledUpButtons[1] = scrReadConfig("doubledUpButtonsP2", true);
+-    global.altFire1[0] = scrReadConfig("altFire1P1", 32770);
+-    global.altFire1[1] = scrReadConfig("altFire1P2", 32770);
+-    global.altFire2[0] = scrReadConfig("altFire2P1", 32772);
+-    global.altFire2[1] = scrReadConfig("altFire2P2", 32772);
+-    global.invertedButtons[0] = scrReadConfig("invertedButtonsP1", false);
+-    global.invertedButtons[1] = scrReadConfig("invertedButtonsP2", false);
+-    gamepad_set_axis_deadzone(0, 0);
+-    gamepad_set_axis_deadzone(1, 0);
+     for (var i = 0; i < 223; i++)
+     {
+@@ -288,6 +293,8 @@
+     }
+     scrDefineIconStyles();
+-    global.joyType[0] = scrReadConfig("joyTypeP1", scrDetectJoyType(0));
+-    global.joyType[1] = scrReadConfig("joyTypeP2", scrDetectJoyType(1));
++    for (var p = 0; p < global.MAX_PLAYERS_SUPPORTED; p++)
++    {
++        global.joyType[p] = scrReadConfig("joyTypeP" + string(p + 1), scrDetectJoyType(p));
++    }
+     for (var i = 0; i <= 14; i++)
+     {
 --- original/gml_GlobalScript_scrInputAny.gml
 +++ patched/gml_GlobalScript_scrInputAny.gml
 @@ -3,17 +3,20 @@
@@ -1097,19 +1188,28 @@
  }
 --- original/gml_GlobalScript_scrInputClear.gml
 +++ patched/gml_GlobalScript_scrInputClear.gml
-@@ -16,4 +16,5 @@
+@@ -16,7 +16,8 @@
      fire2released = false;
      pressStart = false;
 +    forcePause = false;
      if (argument_count == 0 || argument[0] == true)
      {
-@@ -25,5 +26,5 @@
+-        for (var p = 0; p <= 1; p++)
++        for (var p = 0; p < global.MAX_PLAYERS_SUPPORTED; p++)
+         {
+             joyTiltV[p] = 0;
+@@ -25,7 +26,10 @@
          }
      }
 -    if (global.paused)
 +    if (object_index == oPauseMenu)
      {
++        if ((state != STATE_KEYCONFIG || substate != 3) && (state != STATE_JOYCONFIG || (substate != 3 && substate != 5)))
++        {
          keyboard_clear(vk_enter);
++        }
+         keyboard_clear(vk_up);
+         keyboard_clear(vk_down);
 --- original/gml_GlobalScript_scrInputClearBoth.gml
 +++ patched/gml_GlobalScript_scrInputClearBoth.gml
 @@ -18,4 +18,5 @@
@@ -1215,6 +1315,20 @@
 +        if (_usingLocalInput && (keyboard_check_pressed(vk_left) || keyboard_check_pressed(vk_right) || keyboard_check_pressed(vk_enter)))
          {
              if (keyboard_check_pressed(vk_left))
+@@ -205,5 +206,5 @@
+                 arrowRightActive = arrowActiveMax;
+             }
+-            itemIndex[menuSel] = !itemIndex[menuSel];
++            itemIndex[menuSel] = scrWrap(itemIndex[menuSel] + (keyboard_check_pressed(vk_left) ? -1 : 1), global.MAX_PLAYERS_SUPPORTED);
+             return itemIndex[menuSel];
+         }
+@@ -218,5 +219,5 @@
+                 arrowRightActive = arrowActiveMax;
+             }
+-            itemIndex[menuSel] = !itemIndex[menuSel];
++            itemIndex[menuSel] = scrWrap(itemIndex[menuSel] + (pressLeft ? -1 : 1), global.MAX_PLAYERS_SUPPORTED);
+             return itemIndex[menuSel];
+         }
 @@ -224,5 +225,5 @@
      else if (itemType[menuSel] == TYPE_SINGLE)
      {
@@ -1304,7 +1418,7 @@
 +            }
 +            if (_newIndex != itemIndex[menuSel])
 +            {
-+                if (!localInputDisabled() && !pfo_send_command_in_progress())
++                if (!localInputDisabled() && !sendCommandInProgress())
 +                {
 +                    var _playerIndex = menuSel - firstOnlinePlayerMenuIndex;
 +                    var _value = (_newIndex < (_numItems - 1)) ? _newIndex : -1;
@@ -1401,9 +1515,32 @@
      }
 --- original/gml_GlobalScript_scrSaveConfig.gml
 +++ patched/gml_GlobalScript_scrSaveConfig.gml
-@@ -31,5 +31,5 @@
-     scrWriteConfig("joyTypeP1", global.joyType[0]);
-     scrWriteConfig("joyTypeP2", global.joyType[1]);
+@@ -10,5 +10,5 @@
+     scrWriteConfig("bgmToggle", global.AUDIO_BGM_TOGGLE);
+     scrWriteConfig("inputFocus", global.inputFocus);
+-    for (var p = 0; p <= 1; p++)
++    for (var p = 0; p < global.MAX_PLAYERS_SUPPORTED; p++)
+     {
+         for (var i = 0; i < 7; i++)
+@@ -20,16 +20,11 @@
+             scrWriteConfig("P" + string(p + 1) + "joy" + string(i), global.joyMap[p][i]);
+         }
++        scrWriteConfig("doubledUpButtonsP" + string(p + 1), global.doubledUpButtons[p]);
++        scrWriteConfig("altFire1P" + string(p + 1), global.altFire1[p]);
++        scrWriteConfig("altFire2P" + string(p + 1), global.altFire2[p]);
++        scrWriteConfig("invertedButtonsP" + string(p + 1), global.invertedButtons[p]);
++        scrWriteConfig("joyTypeP" + string(p + 1), global.joyType[p]);
+     }
+-    scrWriteConfig("doubledUpButtonsP1", global.doubledUpButtons[0]);
+-    scrWriteConfig("doubledUpButtonsP2", global.doubledUpButtons[1]);
+-    scrWriteConfig("altFire1P1", global.altFire1[0]);
+-    scrWriteConfig("altFire1P2", global.altFire1[1]);
+-    scrWriteConfig("altFire2P1", global.altFire2[0]);
+-    scrWriteConfig("altFire2P2", global.altFire2[1]);
+-    scrWriteConfig("invertedButtonsP1", global.invertedButtons[0]);
+-    scrWriteConfig("invertedButtonsP2", global.invertedButtons[1]);
+-    scrWriteConfig("joyTypeP1", global.joyType[0]);
+-    scrWriteConfig("joyTypeP2", global.joyType[1]);
 -    scrWriteConfig("defaultLanguage", global.LANG_SAVE_ID[global.defaultLanguage]);
 +    scrWriteConfig("defaultLanguage", global.LANG_SAVE_ID[is_undefined(global.onlineBackupDefaultLanguage) ? global.defaultLanguage : global.onlineBackupDefaultLanguage]);
      scrCloseConfig();
@@ -1427,6 +1564,32 @@
 +    {
          var _fileTo = string_copy(_fileFrom, 1, string_length(_fileFrom) - 4);
          _fileTo += ("_" + string(global.backupSaveNum[global.currFile]) + ".bak");
+--- original/gml_GlobalScript_scrSwitchState.gml
++++ patched/gml_GlobalScript_scrSwitchState.gml
+@@ -1,5 +1,4 @@
+ function scrSwitchState(arg0)
+ {
+-    scrInputClear(false);
+     statePrev = state;
+     state = arg0;
+@@ -7,4 +6,5 @@
+     substate = 0;
+     stateCounter = 0;
++    scrInputClear(false);
+     return true;
+ }
+--- original/gml_GlobalScript_scrSwitchSub.gml
++++ patched/gml_GlobalScript_scrSwitchSub.gml
+@@ -1,8 +1,8 @@
+ function scrSwitchSub(arg0)
+ {
+-    scrInputClear(false);
+     subPrev = substate;
+     substate = arg0;
+     stateCounter = 0;
++    scrInputClear(false);
+     return true;
+ }
 --- original/gml_GlobalScript_scrUnpause.gml
 +++ patched/gml_GlobalScript_scrUnpause.gml
 @@ -27,4 +27,6 @@
@@ -2977,37 +3140,17 @@
          }
 --- original/gml_Object_o14_Game_Step_0.gml
 +++ patched/gml_Object_o14_Game_Step_0.gml
-@@ -10,14 +10,50 @@
+@@ -10,14 +10,29 @@
      if (state == STATE_GAME_SETUP)
      {
-+        if (global.MAX_PLAYERS_SUPPORTED >= 3)
-+        {
-+            var p = 2;
-+            scrGetInput(p);
-+            bHoldUp[p] = holdUp;
-+            bHoldDown[p] = holdDown;
-+            bHoldLeft[p] = holdLeft;
-+            bHoldRight[p] = holdRight;
-+            bPressUp[p] = pressUp;
-+            bPressDown[p] = pressDown;
-+            bPressLeft[p] = pressLeft;
-+            bPressRight[p] = pressRight;
-+            bFire1[p] = fire1;
-+            bFire2[p] = fire2;
-+            bFire1pressed[p] = fire1pressed;
-+            bFire2pressed[p] = fire2pressed;
-+            bFire1released[p] = fire1released;
-+            bFire2released[p] = fire2released;
-+            bPressStart[p] = pressStart;
-+            bForcePause[p] = forcePause;
-+        }
-         scrGetInputBoth();
+-        scrGetInputBoth();
++        scrGetInputAllN(3);
      }
      else if (state == STATE_TURN_AI || state == STATE_RACE_NEWS || state == STATE_RACE || state == STATE_RACE_RESULTS || state == STATE_GAME_END || state == STATE_GAME_RESULTS || state == STATE_RACE_LOOK_AT_SCREEN)
      {
 +        if (global.onlineSimultaneousTurns)
 +        {
-+            scrGetInputMerged();
++            scrGetInputMergedN(3);
 +        }
 +        else
 +        {
@@ -3023,13 +3166,13 @@
 +    {
          scrGetInput(0);
      }
-+    else if (numHumanPlayers == 3 && currPlayer == 2)
++    else if (numHumanPlayers >= 3 && currPlayer == 2)
 +    {
 +        scrGetInput(2);
 +    }
      else
      {
-@@ -85,6 +121,315 @@
+@@ -85,6 +100,315 @@
          break;
  }
 -for (i = 0; i < 3; i++)
@@ -3346,7 +3489,7 @@
 +{
      var numRepeats = 1;
      if (state == STATE_GAME_RESULTS)
-@@ -123,13 +468,45 @@
+@@ -123,13 +447,45 @@
      }
  }
 -for (i = 0; i < 3; i++)
@@ -4395,9 +4538,9 @@
 +showDelay = true;
 +prevGame = 0;
 +showingCatchupWarning = false;
-+global.onlineSettings = undefined;
 +global.onlineBackupDefaultLanguage = undefined;
 +global.onlinePlayers = undefined;
++global.onlineClientNames = undefined;
 +global.disableSettingOnlinePlayers = false;
 +global.onlineRunUpdate = true;
 +global.onlineSimultaneousTurns = false;
@@ -4484,7 +4627,7 @@
 +STATE_ONLINE_CONNECTING = 11;
  debugSelX = 0;
  debugSelY = 0;
-@@ -31,9 +36,30 @@
+@@ -31,9 +36,39 @@
  maxTime = false;
  cheevosResetAll = 0;
 +automaticallyJoinLobby = UnknownEnum.Value_0;
@@ -4494,6 +4637,7 @@
 -    if (global.SKIP_INTRO)
 +    var _count = parameter_count() + 1;
 +    var _connectLobby = UnknownEnum.Value_0;
++    var _replay = "";
 +    for (var i = 1; i < _count; i++)
      {
 +        if (parameter_string(i) == "+connect_lobby" && (i + 1) < _count)
@@ -4506,6 +4650,14 @@
 +            {
 +            }
 +        }
++        if (parameter_string(i) == "-replay" && (i + 1) < _count)
++        {
++            _replay = parameter_string(i + 1);
++        }
++    }
++    if (_replay != "")
++    {
++        pfo_play_replay(_replay);
 +    }
 +    if (_connectLobby != UnknownEnum.Value_0)
 +    {
@@ -4516,7 +4668,7 @@
 +    {
          state = STATE_LOGO;
      }
-@@ -43,6 +69,22 @@
+@@ -43,6 +78,22 @@
      }
  }
 +else if (global.roomPrev == rmLibrary)
@@ -4539,7 +4691,7 @@
 +{
      state = STATE_PRE_GAMES_BUFFER;
  }
-@@ -126,3 +168,9 @@
+@@ -126,3 +177,9 @@
      scrLoadProfile(global.ARCADE_MODE_PROFILE);
      state = STATE_PRE_GAMES_BUFFER;
 +}
@@ -4885,7 +5037,20 @@
      scrOpenFileManual(copyTo + 1);
 --- original/gml_Object_oLibrary_Other_15.gml
 +++ patched/gml_Object_oLibrary_Other_15.gml
-@@ -131,4 +131,5 @@
+@@ -17,5 +17,5 @@
+ CART_WIDTH = 36;
+ CART_HEIGHT = 38;
+-if (scrInputAny())
++if (substate != SUB_INIT && scrInputAny())
+ {
+     global.attractModeLibraryTimer = 0;
+@@ -25,4 +25,5 @@
+     if (texturegroup_get_status(global.TEXTUREGROUP[0]) != 3)
+     {
++        global.onlineRunUpdate = false;
+         exit;
+     }
+@@ -131,4 +132,5 @@
      if (global.attractModeLibraryTimer++ >= global.AM_LIB_TIME)
      {
 +        global.attractModeLibraryTimer = global.AM_LIB_TIME;
@@ -5024,7 +5189,7 @@
      delayInput = false;
  }
 -if (fire2pressed || keyboard_check_pressed(vk_enter))
-+if (fire2pressed || ((inputMode & UnknownEnum.Value_1) != 0 && keyboard_check_pressed(vk_enter)))
++if (fire2pressed || ((inputMode & UnknownEnum.Value_1) != 0 && !pfo_is_playing_replay() && keyboard_check_pressed(vk_enter)))
  {
      okay = true;
 @@ -18,2 +18,7 @@
@@ -5091,7 +5256,7 @@
 +{
 +    localInputDisabled = function()
 +    {
-+        return player != -1 && pfo_is_online() && pfo_client_get_player_index() != player;
++        return (player != -1 && pfo_is_online() && pfo_client_get_player_index() != player) || pfo_is_playing_replay();
 +    };
 +    
 +    usingLocalInput = function()
@@ -5107,7 +5272,7 @@
 +{
 +    localInputDisabled = function()
 +    {
-+        return false;
++        return pfo_is_playing_replay();
 +    };
 +    
 +    usingLocalInput = function()
@@ -5223,20 +5388,24 @@
 +            else if (itemType[i] == TYPE_DUAL || itemType[i] == TYPE_DUAL_INT || itemType[i] == TYPE_DUAL_ONLINE_PLAYER)
              {
                  draw_text(LEFT_TEXT_X, _yPos, itemName[i]);
-@@ -270,5 +307,12 @@
+@@ -270,5 +307,16 @@
                  draw_text(LEFT_TEXT_X, _yPos, itemName[i]);
                  draw_set_halign(fa_right);
-+                if (!pfo_is_online())
-+                {
-                 draw_sprite(sMenuP1P2, itemIndex[i], RIGHT_TEXT_X - 32, TOP);
-+                }
-+                else
++                if (pfo_is_online())
 +                {
 +                    draw_sprite_part(sMenuP1P2, 0, 0, 0, 16, 8, RIGHT_TEXT_X - 16, TOP);
 +                }
++                else if (global.MAX_PLAYERS_SUPPORTED > 2)
++                {
++                    draw_sprite_part(sMenuP8, itemIndex[i], 0, 0, 14 * global.MAX_PLAYERS_SUPPORTED, 8, RIGHT_TEXT_X - (14 * global.MAX_PLAYERS_SUPPORTED), TOP);
++                }
++                else
++                {
+                 draw_sprite(sMenuP1P2, itemIndex[i], RIGHT_TEXT_X - 32, TOP);
++                }
                  draw_set_halign(fa_left);
                  _yPos += 12;
-@@ -293,19 +337,21 @@
+@@ -293,19 +341,21 @@
          scrFontDefault();
      }
 +    if (!localInputDisabled())
@@ -5262,7 +5431,7 @@
 +            scrDrawTextInput(_xTip, _yTip, scrStringValManual("menu_tip_confirm", 0, "[2]") + "    " + scrStringValManual("menu_tip_back", 0, "[1]"), 0, 0, 2);
      }
      if (state == STATE_VIDEO)
-@@ -313,17 +359,17 @@
+@@ -313,17 +363,17 @@
          if (!global.ON_STEAM_DECK)
          {
 -            if (scrInGame())
@@ -5284,7 +5453,7 @@
 +                scrDrawTextInput(_xTip, _yTip, scrStringValManual("menu_tip_confirm", 0, "[2]") + "    " + scrStringValManual("menu_tip_back", 0, "[1]"), 0, 0, 2);
          }
          if (menuSel == OP_SCALE)
-@@ -335,21 +381,21 @@
+@@ -335,21 +385,21 @@
          }
      }
 -    if (state == STATE_AUDIO)
@@ -5311,7 +5480,7 @@
 +                scrDrawTextInput(_xTip, _yTip, scrStringValManual("menu_tip_confirm", 0, "[2]") + "    " + scrStringValManual("menu_tip_back", 0, "[1]"), 0, 0, 2);
          }
      }
-@@ -358,18 +404,18 @@
+@@ -358,18 +408,18 @@
          if (!global.ON_STEAM_DECK)
          {
 -            if (scrInGame())
@@ -5335,14 +5504,14 @@
 +                scrDrawTextInput(_xTip, _yTip, scrStringValManual("menu_tip_confirm", 0, "[2]") + "    " + scrStringValManual("menu_tip_back", 0, "[1]"), 0, 0, 2);
          }
          if (substate == SUB_GET_KEY)
-@@ -378,5 +424,5 @@
+@@ -378,5 +428,5 @@
              var ty = _yview + 108;
              scrDrawMenuBorderCentered(80, 288, 48);
 -            scrDrawTextInput(tx, ty - 8, scrStringVal("menu_misc_key_waiting", strInput), 0, 0, 2);
 +                scrDrawTextInput(tx, ty - 8, scrStringValManual("menu_misc_key_waiting", 0, strInput), 0, 0, 2);
          }
      }
-@@ -385,34 +431,34 @@
+@@ -385,34 +435,34 @@
          if (global.inputFocus == 1)
          {
 -            if (scrInGame())
@@ -5365,7 +5534,7 @@
 -            var _len = string_length(scrString("menu_tip_restore_joy_defaults"));
 -            if (player < 0 || player > 1)
 +                var _len = string_length(scrStringManual("menu_tip_restore_joy_defaults", 0));
-+                if (player < 0 || player >= array_length(global.joyType) || pfo_is_online())
++                if (player < 0 || player >= global.MAX_PLAYERS_SUPPORTED || pfo_is_online())
              {
 -                draw_text_with_sprites(_xTip - floor((8 * _len) / 2), _yTip, scrString("menu_tip_restore_joy_defaults"), global.JOY_TYPE_SPRITE[global.joyType[0]], 8, global.JOY_TYPE_SPRITE[global.joyType[0]], 9);
 +                    draw_text_with_sprites(_xTip - floor((8 * _len) / 2), _yTip, scrStringManual("menu_tip_restore_joy_defaults", 0), global.JOY_TYPE_SPRITE[global.joyType[0]], 8, global.JOY_TYPE_SPRITE[global.joyType[0]], 9);
@@ -5387,14 +5556,14 @@
 +                scrDrawTextInput(_xTip, _yTip, scrStringValManual("menu_tip_confirm", 0, "[2]") + "    " + scrStringValManual("menu_tip_back", 0, "[1]"), 0, 0, 2);
          }
          if (substate == SUB_GET_JOY)
-@@ -421,5 +467,5 @@
+@@ -421,5 +471,5 @@
              var ty = _yview + 108;
              scrDrawMenuBorderCentered(80, 288, 48);
 -            scrDrawTextInput(tx, ty - 8, scrStringVal("menu_misc_joy_waiting", strInput), 0, 0, 2);
 +                scrDrawTextInput(tx, ty - 8, scrStringValManual("menu_misc_joy_waiting", 0, strInput), 0, 0, 2);
          }
          if (substate == SUB_GET_SLOT)
-@@ -435,10 +481,11 @@
+@@ -435,10 +485,11 @@
      if (state == STATE_BUTTON_LAYOUT)
      {
 -        if (scrInGame())
@@ -5408,14 +5577,14 @@
 +    }
      if (state == STATE_MILESTONES)
      {
-@@ -493,5 +540,5 @@
+@@ -493,5 +544,5 @@
          }
          draw_set_color(c_white);
 -        draw_text_centered(_xTip, _yTip, scrStringVal("menu_misc_attained", milestonesAchieved, global.ACH_TOTAL), 8);
 +        draw_text_centered(_xTip, _yTip, scrStringValManual("menu_misc_attained", 0, milestonesAchieved, global.ACH_TOTAL), 8);
      }
      if (state == STATE_GAMEINFO)
-@@ -500,12 +547,15 @@
+@@ -500,12 +551,15 @@
          for (var i = 0; i <= (array_length(ctrlContent) - 1); i++)
          {
 -            scrDrawTextInput(LEFT_TEXT_X, TOP + _infoY, ctrlContent[i], player, 0, 0);
@@ -5433,7 +5602,7 @@
 +    }
      if (state == STATE_NAME)
      {
-@@ -610,7 +660,10 @@
+@@ -610,7 +664,10 @@
          }
          scrFontDefault();
 -        scrDrawTextInput(_xTip, _yTip, scrStringVal("menu_tip_cancel", "[1]"), 0, 0, 2);
@@ -5445,7 +5614,7 @@
 +}
  if (state == STATE_TERMINAL)
  {
-@@ -652,22 +705,22 @@
+@@ -652,22 +709,22 @@
                  if (global.currGameID == 49 && global.cheatID == 3)
                  {
 -                    draw_text(_x, _y, "[ " + scrStringManual("game_internal_name_color_racer", 0) + scrString("term_info_file_extension") + " ]");
@@ -5473,7 +5642,7 @@
 +                draw_text(_x, _y, "[ " + scrStringManual("game_internal_name_0", 0) + scrStringManual("term_info_file_extension", 0) + " ]");
              }
          }
-@@ -754,2 +807,6 @@
+@@ -754,2 +811,6 @@
      }
  }
 +scrSetFont(_origFont);
@@ -5613,6 +5782,13 @@
      if (statePrev == STATE_TERMINAL)
 --- original/gml_Object_oPauseMenu_Other_12.gml
 +++ patched/gml_Object_oPauseMenu_Other_12.gml
+@@ -8,5 +8,5 @@
+ {
+     currPlayer = 0;
+-    for (var p = 0; p <= 1; p++)
++    for (var p = 0; p < global.MAX_PLAYERS_SUPPORTED; p++)
+     {
+         for (var i = 0; i < 7; i++)
 @@ -21,39 +21,37 @@
  {
      drawMenu = true;
@@ -5642,7 +5818,7 @@
  }
  else if (substate == SUB_NAV)
  {
-+    if (!sendCommandInProgress() && !localInputDisabled())
++    if (!localInputDisabled() && !sendCommandInProgress())
 +    {
      var choice = scrMenuNavigation();
      if (choice == -2)
@@ -5699,6 +5875,34 @@
 +        scrSwitchState(STATE_UNPAUSE);
      }
  }
+@@ -142,5 +152,5 @@
+             {
+                 scrSfxLibrary(soundSet[currentSoundSet]);
+-                for (var p = 0; p <= 1; p++)
++                for (var p = 0; p < global.MAX_PLAYERS_SUPPORTED; p++)
+                 {
+                     for (var i = 0; i < 7; i++)
+@@ -156,5 +166,5 @@
+                 }
+                 keyMap[currPlayer][currInput] = currKey;
+-                for (var p = 0; p <= 1; p++)
++                for (var p = 0; p < global.MAX_PLAYERS_SUPPORTED; p++)
+                 {
+                     for (var i = 0; i < 7; i++)
+@@ -181,5 +191,5 @@
+     if (stateCounter == 0)
+     {
+-        for (var p = 0; p <= 1; p++)
++        for (var p = 0; p < global.MAX_PLAYERS_SUPPORTED; p++)
+         {
+             for (var i = 0; i < 7; i++)
+@@ -188,5 +198,5 @@
+             }
+         }
+-        for (var p = 0; p <= 1; p++)
++        for (var p = 0; p < global.MAX_PLAYERS_SUPPORTED; p++)
+         {
+             for (var i = 0; i < 7; i++)
 @@ -205,3 +215,9 @@
          }
      }
@@ -5711,8 +5915,22 @@
  }
 --- original/gml_Object_oPauseMenu_Other_13.gml
 +++ patched/gml_Object_oPauseMenu_Other_13.gml
-@@ -37,21 +37,21 @@
-     gamepadConnect[1] = gamepad_is_connected(global.joySlot[1]);
+@@ -9,5 +9,5 @@
+ {
+     currPlayer = 0;
+-    for (var p = 0; p <= 1; p++)
++    for (var p = 0; p < global.MAX_PLAYERS_SUPPORTED; p++)
+     {
+         for (var i = 0; i < 7; i++)
+@@ -34,24 +34,26 @@
+     }
+     padCount = array_length(slotList);
+-    gamepadConnect[0] = gamepad_is_connected(global.joySlot[0]);
+-    gamepadConnect[1] = gamepad_is_connected(global.joySlot[1]);
++    for (var p = 0; p < global.MAX_PLAYERS_SUPPORTED; p++)
++    {
++        gamepadConnect[p] = gamepad_is_connected(global.joySlot[p]);
++    }
      drawMenu = true;
 -    scrMenuCreate(scrString("menu_head_joypad_config"), menuSel);
 -    OP_PLAYER = scrMenuItem(TYPE_PLAYER, scrString("menu_item_player"), currPlayer);
@@ -5745,7 +5963,7 @@
 +        OP_SLOT = scrMenuItem(TYPE_DUAL_DETECT, scrStringManual("menu_item_joypad_pairing", 0), 0, "NONE");
          scrMenuSpacer(MENU_MEDIUM_SPACER);
          scrMenuSpacer(MENU_MEDIUM_SPACER);
-@@ -71,14 +71,15 @@
+@@ -71,14 +73,15 @@
          OP_START = -1;
      }
 -    OP_BACK = scrMenuItem(TYPE_SINGLE, scrString("menu_item_back_to_settings"));
@@ -5754,7 +5972,7 @@
  }
  else if (substate == SUB_NAV)
  {
-+    if (!sendCommandInProgress() && !localInputDisabled())
++    if (!localInputDisabled() && !sendCommandInProgress())
 +    {
      if (scrGetJoyCount() != padCount)
      {
@@ -5764,7 +5982,7 @@
 +            player = -1;
          scrSwitchSub(SUB_INIT);
          exit;
-@@ -87,21 +88,25 @@
+@@ -87,21 +90,25 @@
      if (choice == -2)
      {
 -        scrSfxLibrary(soundSubExit[currentSoundSet]);
@@ -5799,7 +6017,7 @@
 +            {
          resetCounter++;
      }
-@@ -115,7 +120,6 @@
+@@ -115,7 +122,6 @@
          scrSfxLibrary(soundSet[currentSoundSet]);
          scrSwitchSub(SUB_RESET);
 -        exit;
@@ -5808,7 +6026,7 @@
 +            else if (choice >= 0)
      {
          switch (menuSel)
-@@ -123,10 +127,13 @@
+@@ -123,10 +129,13 @@
              case OP_PLAYER:
                  scrSfxLibrary(soundToggle[currentSoundSet]);
 +                        if (!pfo_is_online())
@@ -5823,7 +6041,7 @@
 +                        strInput = scrStringValManual("menu_misc_joy_assign", 0, currPlayer + 1);
                  scrSwitchSub(SUB_GET_SLOT);
                  break;
-@@ -148,8 +155,18 @@
+@@ -148,8 +157,18 @@
                  break;
              case OP_BACK:
 +                        sendCommand(UnknownEnum.Value_1);
@@ -5843,18 +6061,73 @@
 +        scrSwitchState(STATE_UNPAUSE);
      }
  }
-@@ -364,9 +381,5 @@
-                 global.joySlot[!currPlayer] = _oldSlot;
+@@ -170,9 +189,12 @@
+             exit;
+         }
+-        if (scrJoyCheck(!currPlayer) != -1)
++        for (var p = 0; p < global.MAX_PLAYERS_SUPPORTED; p++)
+         {
++            if (p != currPlayer && scrJoyCheck(p) != -1)
++            {
+             scrSwitchSub(SUB_NAV);
+             exit;
+         }
++        }
+         currJoy = scrJoyCheck(currPlayer);
+         if (currJoy != -1)
+@@ -230,5 +252,5 @@
+                 }
+                 joyMap[currPlayer][currInput] = currJoy;
+-                for (var p = 0; p <= 1; p++)
++                for (var p = 0; p < global.MAX_PLAYERS_SUPPORTED; p++)
+                 {
+                     for (var i = 0; i < 7; i++)
+@@ -256,5 +278,5 @@
+     if (stateCounter == 0)
+     {
+-        for (var p = 0; p <= 1; p++)
++        for (var p = 0; p < global.MAX_PLAYERS_SUPPORTED; p++)
+         {
+             for (var i = 0; i < 7; i++)
+@@ -263,5 +285,5 @@
              }
+         }
+-        for (var p = 0; p <= 1; p++)
++        for (var p = 0; p < global.MAX_PLAYERS_SUPPORTED; p++)
+         {
+             for (var i = 0; i < 7; i++)
+@@ -269,9 +291,7 @@
+                 global.joyMap[p][i] = joyMap[p][i];
+             }
++            global.doubledUpButtons[p] = true;
++            global.joyType[p] = scrDetectJoyType(p);
+         }
+-        global.doubledUpButtons[0] = true;
+-        global.doubledUpButtons[1] = true;
+-        global.joyType[0] = scrDetectJoyType(0);
+-        global.joyType[1] = scrDetectJoyType(1);
+         stateCounter = 1;
+     }
+@@ -360,13 +380,12 @@
+             var _oldSlot = global.joySlot[currPlayer];
+             global.joySlot[currPlayer] = _slotChosen;
+-            if (_slotChosen == global.joySlot[!currPlayer])
++            for (var p = 0; p < global.MAX_PLAYERS_SUPPORTED; p++)
+             {
+-                global.joySlot[!currPlayer] = _oldSlot;
+-            }
 -            if (player != 2)
--            {
++                if (p != currPlayer && _slotChosen == global.joySlot[p])
+             {
 -                player = 2;
 -                joySlot = global.joySlot[0];
--            }
++                    global.joySlot[p] = _oldSlot;
+             }
++            }
 +            player = -1;
              stateCounter = 2;
          }
-@@ -376,3 +389,9 @@
+@@ -376,3 +395,9 @@
          scrSwitchSub(SUB_INIT);
      }
 +}
@@ -5894,7 +6167,7 @@
 @@ -38,28 +38,25 @@
  else if (substate == SUB_NAV)
  {
-+    if (!sendCommandInProgress() && !localInputDisabled())
++    if (!localInputDisabled() && !sendCommandInProgress())
 +    {
      var choice = scrMenuNavigation();
      if (prevFullScreen != window_get_fullscreen())
@@ -5981,7 +6254,7 @@
  }
  else if (substate == SUB_NAV)
  {
-+    if (!sendCommandInProgress() && !localInputDisabled())
++    if (!localInputDisabled() && !sendCommandInProgress())
 +    {
      var choice = scrMenuNavigation();
      if (choice == -2)
@@ -6202,7 +6475,7 @@
  }
 +if (pfo_is_online())
 +{
-+    if (!localInputDisabled() && !pfo_send_command_in_progress())
++    if (!localInputDisabled() && !sendCommandInProgress())
 +    {
 +        var _playerMaskToRemove = UnknownEnum.Value_0;
 +        for (var i = 0; i < global.MAX_PLAYERS_SUPPORTED; i++)
@@ -6270,6 +6543,29 @@
 +    Value_5,
 +    Value_15 = 15
 +}
+--- original/gml_Object_oSaveIcon_Create_0.gml
++++ patched/gml_Object_oSaveIcon_Create_0.gml
+@@ -3,4 +3,5 @@
+ xOff = 16;
+ yOff = 16;
++done = false;
+ if (instance_number(oSaveIcon) > 1)
+ {
+--- original/gml_Object_oSaveIcon_Other_7.gml
++++ patched/gml_Object_oSaveIcon_Other_7.gml
+@@ -1 +1 @@
+-instance_destroy();
++done = true;
+--- original/gml_Object_oSaveIcon_Step_0.gml
++++ patched/gml_Object_oSaveIcon_Step_0.gml
+@@ -1,2 +1,7 @@
++if (done)
++{
++    instance_destroy();
++    exit;
++}
+ x = (camera_get_view_x(view_get_camera(0)) + 384) - xOff;
+ y = (camera_get_view_y(view_get_camera(0)) + 216) - yOff;
 --- original/gml_Object_oScreenHandler_Draw_75.gml
 +++ patched/gml_Object_oScreenHandler_Draw_75.gml
 @@ -40,10 +40,6 @@

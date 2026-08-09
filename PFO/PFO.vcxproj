@@ -69,7 +69,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);steam_api64.lib</AdditionalDependencies>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);onecore.lib;steam_api64.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)steam\redistributable_bin\win64</AdditionalLibraryDirectories>
     </Link>
     <ResourceCompile>
@@ -96,7 +96,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);steam_api64.lib</AdditionalDependencies>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);onecore.lib;steam_api64.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)steam\redistributable_bin\win64</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>

@@ -33,12 +33,12 @@ else if (substate == SUB_INIT)
     drawMenu = true;
     scrMenuCreate("ONLINE SETTINGS", menuSel);
     
-    onlinePlayerCount = array_length(global.onlineSettings.clientNames);
+    onlinePlayerCount = array_length(global.onlineClientNames);
 
     var playerNames = array_create(onlinePlayerCount + 1);
     for (var clientIndex = 0; clientIndex < onlinePlayerCount; clientIndex++)
     {
-        playerNames[clientIndex] = string_copy(global.onlineSettings.clientNames[clientIndex], 1, 15);
+        playerNames[clientIndex] = string_copy(global.onlineClientNames[clientIndex], 1, 15);
     }
 
     playerNames[onlinePlayerCount] = "NONE";

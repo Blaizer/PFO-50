@@ -1,7 +1,8 @@
 #macro PFO_MAX_PLAYERS global.MAX_PLAYERS_SUPPORTED
 #macro PFO_INPUT_COMMAND_BITS int64(8)
 #macro PFO_INPUT_COMMAND_PARAM_BITS int64(8)
-#macro PFO_EXTRA_INPUT_BITS (PFO_INPUT_COMMAND_BITS + PFO_INPUT_COMMAND_PARAM_BITS)
+#macro PFO_TOTAL_INPUT_BITS int64(32)
+#macro PFO_EXTRA_INPUT_SHIFT (PFO_TOTAL_INPUT_BITS - (PFO_INPUT_COMMAND_BITS + PFO_INPUT_COMMAND_PARAM_BITS))
 
 function pfo_start()
 {
@@ -25,32 +26,19 @@ function pfo_start()
     }
 }
 
-function pfo_add_extra_input(futureFrame)
+function pfo_add_extra_input(futureFrame, flags)
 {
-    if (argument_count == 2)
+    var c = int64(0);
+
+    if (global.pfo_input_command_to_send != int64(0))
     {
-        var flags = argument[1];
-        var c = int64(0);
-
-        if (global.pfo_input_command_to_send != int64(0))
-        {
-            LOG_DEBUG("Writing command to input flags: " + string(global.pfo_input_command_to_send) + " " + string(global.pfo_input_command_param_to_send) + " with future frame " + string(futureFrame) + " on frame " + string(pfo_get_frame()));
-            c |= (global.pfo_input_command_to_send       & int64((1 << PFO_INPUT_COMMAND_BITS)      - 1));
-            c |= (global.pfo_input_command_param_to_send & int64((1 << PFO_INPUT_COMMAND_PARAM_BITS) - 1)) << PFO_INPUT_COMMAND_BITS;
-            global.pfo_input_command_future_send_frame = futureFrame;
-        }
-
-        return (flags << PFO_EXTRA_INPUT_BITS) | c;
+        LOG_DEBUG("Writing command to input flags: " + string(global.pfo_input_command_to_send) + " " + string(global.pfo_input_command_param_to_send) + " with future frame " + string(futureFrame) + " on frame " + string(pfo_get_frame()));
+        c |= (global.pfo_input_command_to_send       & int64((1 << PFO_INPUT_COMMAND_BITS)      - 1));
+        c |= (global.pfo_input_command_param_to_send & int64((1 << PFO_INPUT_COMMAND_PARAM_BITS) - 1)) << PFO_INPUT_COMMAND_BITS;
+        global.pfo_input_command_future_send_frame = futureFrame;
     }
-    else if (argument_count == 3)
-    {
-        return (argument[2] & int64((1 << PFO_INPUT_COMMAND_BITS) - 1)) != int64(0);
-    }
-}
 
-function pfo_remove_extra_input(flags)
-{
-    return flags >> PFO_EXTRA_INPUT_BITS;
+    return flags | (c << PFO_EXTRA_INPUT_SHIFT);
 }
 
 function pfo_update_extra_input()
@@ -68,7 +56,7 @@ function pfo_update_extra_input()
     {
         for (var p = PFO_MAX_PLAYERS - 1; p >= 0; p--)
         {
-            var c = pfo_player_get_input(p);
+            var c = pfo_player_get_input(p) >> PFO_EXTRA_INPUT_SHIFT;
 
             var command      = c                             & int64((1 << int64(PFO_INPUT_COMMAND_BITS)) - 1);
             var commandParam = (c >> PFO_INPUT_COMMAND_BITS) & int64((1 << int64(PFO_INPUT_COMMAND_PARAM_BITS)) - 1);

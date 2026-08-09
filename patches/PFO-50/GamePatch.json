@@ -1,7 +1,8 @@
 {
   "Name": "PFO 50",
   "Author": "Blazier",
-  "Description": "Adds integrated online multiplayer support to UFO 50. [v$ModVersion$DebugPostfix]",
+  "ID": "648717",
+  "Description": "Adds integrated online multiplayer support to UFO 50.",
   "ReadmeReplacements": [
     {
       "Pattern": "(?<=PFO 50 v)\\d+(?:\\.\\d+){2,3}",

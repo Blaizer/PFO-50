@@ -145,20 +145,16 @@ else if (state == STATE_ONLINE_LOBBY)
                                 LOG_INFO("### STARTING SESSION ###");
                                 LOG_DEBUG("start_game_settings: " + startGameSettings);
 
+                                onlineClientIds = [];
+                                global.onlineClientNames = [];
+
                                 try
                                 {
                                     var settings = json_parse(startGameSettings);
-                                    global.onlineSettings =
-                                    {
-                                        randomizeSeed: int64(settings.seed),
-                                        defaultLanguage: real(settings.lang),
-                                        clientIds: [],
-                                        clientNames: [],
-                                    };
                                     for (var i = 0; i < array_length(settings.ids); i++)
                                     {
-                                        global.onlineSettings.clientIds[i] = int64(settings.ids[i]);
-                                        global.onlineSettings.clientNames[i] = scrGetUserPersonaName(global.onlineSettings.clientIds[i]);
+                                        onlineClientIds[i] = int64(settings.ids[i]);
+                                        global.onlineClientNames[i] = scrGetUserPersonaName(onlineClientIds[i]);
                                     }
                                 }
                                 catch (_exception)
@@ -168,7 +164,7 @@ else if (state == STATE_ONLINE_LOBBY)
                                     exit;
                                 }
 
-                                if (array_length(global.onlineSettings.clientIds) < 2 || global.onlineSettings.defaultLanguage < 0 || global.onlineSettings.defaultLanguage >= global.NUM_LANG)
+                                if (array_length(onlineClientIds) < 2)
                                 {
                                     errorMessage = "ERROR ENCOUNTERED WHILE STARTING GAME.";
                                     scrSwitchSub(SUB_ONLINE_ERROR);
@@ -182,7 +178,7 @@ else if (state == STATE_ONLINE_LOBBY)
                                 }
 
                                 pfo_reset();
-                                if (!pfo_set_clients(global.onlineSettings.clientIds))
+                                if (!pfo_set_clients(onlineClientIds))
                                 {
                                     errorMessage = "AN ERROR OCCURED STARTING THE GAME.";
                                     scrSwitchSub(SUB_ONLINE_ERROR);

@@ -69,6 +69,30 @@ function scrSerializeChecksum(writer)
     }
 }
 
+function scrLogInstanceCounts()
+{
+    LOG_INFO("=== INSTANCE COUNTS === (frame " + string(pfo_get_frame()) + ")");
+
+    var map = ds_map_create();
+
+    with (all)
+    {
+        if (!ds_map_exists(map, object_index))
+        {
+            ds_map_add(map, object_index, 1);
+        }
+    }
+
+    for (var obj = ds_map_find_first(map); !is_undefined(obj); obj = ds_map_find_next(map, obj))
+    {
+        LOG_INFO(object_get_name(obj) + ": " + string(instance_number(obj)));
+    }
+
+    ds_map_destroy(map);
+
+    LOG_INFO("=======================");
+}
+
 function scrGetChecksumCallback()
 {
     if (argument_count == 1)
@@ -90,26 +114,7 @@ function scrGetChecksumCallback()
 
         if (array_contains(differ.differences, "instance_count"))
         {
-            LOG_INFO("=== INSTANCE COUNTS === (frame " + string(pfo_get_frame()) + ")");
-
-            var map = ds_map_create();
-
-            with (all)
-            {
-                if (!ds_map_exists(map, object_index))
-                {
-                    ds_map_add(map, object_index, 1);
-                }
-            }
-
-            for (var obj = ds_map_find_first(map); !is_undefined(obj); obj = ds_map_find_next(map, obj))
-            {
-                LOG_INFO(object_get_name(obj) + ": " + string(instance_number(obj)));
-            }
-
-            ds_map_destroy(map);
-
-            LOG_INFO("=======================");
+            scrLogInstanceCounts();
         }
     }
 }

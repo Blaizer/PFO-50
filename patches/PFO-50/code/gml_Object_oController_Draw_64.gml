@@ -16,6 +16,24 @@ if (keyboard_check_pressed(vk_f3))
     showFrame = showPing && keyboard_check(vk_shift);
 }
 
+function scrFib(n)
+{
+    if (n <= 3) return n;
+    return scrFib(n - 1) + scrFib(n - 2);
+}
+
+var playingReplay = pfo_is_playing_replay();
+if (playingReplay)
+{
+    for (var i = 1; i < 10; i++)
+    {
+        if (keyboard_check_pressed(ord("0") + i))
+        {
+           pfo_game_set_speed(scrFib(i), pfo_gamespeed_multiplier); 
+        }
+    }
+}
+
 // if (keyboard_check_pressed(vk_f5))
 //     global.mGameOnlineHUDHAlign[global.currGame] = 0;
 // if (keyboard_check_pressed(vk_f6))
@@ -108,20 +126,31 @@ if (pfo_is_online())
     }
     pfo_set_input_delay_favored_client_index(favoredClient);
 
-    var catchupSpeed = pfo_get_catchup_speed();
-    if (catchupSpeed >= 2.0)
+    var catchupMultiplier = pfo_game_get_speed(pfo_gamespeed_catchup_multiplier);
+    if (catchupMultiplier >= 2.0)
     {
         showingCatchupWarning = true;
     }
-    else if (catchupSpeed <= 1.0)
+    else if (catchupMultiplier <= 1.0)
     {
         showingCatchupWarning = false;
     }
 
-    if (showDelay && pfo_get_frame() > 4)
+    if (showDelay && (pfo_get_frame() > 4 || playingReplay))
     {
         var text;
-        if (pfo_client_get_player_index() >= 0)
+
+        if (playingReplay)
+        {
+            var speedMultiplier = pfo_game_get_speed(pfo_gamespeed_multiplier);
+            text = "Replay: " + string(round(speedMultiplier)) + "x";
+
+            if (speedMultiplier == 1.0)
+            {
+                draw_set_color(global.palette[16]);
+            }
+        }
+        else if (pfo_client_get_player_index() >= 0)
         {
             var mode = pfo_get_input_delay_mode();
 

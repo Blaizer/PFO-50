@@ -189,9 +189,9 @@ function scrOnlineCleanup(forceExitToTitleScreen)
     instance_destroy(global.onlineSpectatorPauseMenu);
     global.onlineSpectatorPauseMenu = noone;
 
-    global.onlineSettings = undefined;
-    global.onlineBackupDefaultLanguage = undefined;
     global.onlinePlayers = undefined;
+    global.onlineClientNames = undefined;
+    global.onlineBackupDefaultLanguage = undefined;
     global.disableSettingOnlinePlayers = false;
 
     if (!saveFileOwned || forceExitToTitleScreen)
@@ -237,7 +237,16 @@ function scrOnlineStateChangedCallback(state)
             global.onlinePlayers[i] = i < clientCount ? i : -1;
         }
 
-        pfo_set_randomize_seed(global.onlineSettings.randomizeSeed);
+        // replays don't currently set usernames, so we need to fill them here
+        if (is_undefined(global.onlineClientNames))
+        {
+            for (var i = 0; i < global.MAX_PLAYERS_SUPPORTED; i++)
+            {
+                global.onlineClientNames[i] = "CLIENT " + string(i);
+            }
+        }
+
+        pfo_set_randomize_seed(0);
         scrRandomize(0);
 
         global.currGame = 0;
@@ -254,7 +263,6 @@ function scrOnlineStateChangedCallback(state)
         global.attractModeLibrary = false;
         global.attractModeLibraryTimer = 0;
         global.attractModeIndex = 0;
-        scrInitAttractModePlaylist();
         global.playbackMode = false;
         global.inputPlayback = array_create(0);
         global.inputFrame = 0;
@@ -290,13 +298,10 @@ function scrOnlineStateChangedCallback(state)
         global.s35_enemyAttackSwoopAttToX = undefined;
         global.s35_enemyAttackSwoopAttToY = undefined;
 
-        if (pfo_get_client_index() != 0)
-        {
-            global.onlineBackupDefaultLanguage = global.defaultLanguage;
-        }
-        global.defaultLanguage = global.onlineSettings.defaultLanguage;
-        scrUpdateLanguage(global.defaultLanguage);
-        global.profileLanguage = global.defaultLanguage;
+        global.onlineBackupDefaultLanguage = global.defaultLanguage;
+        global.defaultLanguage = 0;
+        scrUpdateLanguage(0);
+        global.profileLanguage = 0;
 
         global.SKIP_INTRO = 2;
         global.roomPrev = rmLibrary;
@@ -305,5 +310,38 @@ function scrOnlineStateChangedCallback(state)
     else if (state == PFO_OnlineState.Disconnecting)
     {
         scrOnlineCleanup(false);
+    }
+}
+
+function scrFileCompressionCallback(buffer, compress, fileName)
+{
+    if (string_pos(".", fileName) == 0)
+    {
+        // special files with no file extension are not compressed
+        return buffer;
+    }
+
+    if (compress)
+    {
+        var _filestring = buffer_read(buffer, buffer_string);
+        _filestring = base64_decode(_filestring);
+        var _length = string_byte_length(_filestring) + 1;
+        var _buffer = buffer_create(_length, buffer_fixed, 1);
+        buffer_write(_buffer, buffer_string, _filestring);
+        var _finalBuffer = buffer_compress(_buffer, 0, _length);
+        buffer_delete(buffer);
+        buffer_delete(_buffer);
+        return _finalBuffer;
+    }
+    //else
+    {
+        var _buffer = buffer_decompress(buffer, 0, buffer_get_size(buffer));
+        var _filestring = buffer_read(_buffer, buffer_string);
+        _filestring = base64_encode(_filestring);
+        var _finalBuffer = buffer_create(string_byte_length(_filestring) + 1, buffer_fixed, 1);
+        buffer_write(_finalBuffer, buffer_string, _filestring);
+        buffer_delete(buffer);
+        buffer_delete(_buffer);
+        return _finalBuffer;
     }
 }

@@ -21,7 +21,8 @@ if (substate == SUB_ONLINE_INIT)
 
     errorMessage = undefined;
     requestTimeoutTime = NaN;
-    global.onlineSettings = undefined;
+    onlineClientIds = undefined;
+    global.onlineClientNames = undefined;
     ds_list_clear(lobbyUsers);
 
     if (!scrUpdateLobbyUsers(steam_lobby_get_lobby_id()))

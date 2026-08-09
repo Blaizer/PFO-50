@@ -41,7 +41,7 @@ IEnumerable<string> GetCanonicallyOrderedFiles(string path, string relativePath 
     {
         foreach (var file in dirInfo.GetFiles().OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
         {
-            if ((file.Attributes & (FileAttributes.Hidden | FileAttributes.System)) == 0)
+            if ((file.Attributes & (FileAttributes.Hidden | FileAttributes.System)) == 0 && !file.Name.StartsWith('.'))
             {
                 yield return $"{relativePath}/{file.Name}".TrimStart('/');
             }
@@ -50,7 +50,7 @@ IEnumerable<string> GetCanonicallyOrderedFiles(string path, string relativePath 
 
     foreach (var dir in dirInfo.GetDirectories().OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase))
     {
-        if ((dir.Attributes & (FileAttributes.Hidden | FileAttributes.System)) == 0)
+        if ((dir.Attributes & (FileAttributes.Hidden | FileAttributes.System)) == 0 && !dir.Name.StartsWith('.'))
         {
             foreach (var file in GetCanonicallyOrderedFiles(dir.FullName, $"{relativePath}/{dir.Name}".TrimStart('/')))
             {
@@ -176,6 +176,10 @@ using (var stream = new MemoryStream(bytes))
         uint chunk = reader.ReadUInt32();
         uint chunkSize = reader.ReadUInt32();
         long chunkEnd = stream.Position + chunkSize;
+
+        // Information for debugging nondeterministic data.win patching
+        // string chunkName = new string(new[] { (char)(chunk & 0xff), (char)((chunk >> 8) & 0xff), (char)((chunk >> 16) & 0xff), (char)((chunk >> 24) & 0xff) });
+        // Log.Information($"Chunk '{chunkName}' is at position: {stream.Position:X7}");
 
         if (chunk == 0x52545854) // TXTR
         {

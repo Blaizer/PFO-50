@@ -37,4 +37,3 @@ var fileListPath = Path.Join(GetBuildDir(), "files.txt");
 File.WriteAllText(fileListPath, fileList);
 await StopProgressBarUpdater();
 HideProgressBar();
-ScriptMessage($"Diff created at {diffPath}");

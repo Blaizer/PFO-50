@@ -232,6 +232,7 @@ struct GamePatch {
     public string Description { get; set; }
     public ReplacementPair[] ReadmeReplacements { get; set; }
     public string[] ConflictingMods { get; set; }
+    public string ID { get; set; }
 }
 
 JsonSerializerOptions __g_gamepatch_jsonDeserializeOptions = new(JsonSerializerDefaults.Web);

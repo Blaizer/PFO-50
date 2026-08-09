@@ -6,6 +6,9 @@
 #macro LOG_DEBUG if (LOG_LEVEL <= PFO_LogLevel.Debug) LOG
 #macro LOG_INFO if (LOG_LEVEL <= PFO_LogLevel.Info) LOG
 
+#macro pfo_gamespeed_catchup_multiplier 2
+#macro pfo_gamespeed_multiplier 3
+
 enum PFO_LogLevel
 {
     Verbose,

@@ -110,13 +110,12 @@ function scrUpdateLobbyUsers(lobbyId)
 
         ds_list_clear(lobbyUsers);
 
-        var hasOnlineSettings = !is_undefined(global.onlineSettings);
-        if (hasOnlineSettings)
+        var hasStartGameSettings = !is_undefined(onlineClientIds);
+        if (hasStartGameSettings)
         {
-            var ids = global.onlineSettings.clientIds;
-            for (var i = 0; i < array_length(ids); i++)
+            for (var i = 0; i < array_length(onlineClientIds); i++)
             {
-                ds_list_add(lobbyUsers, ids[i]);
+                ds_list_add(lobbyUsers, onlineClientIds[i]);
             }   
         }
         else
@@ -154,7 +153,7 @@ function scrUpdateLobbyUsers(lobbyId)
                 readyCount++;
                 connectReadyCount++;
             }
-            else if (ready == "1" || hasOnlineSettings)
+            else if (ready == "1" || hasStartGameSettings)
             {
                 ready = 1;
                 readyCount++;
@@ -187,7 +186,7 @@ function scrUpdateLobbyUsers(lobbyId)
                 ds_list_clear(lobbyUsers);
                 scrSwitchSub(SUB_ONLINE_ERROR);
             }
-            else if (hasOnlineSettings)
+            else if (hasStartGameSettings)
             {
                 errorMessage = "THIS LOBBY HAS ALREADY STARTED.";
                 scrSwitchSub(SUB_ONLINE_ERROR);
@@ -207,8 +206,6 @@ function scrUpdateLobbyUsers(lobbyId)
             
             var startGameSettings =
             {
-                seed: int64(irandom(0xffffffff)) | (int64(irandom(0xffffffff)) << int64(32)),
-                lang: global.defaultLanguage,
                 ids: array_create(ds_list_size(lobbyUsers), int64(0)),
             };
 
@@ -222,7 +219,7 @@ function scrUpdateLobbyUsers(lobbyId)
             steam_lobby_set_data("start_game_settings", startGameSettingsJson);
             scrSwitchSub(SUB_ONLINE_SET_START_GAME_SETTINGS);
         }
-        else if (hasOnlineSettings && substate < SUB_ONLINE_CONNECTING && connectReadyCount == ds_list_size(lobbyUsers))
+        else if (hasStartGameSettings && substate < SUB_ONLINE_CONNECTING && connectReadyCount == ds_list_size(lobbyUsers))
         {
             requestTimeoutTime = current_time + ONLINE_CONNECT_TIMEOUT;
             pfo_connect();

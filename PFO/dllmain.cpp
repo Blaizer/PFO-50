@@ -17,7 +17,7 @@ YYRunnerInterface* g_pYYRunnerInterface;
 
 namespace
 {
-    enum class LogLevel
+    enum class ELogLevel
     {
         Verbose,
         Debug,
@@ -27,14 +27,15 @@ namespace
     };
 
     #if !defined(NDEBUG)
-    constexpr LogLevel c_LogLevel = LogLevel::Debug;
+    constexpr ELogLevel c_LogLevel = ELogLevel::Debug;
     #else
-    constexpr LogLevel c_LogLevel = LogLevel::Info;
+    constexpr ELogLevel c_LogLevel = ELogLevel::Info;
     #endif
 
     char g_TempBuffer[0x2000];
     char g_TempBuffer2[0x2000];
     const char* g_LogFileName = "pfo.log";
+    const char* g_FileNamePostfix = "";
 
     void handle_assert(const char* message);
     void handle_assert(const char* assertion, const char* file, const char* function, int line);
@@ -112,15 +113,18 @@ namespace
     #define Log(fmt, ...) log(fmt, ##__VA_ARGS__)
     #endif
 
-    #define LogVerbose(fmt, ...) if constexpr (c_LogLevel <= LogLevel::Verbose) { Log(fmt, ##__VA_ARGS__); }
-    #define LogDebug(fmt, ...) if constexpr (c_LogLevel <= LogLevel::Debug) { Log(fmt, ##__VA_ARGS__); }
-    #define LogInfo(fmt, ...) if constexpr (c_LogLevel <= LogLevel::Info) { Log(fmt, ##__VA_ARGS__); }
+    #define LogVerbose(fmt, ...) if constexpr (c_LogLevel <= ELogLevel::Verbose) { Log(fmt, ##__VA_ARGS__); }
+    #define LogDebug(fmt, ...) if constexpr (c_LogLevel <= ELogLevel::Debug) { Log(fmt, ##__VA_ARGS__); }
+    #define LogInfo(fmt, ...) if constexpr (c_LogLevel <= ELogLevel::Info) { Log(fmt, ##__VA_ARGS__); }
 
     #if !defined(NDEBUG)
     #define LogError(fmt, ...) { YYError(fmt, ##__VA_ARGS__); }
     #else
     #define LogError(fmt, ...) { YYError(fmt, ##__VA_ARGS__); LogInfo("ERROR!!! " fmt "\n", ##__VA_ARGS__); }
     #endif
+
+    #define VERSION_TO_NUMBER(v) static_cast<uint32>(narrow_cast<uint8>(v##_MAJOR) | narrow_cast<uint8>(v##_MINOR) << 8 | narrow_cast<uint8>(v##_BUILD) << 16 | narrow_cast<uint8>(v##_REVSN) << 24)
+    #define NUMBER_TO_VERSION(n) (n & 0xff), ((n >> 8) & 0xff), ((n >> 16) & 0xff), ((n >> 24) & 0xff)
 
     void log(const char* format, ...)
     {
@@ -130,16 +134,12 @@ namespace
         int length = vsprintf_s(g_TempBuffer, format, args);
         va_end(args);
 
-        HANDLE logFile = CreateFileA(g_LogFileName, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        HANDLE logFile = CreateFileA(g_LogFileName, FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA | FILE_APPEND_DATA | SYNCHRONIZE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (logFile != INVALID_HANDLE_VALUE)
         {
-            if (SetFilePointerEx(logFile, {}, nullptr, FILE_END))
-            {
-                DWORD bytesToWrite = narrow_cast<DWORD>(length);
-                DWORD bytesWritten;
-                WriteFile(logFile, g_TempBuffer, bytesToWrite, &bytesWritten, nullptr);
-            }
-
+            DWORD bytesToWrite = narrow_cast<DWORD>(length);
+            DWORD bytesWritten;
+            WriteFile(logFile, g_TempBuffer, bytesToWrite, &bytesWritten, nullptr);
             CloseHandle(logFile);
         }
     }
@@ -167,8 +167,8 @@ namespace
 
     void handle_assert(const char* assertion, const char* file, const char* function, int line)
     {
-        file = max(file, strrchr(file, '/') + 1);
-        file = max(file, strrchr(file, '\\') + 1);
+        file = max(file, static_cast<const char*>(strrchr(file, '/') + 1));
+        file = max(file, static_cast<const char*>(strrchr(file, '\\') + 1));
 
         constexpr char anonymous[] = "`anonymous-namespace'::";
         constexpr size_t anonymousLength = countof(anonymous) - 1;
@@ -180,6 +180,8 @@ namespace
         sprintf_s(g_TempBuffer2, "'%s' at %s %s() line %d", assertion, file, function, line);
         handle_assert(g_TempBuffer2);
     }
+
+    using InputFlags_t = uint32;
 
     constexpr char c_ExtensionName[] = "PFO";
     constexpr char c_ExtensionVersion[] = MOD_VERSION;
@@ -202,6 +204,7 @@ namespace
     constexpr int c_MessageInputCountBits = 6;
     constexpr int c_FramesToRunBehindUpperLimit = 200;
     constexpr int c_FramesToRunBehindLowerLimit = 40;
+    constexpr int c_ReplayWriteChecksumInterval = c_LogLevel <= ELogLevel::Debug ? 1 : 255;
 
     constexpr int c_CatchupThresholds[] =
     {
@@ -229,8 +232,17 @@ namespace
     uint8* g_ChecksumRingBuffer;
     constexpr int c_ChecksumRingBufferSize = 0x20000;
 
+    constexpr uint32 c_ReplayBufferSize = 0x80000000u; // 2GB
+    constexpr uint32 c_ReplayMagic = 0x524f4650u; // PFOR
+    constexpr uint32 c_ReplayVersion = VERSION_TO_NUMBER(MOD_VERSION);
+    uint8* g_ReplayBuffer;
+    uint8* g_ReplayBuffer2;
+    bool g_AlwaysSaveReplays = c_LogLevel <= ELogLevel::Debug;
+
     double g_BaseGameSpeedFPS = 0.0;
     double g_FinalGameSpeedFPS = 0.0;
+
+    InputFlags_t g_InputDiffMask;
 
     int g_GMLChecksumBufferMaxSize;
     int g_GMLChecksumBuffer1;
@@ -249,6 +261,7 @@ namespace
     int g_gml_Script_onlineStateChangedCallback;
     int g_gml_Script_getInputCallback;
     int g_gml_Script_getChecksumCallback;
+    int g_gml_Script_fileCompressionCallback;
 
     SteamNetworkingMessage_t* g_TempNetMessages[1000];
 
@@ -258,11 +271,11 @@ namespace
         return memcpy(dst, src, sizeof(T));
     }
 
-    template<typename T>
-    FORCEINLINE void* reset(T& dst)
+    template<typename T, typename... Args>
+    FORCEINLINE void* reset(T& dst, Args&&... args)
     {
         dst.~T();
-        return new(&dst) T();
+        return new(&dst) T(args...);
     }
 
     struct SizeGetter
@@ -281,6 +294,14 @@ namespace
         }
     };
 
+    template<typename T>
+    constexpr int GetSize(T&& message)
+    {
+        SizeGetter size;
+        message.Serialize(size);
+        return size.m_Size;
+    }
+
     struct Writer
     {
         uint8* const m_Buffer;
@@ -288,7 +309,7 @@ namespace
         int m_Offset = 0;
 
         Writer() = delete;
-        Writer(uint8* buffer, int size) : m_Buffer(buffer), m_Size(size)
+        constexpr Writer(uint8* buffer, int size) : m_Buffer(buffer), m_Size(size)
         {
             assert(m_Size >= 0);
         }
@@ -309,6 +330,48 @@ namespace
         }
     };
 
+    struct ReplayWriter
+    {
+        uint8* m_Buffer;
+        int const m_Size;
+        int m_Offset = 0;
+
+        ReplayWriter() = delete;
+        constexpr ReplayWriter(uint8* buffer, int size) : m_Buffer(buffer), m_Size(size)
+        {
+            assert(m_Size >= 0);
+        }
+
+        template<typename T>
+        void Write(const T& value)
+        {
+            if (m_Offset + ssizeof(T) > m_Size)
+            {
+                m_Buffer = nullptr;
+            }
+
+            if (m_Buffer != nullptr)
+            {
+                memcpy(m_Buffer + m_Offset, &value, sizeof(T));
+                m_Offset += sizeof(T);
+            }
+        }
+
+        void Write(const void* buffer, int size)
+        {
+            if (static_cast<size_t>(size) > static_cast<size_t>(m_Size - m_Offset))
+            {
+                m_Buffer = nullptr;
+            }
+
+            if (m_Buffer != nullptr)
+            {
+                memcpy(m_Buffer + m_Offset, buffer, static_cast<size_t>(size));
+                m_Offset += size;
+            }
+        }
+    };
+
     struct Reader
     {
         const uint8* const m_Buffer;
@@ -316,7 +379,7 @@ namespace
         int m_Offset = 0;
 
         Reader() = delete;
-        Reader(const uint8* buffer, int size) : m_Buffer(buffer), m_Size(size)
+        constexpr Reader(const uint8* buffer, int size) : m_Buffer(buffer), m_Size(size)
         {
             assert(m_Size >= 0);
         }
@@ -460,7 +523,7 @@ namespace
         template<typename T>
         void Write(const T& value)
         {
-            assert(m_Offset + ssizeof(T) <= m_Size, "Out of bounds diff in " __FUNCTION__);
+            assert(m_Offset + ssizeof(T) <= m_Size);
 
             if (memcmp(m_Buffer1 + m_Offset, m_Buffer2 + m_Offset, sizeof(T)) != 0)
             {
@@ -573,15 +636,12 @@ namespace
         return static_cast<int>(result.val);
     }
 
-    using InputFlags_t = uint32;
-
     enum class EOnlineState
     {
         Offline,
         GoingOnline,
         Online,
         GoingOffline,
-        Quitting,
     };
 
     struct MessageSendInfo
@@ -665,10 +725,10 @@ namespace
     enum class EFileStatus
     {
         None,
-        Owned,
-        UnownedUnknown,
-        UnownedDoesNotExist,
-        UnownedExists,
+        Physical,
+        VirtualUnknown,
+        VirtualDoesNotExist,
+        VirtualExists,
     };
 
     struct FileData
@@ -691,35 +751,57 @@ namespace
     {
         union
         {
-            int m_Size;
-            uint32 m_Frame;
+            struct
+            {
+                const void* m_Data;
+                int m_Size;
+                char m_Filename[MAX_PATH + 1];
+            } m_File;
+
+            ChecksumBuffer* m_ChecksumBuffer;
         };
+
         EReliableMessageType m_Type;
-        char m_Filename[MAX_PATH + 1];
 
         template<typename T>
         constexpr void Serialize(T& writer)
         {
             writer.Write(m_Type);
 
-            if (m_Type == EReliableMessageType::File || m_Type == EReliableMessageType::FileDoesNotExist)
+            switch (m_Type)
+            {
+            case EReliableMessageType::File:
+            case EReliableMessageType::FileDoesNotExist:
             {
                 int i = 0;
                 do
                 {
-                    assert(i < countof(m_Filename));
-                    writer.Write(m_Filename[i]);
-                } while (m_Filename[i++] != '\0');
-            }
+                    assert(i < countof(m_File.m_Filename));
+                    writer.Write(m_File.m_Filename[i]);
+                } while (m_File.m_Filename[i++] != '\0');
 
-            if (m_Type == EReliableMessageType::File)
-            {
-                writer.Write(m_Size);
-            }
+                if (m_Type == EReliableMessageType::File)
+                {
+                    writer.Write(m_File.m_Size);
 
-            if (m_Type == EReliableMessageType::ChecksumBuffer)
+                    if constexpr (std::is_same<Reader, T>::value)
+                    {
+                        assert(static_cast<size_t>(m_File.m_Size) <= static_cast<size_t>(writer.m_Size - writer.m_Offset), "Out of bounds read");
+                        m_File.m_Data = writer.m_Buffer + writer.m_Offset;
+                        writer.m_Offset += m_File.m_Size;
+                    }
+                    else
+                    {
+                        writer.Write(m_File.m_Data, m_File.m_Size);
+                    }
+                }
+            } break;
+            case EReliableMessageType::ChecksumBuffer:
             {
-                writer.Write(m_Frame);
+                m_ChecksumBuffer->Serialize(writer);
+            } break;
+            default:
+                assert(false);
             }
         }
     };
@@ -771,17 +853,31 @@ namespace
 
         static consteval int GetMaxSize()
         {
-            Message message;
+            Message message = { .m_InputFrameCount = countof(message.m_Inputs) };
 
-            message.m_InputFrameCount = countof(message.m_Inputs);
             for (int i = 0; i < countof(message.m_AutomaticInputDelayChanges); i++)
             {
                 message.m_AutomaticInputDelayChanges[i].m_InputFrameIndex = 0xff;
             }
 
-            SizeGetter size;
-            message.Serialize(size);
-            return size.m_Size;
+            return GetSize(message);
+        }
+    };
+
+    struct ReplayHeader
+    {
+        uint32 m_Magic;
+        uint32 m_Version;
+        uint8 m_ClientCount;
+        uint8 m_ClientIndex;
+
+        template<typename T>
+        void Serialize(T& writer)
+        {
+            writer.Write(m_Magic);
+            writer.Write(m_Version);
+            writer.Write(m_ClientCount);
+            writer.Write(m_ClientIndex);
         }
     };
 
@@ -838,6 +934,37 @@ namespace
         }
     }
 
+    void* AllocateRingBuffer(size_t bufferSize)
+    {
+        SYSTEM_INFO sysInfo;
+        GetSystemInfo(&sysInfo);
+        assert((bufferSize % sysInfo.dwAllocationGranularity) == 0);
+
+        void* placeholder1 = VirtualAlloc2(nullptr, nullptr, bufferSize * 2, MEM_RESERVE | MEM_RESERVE_PLACEHOLDER, PAGE_NOACCESS, nullptr, 0);
+        assert(placeholder1 != nullptr);
+
+        BOOL result = VirtualFree(placeholder1, bufferSize, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER);
+        assert(result);
+        void* placeholder2 = static_cast<void*>(static_cast<uint8_t*>(placeholder1) + bufferSize);
+
+        ULARGE_INTEGER size = { .QuadPart = bufferSize };
+        HANDLE section = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, size.HighPart, size.LowPart, nullptr);
+        assert(section != nullptr);
+
+        void* view1 = MapViewOfFile3(section, nullptr, placeholder1, 0, bufferSize, MEM_REPLACE_PLACEHOLDER, PAGE_READWRITE, nullptr, 0);
+        assert(view1 != nullptr);
+
+        void* view2 = MapViewOfFile3(section, nullptr, placeholder2, 0, bufferSize, MEM_REPLACE_PLACEHOLDER, PAGE_READWRITE, nullptr, 0);
+        assert(view2 != nullptr);
+
+        return view1;
+    }
+
+    void* AllocateLargeBuffer(size_t bufferSize)
+    {
+        return VirtualAlloc(nullptr, bufferSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    }
+
     struct Session
     {
         uint64 m_ChecksumRingBufferHead = c_ChecksumRingBufferSize;
@@ -845,6 +972,9 @@ namespace
         ClientData m_ClientData[c_ClientLimit];
         int m_PlayerIndexToClientIndexMap[c_PlayerLimit];
         FileData m_FileData[32];
+        ReplayWriter m_ReplayWriter = { nullptr, 0 };
+        Reader m_ReplayReader = { nullptr, 0 };
+        double m_SpeedMultiplier = 1.0;
 
         HSteamListenSocket m_ListenSocket = k_HSteamListenSocket_Invalid;
 
@@ -863,6 +993,8 @@ namespace
         int m_MinAutomaticInputDelay = 0;
         int m_MaxAutomaticInputDelay = c_MaxInputDelay;
         int m_CatchupState = 0;
+        uint32 m_ReplayLastFrameWritten = 0;
+        uint32 m_ReplayLastFrameRead = 0;
 
         constexpr Session()
         {
@@ -904,33 +1036,18 @@ namespace
                     assert(m_ClientCount <= countof(m_ClientData));
                     for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
                     {
-                        BEGIN_STRUCT()
+                        auto& clientData = m_ClientData[clientIndex];
+                        auto& playerData = clientData.m_PlayerData;
+
+                        BEGIN_ARRAY("InputBuffer")
                         {
-                            WRITE(m_ClientData[clientIndex].m_InputDelay, "InputDelay");
-                            WRITE(m_ClientData[clientIndex].m_AutomaticInputDelay, "AutomaticInputDelay");
-
-                            auto& clientData = m_ClientData[clientIndex];
-                            auto& playerData = clientData.m_PlayerData;
-
-                            BEGIN_ARRAY("InputBuffer")
+                            for (int i = 0; i < 3; i++)
                             {
-                                for (int i = 0; i < 3; i++)
-                                {
-                                    uint32_t frame = (m_Frame - i - 1) & static_cast<uint32_t>(countof(playerData.m_InputBuffer) - 1);
-                                    WRITE(playerData.m_InputBuffer[frame]);
-                                }
+                                uint32_t frame = (m_Frame - i - 1) & static_cast<uint32_t>(countof(playerData.m_InputBuffer) - 1);
+                                WRITE(playerData.m_InputBuffer[frame]);
                             }
-                            END_ARRAY()
-
-                            BEGIN_STRUCT("AutomaticInputDelayChanges")
-                            {
-                                uint32_t frame = (m_Frame - 1) & static_cast<uint32_t>(countof(clientData.m_AutomaticInputDelayChanges) - 1);
-                                WRITE(clientData.m_AutomaticInputDelayChanges[frame].m_InputFrame, "InputFrame");
-                                WRITE(clientData.m_AutomaticInputDelayChanges[frame].m_InputDelay, "InputDelay");
-                            }
-                            END_STRUCT()
                         }
-                        END_STRUCT()
+                        END_ARRAY()
                     }
                 }
                 END_ARRAY()
@@ -948,10 +1065,7 @@ namespace
         {
             Session session;
             session.m_ClientCount = countof(m_ClientData);
-
-            SizeGetter size;
-            session.Serialize(size);
-            return size.m_Size;
+            return GetSize(session);
         }
 
         bool Update(CInstance* instance, bool advanceFrame)
@@ -959,6 +1073,36 @@ namespace
             if (m_OnlineState == EOnlineState::GoingOnline)
             {
                 m_OnlineState = EOnlineState::Online;
+                
+                bool shouldWriteReplay = m_ReplayReader.m_Buffer == nullptr || g_AlwaysSaveReplays;
+                if (shouldWriteReplay && g_ReplayBuffer != nullptr && m_ReplayWriter.m_Buffer == nullptr)
+                {
+                    uint8* buffer = g_ReplayBuffer;
+
+                    // if we are both reading and writing, lazily allocate a second buffer
+                    if (m_ReplayReader.m_Buffer == buffer)
+                    {
+                        if (g_ReplayBuffer2 == nullptr)
+                        {
+                            g_ReplayBuffer2 = static_cast<uint8*>(AllocateLargeBuffer(c_ReplayBufferSize));
+                        }
+
+                        buffer = g_ReplayBuffer2;
+                    }
+
+                    if (buffer != nullptr)
+                    {
+                        reset(m_ReplayWriter, buffer, narrow_cast<int>(c_ReplayBufferSize - 1u));
+
+                        ReplayHeader header;
+                        header.m_Magic = c_ReplayMagic;
+                        header.m_Version = c_ReplayVersion;
+                        header.m_ClientCount = static_cast<uint8>(m_ClientCount);
+                        header.m_ClientIndex = static_cast<uint8>(m_ClientIndex);
+                        header.Serialize(m_ReplayWriter);
+                    }
+                }
+                
                 SetPowersaveEnabled(false);
 
                 {
@@ -1038,7 +1182,7 @@ namespace
                     CheckChecksum(checksumBuffer, m_ClientIndex, instance);
                 }
 
-                // handle unasigned players
+                // handle unassigned players
                 if (advanceFrame)
                 {
                     auto& myClientData = m_ClientData[m_ClientIndex];
@@ -1061,7 +1205,7 @@ namespace
 
                         if (playerData.m_PlayerIndex < 0)
                         {
-                            // zero input of any unasigned players
+                            // zero input of any unassigned players
                             playerData.m_InputBuffer[m_Frame & (countof(playerData.m_InputBuffer) - 1)] = 0;
                             if (playerData.m_TailInputFrame < m_Frame)
                             {
@@ -1070,7 +1214,7 @@ namespace
                             }
                             //trace("zeroed input on frame %u for client %d\n", m_Frame, clientIndex);
 
-                            // invalidate delay changes for unasigned players
+                            // invalidate delay changes for unassigned players
                             auto& delayChange = clientData.m_AutomaticInputDelayChanges[m_Frame & (countof(clientData.m_AutomaticInputDelayChanges) - 1)];
                             if (delayChange.m_InputFrame == m_Frame)
                             {
@@ -1082,7 +1226,7 @@ namespace
                 }
 
                 // get local player input
-                if (advanceFrame)
+                if (advanceFrame && m_ReplayReader.m_Buffer == nullptr)
                 {
                     auto& myClientData = m_ClientData[m_ClientIndex];
                     auto& myPlayerData = myClientData.m_PlayerData;
@@ -1098,7 +1242,7 @@ namespace
                             RValue arg;
                             init_real(arg, frame);
                             Script_Perform(g_gml_Script_getInputCallback, instance, instance, 1, &result, &arg);
-                            assert(result.kind == VALUE_INT64);
+                            assert(KIND_RValue(&result) == VALUE_INT64);
                             input = bitwise_cast<InputFlags_t>(result.v64);
                         }
 
@@ -1108,16 +1252,8 @@ namespace
                         {
                             InputFlags_t previousInput = myPlayerData.m_InputBuffer[(frame - 1) & (countof(myPlayerData.m_InputBuffer) - 1)];
 
-                            {
-                                RValue result = {};
-                                RValue args[3];
-                                init_real(args[0], frame);
-                                init_int64(args[1], previousInput);
-                                init_int64(args[2], input);
-                                Script_Perform(g_gml_Script_getInputCallback, instance, instance, countof(args), &result, args);
-                                assert(result.kind == VALUE_BOOL || result.kind == VALUE_REAL);
-                                keepInput = static_cast<bool>(result.val);
-                            }
+                            // we use the diff mask to check that our input is different to what the previous input would become if it was extended to the next frame
+                            keepInput = input != (previousInput & g_InputDiffMask);
                         }
 
                         if (keepInput)
@@ -1132,16 +1268,9 @@ namespace
                                 {
                                     break;
                                 }
-
-                                {
-                                    RValue result = {};
-                                    RValue args[2];
-                                    init_real(args[0], frame);
-                                    init_int64(args[1], input);
-                                    Script_Perform(g_gml_Script_getInputCallback, instance, instance, countof(args), &result, args);
-                                    assert(result.kind == VALUE_INT64);
-                                    input = bitwise_cast<InputFlags_t>(result.v64);
-                                }
+                                
+                                // this mask is used to extend some inputs (like held state) and to set other inputs to 0 (like press events)
+                                input &= g_InputDiffMask;
                             }
 
                             assert(myClientData.m_LastInputFrame < myPlayerData.m_TailInputFrame);
@@ -1305,7 +1434,8 @@ namespace
                                     }
                                     else
                                     {
-                                        ReceiveReliableMessage(netMessage, clientIndex, instance);
+                                        ReceiveReliableMessage(netMessage->m_pData, netMessage->m_cbSize, clientIndex, instance);
+                                        netMessage->Release();
                                     }
                                 }
                             }
@@ -1508,6 +1638,24 @@ namespace
                         break;
                     }
 
+                    // if we're playing a replay, extend inputs to the next frame, then read the next frame
+                    if (m_ReplayReader.m_Buffer != nullptr)
+                    {
+                        for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
+                        {
+                            auto& clientData = m_ClientData[clientIndex];
+                            auto& playerData = clientData.m_PlayerData;
+
+                            auto& input = playerData.m_InputBuffer[m_Frame & (countof(playerData.m_InputBuffer) - 1)];
+                            auto previousInput = playerData.m_InputBuffer[(m_Frame - 1) & (countof(playerData.m_InputBuffer) - 1)];
+
+                            input = previousInput & g_InputDiffMask;
+                            playerData.m_TailInputFrame++;
+                        }
+
+                        ReplayReadFrame(instance, false);
+                    }
+
                     for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
                     {
                         auto& clientData = m_ClientData[clientIndex];
@@ -1518,7 +1666,6 @@ namespace
                             // disconnect if a disconnected client is preventing us from moving to the next frame
                             if (clientData.m_ConnectSocket == k_HSteamNetConnection_Invalid)
                             {
-                                assert(clientIndex != m_ClientIndex);
                                 assert(clientData.m_PlayerData.m_PlayerIndex >= 0);
                                 LogDebug("Ran out of input from disconnected client %d (player %d): Disconnecting\n", clientIndex, clientData.m_PlayerData.m_PlayerIndex);
                                 m_OnlineState = EOnlineState::GoingOffline;
@@ -1554,7 +1701,7 @@ namespace
                                 {
                                     PostMessageW(msg.hwnd, msg.message, msg.wParam, msg.lParam);
                                     Close();
-                                    m_OnlineState = EOnlineState::Quitting;
+                                    m_OnlineState = EOnlineState::GoingOffline;
                                     break;
                                 }
                             }
@@ -1798,8 +1945,41 @@ namespace
 
                     if (m_CatchupState != catchupState)
                     {
+                        assert(catchupState >= 0 && catchupState < countof(c_CatchupThresholdSpeeds));
                         m_CatchupState = catchupState;
-                        SetSpeed(g_BaseGameSpeedFPS, instance);
+                        UpdateGameSpeed(instance);
+                    }
+                }
+                
+                // write checksum and input data to replay
+                if (advanceFrame && m_ReplayWriter.m_Buffer != nullptr)
+                {
+                    if ((m_Frame % c_ReplayWriteChecksumInterval) == 0)
+                    {
+                        ReplayWriteChunkHeader(true, m_ClientIndex, 1);
+
+                        auto& myClientData = m_ClientData[m_ClientIndex];
+                        auto& checksumBuffer = myClientData.m_ChecksumData[m_Frame & (countof(myClientData.m_ChecksumData) - 1)];
+                        assert(checksumBuffer.m_Frame == m_Frame);
+                        m_ReplayWriter.Write(checksumBuffer.m_Checksum);
+                    }
+
+                    for (int clientIndex = 0; clientIndex < m_ClientCount; clientIndex++)
+                    {
+                        auto& clientData = m_ClientData[clientIndex];
+                        auto& playerData = clientData.m_PlayerData;
+
+                        auto input = playerData.m_InputBuffer[m_Frame & (countof(playerData.m_InputBuffer) - 1)];
+                        auto previousInput = playerData.m_InputBuffer[(m_Frame - 1) & (countof(playerData.m_InputBuffer) - 1)];
+
+                        // if the input is different to what it would be if we just extended it from the previous input, add it
+                        if (input != (previousInput & g_InputDiffMask))
+                        {
+                            int byteCount = static_cast<int>((ssizeof(input) * 8 + 7 - __lzcnt(input)) / 8u);
+                            assert(byteCount <= ssizeof(input));
+                            ReplayWriteChunkHeader(false, clientIndex, byteCount);
+                            m_ReplayWriter.Write(&input, byteCount);
+                        }
                     }
                 }
             }
@@ -1836,12 +2016,18 @@ namespace
                 g_SteamNetworkingSockets->CloseListenSocket(m_ListenSocket);
                 m_ListenSocket = k_HSteamListenSocket_Invalid;
             }
+
+            if (g_AlwaysSaveReplays)
+            {
+                SaveReplay("replay");
+            }
+
+            // this seems to improve the chance of other clients receiving the disconnect message faster when closing the game
+            SteamAPI_RunCallbacks();
         }
 
         void Reset(CInstance* instance)
         {
-            auto oldOnlineState = m_OnlineState;
-
             Close();
 
             for (int i = 0; i < countof(m_FileData); i++)
@@ -1859,14 +2045,14 @@ namespace
                 }
             }
 
-            reset(*this);
-
-            SetSpeed(g_BaseGameSpeedFPS, instance);
-
-            if (oldOnlineState >= EOnlineState::Online)
+            if (m_OnlineState >= EOnlineState::Online)
             {
                 SetPowersaveEnabled(true);
             }
+
+            reset(*this);
+
+            UpdateGameSpeed(instance);
         }
 
         void Disconnect()
@@ -1910,7 +2096,8 @@ namespace
 
                 if (a.m_Frame == b.m_Frame && a.m_Checksum != b.m_Checksum)
                 {
-                    if (a.m_Frame > m_LastSentChecksumFrame)
+                    // if we allow clients to desync, this should be changed to only send a checksum message if this client isn't already desycned with us
+                    if (m_LastSentChecksumFrame == 0 || m_LastSentChecksumFrame > a.m_Frame)
                     {
                         // send checksum message
                         auto& myClientData = m_ClientData[m_ClientIndex];
@@ -1920,14 +2107,16 @@ namespace
                         {
                             ReliableMessage reliableMessage;
                             reliableMessage.m_Type = EReliableMessageType::ChecksumBuffer;
-                            reliableMessage.m_Frame = mine.m_Frame;
-                            SendReliableMessage(reliableMessage, instance, nullptr, 0, &mine);
+                            reliableMessage.m_ChecksumBuffer = &mine;
+                            SendReliableMessage(reliableMessage, instance);
                             m_LastSentChecksumFrame = mine.m_Frame;
                         }
                     }
 
                     if (a.m_BufferOffset != 0 && b.m_BufferOffset != 0)
                     {
+                        SaveReplay("desync");
+
                         if (bClientIndex == m_ClientIndex)
                         {
                             DiffChecksums(b, bClientIndex, a, aClientIndex, instance);
@@ -1937,10 +2126,7 @@ namespace
                             DiffChecksums(a, aClientIndex, b, bClientIndex, instance);
                         }
 
-                        // we quit when a checksum failure happens, could change this in the future
-                        PostMessageW(nullptr, WM_QUIT, 0, 0);
-                        Close();
-                        m_OnlineState = EOnlineState::Quitting;
+                        m_OnlineState = EOnlineState::GoingOffline;
                     }
                 }
             }
@@ -2407,17 +2593,14 @@ namespace
             }
         }
 
-        void SetSpeed(double speed, CInstance* instance)
+        void UpdateGameSpeed(CInstance* instance)
         {
-            g_BaseGameSpeedFPS = speed;
-
-            assert(m_CatchupState >= 0 && m_CatchupState < countof(c_CatchupThresholdSpeeds));
-            speed *= c_CatchupThresholdSpeeds[m_CatchupState];
+            double speed = g_BaseGameSpeedFPS * c_CatchupThresholdSpeeds[m_CatchupState] * m_SpeedMultiplier;
 
             if (g_FinalGameSpeedFPS != speed)
             {
                 bool oldVsync = g_FinalGameSpeedFPS <= 60.0;
-                bool newVsync = speed <= 60;
+                bool newVsync = speed <= 60.0;
                 g_FinalGameSpeedFPS = speed;
 
                 if (oldVsync != newVsync)
@@ -2492,7 +2675,7 @@ namespace
             return ret;
         }
 
-        void SendReliableMessage(ReliableMessage& reliableMessage, CInstance* instance, void* data, int dataSize, ChecksumBuffer* checksumBuffer = nullptr)
+        void SendReliableMessage(ReliableMessage& reliableMessage, CInstance* instance)
         {
             int messageRetryCount = -1;
             int messageSize = 0;
@@ -2516,28 +2699,10 @@ namespace
                     if (clientData.m_ConnectSocket != k_HSteamNetConnection_Invalid && !messageSent[clientIndex])
                     {
                         netMessageToClientIndexMap[messageCount] = clientIndex;
-                        auto netMessage = netMessages[messageCount++] = g_SteamNetworkingUtils->AllocateMessage(k_cbMaxSteamNetworkingSocketsMessageSizeSend);
+                        auto netMessage = netMessages[messageCount] = g_SteamNetworkingUtils->AllocateMessage(k_cbMaxSteamNetworkingSocketsMessageSizeSend);
 
                         Writer writer(static_cast<uint8*>(netMessage->m_pData), k_cbMaxSteamNetworkingSocketsMessageSizeSend);
-
-                        if (reliableMessage.m_Type == EReliableMessageType::File)
-                        {
-                            reliableMessage.Serialize(writer);
-                            writer.Write(data, dataSize);
-                        }
-                        else if (reliableMessage.m_Type == EReliableMessageType::FileDoesNotExist)
-                        {
-                            reliableMessage.Serialize(writer);
-                        }
-                        else if (reliableMessage.m_Type == EReliableMessageType::ChecksumBuffer)
-                        {
-                            reliableMessage.Serialize(writer);
-                            checksumBuffer->Serialize(writer);
-                        }
-                        else
-                        {
-                            assert(false);
-                        }
+                        reliableMessage.Serialize(writer);
 
                         netMessage->m_conn = clientData.m_ConnectSocket;
                         netMessage->m_cbSize = writer.m_Offset;
@@ -2545,6 +2710,13 @@ namespace
                         netMessage->m_idxLane = 1;
 
                         messageSize = netMessage->m_cbSize;
+
+                        if (messageCount == 0 && messageRetryCount == 0)
+                        {
+                            ReplayWriteReliableMessage(netMessage->m_pData, netMessage->m_cbSize, m_ClientIndex);
+                        }
+
+                        messageCount++;
                     }
                 }
 
@@ -2583,53 +2755,307 @@ namespace
             }
         }
 
-        void ReceiveReliableMessage(SteamNetworkingMessage_t* netMessage, int clientIndex, CInstance* instance)
+        void ReceiveReliableMessage(const void* data, int size, int clientIndex, CInstance* instance)
         {
-            LogDebug("ReceiveReliableMessage (size = %d)\n", netMessage->m_cbSize);
+            LogDebug("ReceiveReliableMessage (size = %d)\n", size);
 
             ReliableMessage reliableMessage;
-            Reader reader(static_cast<uint8*>(netMessage->m_pData), netMessage->m_cbSize);
+            ChecksumBuffer messageChecksumBuffer = { .m_BufferOffset = m_ChecksumRingBufferHead };
+            reliableMessage.m_ChecksumBuffer = &messageChecksumBuffer;
+
+            Reader reader(static_cast<const uint8*>(data), size);
             reliableMessage.Serialize(reader);
+            assert(reader.m_Offset == reader.m_Size);
 
             if (reliableMessage.m_Type == EReliableMessageType::File || reliableMessage.m_Type == EReliableMessageType::FileDoesNotExist)
             {
-                auto fileData = FindFileData(reliableMessage.m_Filename, clientIndex);
+                auto fileData = FindFileData(reliableMessage.m_File.m_Filename, clientIndex);
 
-                assert(fileData->m_Status == EFileStatus::None || fileData->m_Status == EFileStatus::UnownedUnknown);
+                assert(fileData->m_Status == EFileStatus::None || fileData->m_Status == EFileStatus::VirtualUnknown);
                 assert(fileData->m_Data == nullptr);
                 assert(fileData->m_Size == 0);
 
                 if (reliableMessage.m_Type == EReliableMessageType::File)
                 {
-                    assert(reliableMessage.m_Size <= reader.m_Size);
-                    auto data = YYAlloc(reliableMessage.m_Size);
-                    assert(data != nullptr);
-                    reader.Write(data, reliableMessage.m_Size);
-                    assert(reader.m_Offset == reader.m_Size);
-                    fileData->m_Data = data;
-                    fileData->m_Size = reliableMessage.m_Size;
-                    fileData->m_Status = EFileStatus::UnownedExists;
+                    int bufferIndex = CreateBuffer(reliableMessage.m_File.m_Size, eBuffer_Format_Fixed, 1);
+                    assert(bufferIndex >= 0);
+
+                    BufferWriteContent(bufferIndex, 0, reliableMessage.m_File.m_Data, reliableMessage.m_File.m_Size);
+
+                    RValue tmpBuffer = {};
+                    RValue arg[3];
+                    init_buffer(arg[0], bufferIndex);
+                    init_bool(arg[1], false);
+                    YYCreateString(&arg[2], fileData->m_Filename);
+                    Script_Perform(g_gml_Script_fileCompressionCallback, instance, instance, 3, &tmpBuffer, arg);
+                    assert(KIND_RValue(&tmpBuffer) == VALUE_REF && GET_REF_TYPE(tmpBuffer.v64) == REFID_BUFFER);
+
+                    void* finalData = nullptr;
+                    int finalSize = 0;
+                    bool success = BufferGetContent(tmpBuffer.v32, &finalData, &finalSize);
+                    assert(success);
+                    assert(finalData != nullptr);
+                    assert(finalSize >= 0);
+
+                    RValue tmpResult = {};
+                    Script_Perform(g_gml_buffer_delete, instance, instance, 1, &tmpResult, &tmpBuffer);
+
+                    fileData->m_Data = finalData;
+                    fileData->m_Size = finalSize;
+                    fileData->m_Status = EFileStatus::VirtualExists;
                 }
                 else
                 {
-                    fileData->m_Status = EFileStatus::UnownedDoesNotExist;
+                    fileData->m_Status = EFileStatus::VirtualDoesNotExist;
                 }
             }
             else if (reliableMessage.m_Type == EReliableMessageType::ChecksumBuffer)
             {
                 auto& clientData = m_ClientData[clientIndex];
-                auto& checksumBuffer = clientData.m_ChecksumData[reliableMessage.m_Frame & (countof(clientData.m_ChecksumData) - 1)];
+                auto& checksumBuffer = clientData.m_ChecksumData[messageChecksumBuffer.m_Frame & (countof(clientData.m_ChecksumData) - 1)];
 
-                reset(checksumBuffer);
-                checksumBuffer.m_BufferOffset = m_ChecksumRingBufferHead;
-                checksumBuffer.Serialize(reader);
+                checksumBuffer = messageChecksumBuffer;
                 m_ChecksumRingBufferHead += checksumBuffer.m_SessionBufferSize + checksumBuffer.m_GMLBufferSize;
-                assert(checksumBuffer.m_Frame == reliableMessage.m_Frame);
 
                 CheckChecksum(checksumBuffer, clientIndex, instance);
             }
 
-            netMessage->Release();
+            ReplayWriteReliableMessage(data, size, clientIndex);
+        }
+
+        void ReplayWriteChunkHeader(bool isReliable, int clientIndex, int otherIndex)
+        {
+            uint8 frameDelta = narrow_cast<uint8>(m_Frame - m_ReplayLastFrameWritten);
+            uint8 code = static_cast<uint8>((isReliable & 1) | (clientIndex << 1) | (otherIndex << 4));
+            m_ReplayLastFrameWritten = m_Frame;
+            
+            m_ReplayWriter.Write(frameDelta);
+            m_ReplayWriter.Write(code);
+        }
+
+        void ReplayWriteReliableMessage(const void* data, int size, int clientIndex)
+        {
+            if (m_ReplayWriter.m_Buffer != nullptr)
+            {
+                ReplayWriteChunkHeader(true, clientIndex, 0);
+                m_ReplayWriter.Write(size);
+                m_ReplayWriter.Write(data, size);
+            }
+        }
+
+        void PlayReplay(const void* buffer, int size, int clientIndex, CInstance* instance)
+        {
+            Reset(instance);
+            reset(m_ReplayReader, static_cast<const uint8*>(buffer), size);
+
+            ReplayHeader header;
+            header.Serialize(m_ReplayReader);
+
+            if (header.m_Magic == c_ReplayMagic)
+            {
+                if (header.m_Version == c_ReplayVersion)
+                {
+                    int clientCount = header.m_ClientCount;
+                    if (clientIndex == -1)
+                    {
+                        clientIndex = header.m_ClientIndex;
+                    }
+
+                    assert(clientIndex >= 0 && clientIndex < countof(m_ClientData));
+                    assert(clientCount >= 0 && clientCount < countof(m_ClientData));
+
+                    m_ClientIndex = clientIndex;
+                    m_ClientCount = clientCount;
+                    m_OnlineState = EOnlineState::GoingOnline;
+
+                    ReplayReadFrame(instance, true);
+                }
+                else
+                {
+                    sprintf_s(g_TempBuffer, "Wrong version for replay: %d.%d.%d.%d, current PFO version: %d.%d.%d.%d", NUMBER_TO_VERSION(header.m_Version), NUMBER_TO_VERSION(c_ReplayVersion));
+                    ShowMessage(g_TempBuffer);
+                }
+            }
+            else
+            {
+                ShowMessage("Invalid replay file");
+            }
+        }
+
+        void ReplayReadFrame(CInstance* instance, bool firstTime)
+        {
+            while (m_ReplayLastFrameRead <= m_Frame)
+            {
+                if (!firstTime)
+                {
+                    uint8 code;
+                    m_ReplayReader.Write(code);
+
+                    bool isReliable = code & 1;
+                    int clientIndex = (code >> 1) & 7;
+                    int otherIndex = code >> 4;
+
+                    if (!isReliable)
+                    {
+                        auto& clientData = m_ClientData[clientIndex];
+                        auto& playerData = clientData.m_PlayerData;
+
+                        auto& input = playerData.m_InputBuffer[m_Frame & (countof(playerData.m_InputBuffer) - 1)];
+                        input = 0;
+                        assert(otherIndex <= ssizeof(input));
+                        m_ReplayReader.Write(&input, otherIndex);
+                    }
+                    else if (otherIndex != 0)
+                    {
+                        // replays can insert checksum messages periodically to ensure the replay is working correctly
+                        uint32 checksum;
+                        m_ReplayReader.Write(checksum);
+                        auto& clientData = m_ClientData[m_ClientIndex];
+                        auto& checksumBuffer = clientData.m_ChecksumData[m_Frame & (countof(clientData.m_ChecksumData) - 1)];
+                        assert(checksumBuffer.m_Frame == m_Frame);
+
+                        if (m_LastSentChecksumFrame == 0 && checksumBuffer.m_Checksum != checksum)
+                        {
+                            breakpoint();
+
+                            // when debugging, we can "send" a checksum message to include the full checksum buffer for this frame in the rerecorded replay
+                            auto netMessage = g_SteamNetworkingUtils->AllocateMessage(k_cbMaxSteamNetworkingSocketsMessageSizeSend);
+                            Writer writer(static_cast<uint8*>(netMessage->m_pData), k_cbMaxSteamNetworkingSocketsMessageSizeSend);
+                            ReliableMessage reliableMessage;
+                            reliableMessage.m_Type = EReliableMessageType::ChecksumBuffer;
+                            reliableMessage.m_ChecksumBuffer = &checksumBuffer;
+                            reliableMessage.Serialize(writer);
+                            ReplayWriteReliableMessage(writer.m_Buffer, writer.m_Offset, m_ClientIndex);
+                            netMessage->Release();
+
+                            // can skip execution to here if we don't wanna record a desync
+                            m_LastSentChecksumFrame = m_Frame;
+                        }
+                    }
+                    else
+                    {
+                        int size;
+                        m_ReplayReader.Write(size);
+
+                        assert(static_cast<size_t>(size) <= static_cast<size_t>(m_ReplayReader.m_Size - m_ReplayReader.m_Offset));
+                        ReceiveReliableMessage(m_ReplayReader.m_Buffer + m_ReplayReader.m_Offset, size, clientIndex, instance);
+                        m_ReplayReader.m_Offset += size;
+                    }
+                }
+
+                if (m_ReplayReader.m_Offset < m_ReplayReader.m_Size)
+                {
+                    uint8 frameDelta;
+                    m_ReplayReader.Write(frameDelta);
+                    m_ReplayLastFrameRead += frameDelta;
+                }
+                else
+                {
+                    break;
+                }
+
+                firstTime = false;
+            }
+        }
+
+        NOINLINE_ATTR void SaveReplay(const char* replay)
+        {
+            if (m_ReplayWriter.m_Buffer != nullptr)
+            {
+                char replayName[MAX_PATH + 1];
+                char replayBackup[MAX_PATH + 1];
+                sprintf_s(replayName, "%s%s.pforeplay", replay, g_FileNamePostfix);
+                sprintf_s(replayBackup, "%s%s.prev.pforeplay", replay, g_FileNamePostfix);
+
+                MoveFileExA(replayName, replayBackup, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH);
+
+                HANDLE replayFile = CreateFileA(replayName, FILE_GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+                if (replayFile != INVALID_HANDLE_VALUE)
+                {
+                    DWORD bytesToWrite = narrow_cast<DWORD>(m_ReplayWriter.m_Offset);
+                    DWORD bytesWritten;
+                    if (WriteFile(replayFile, m_ReplayWriter.m_Buffer, bytesToWrite, &bytesWritten, nullptr))
+                    {
+                        if (bytesToWrite != bytesWritten)
+                        {
+                            LogDebug("Failed to write entire replay file %s\n");
+                        }
+                    }
+                    else
+                    {
+                        LogDebug("Failed to write replay file %s\n");
+                    }
+                }
+                else
+                {
+                    LogDebug("Failed to create replay file %s\n", replayName);
+                }
+            }
+        }
+
+        void BufferSendReliableMessage(CInstance* instance, const char* filename, int bufferIndex)
+        {
+            ReliableMessage reliableMessage;
+            bool exists = bufferIndex != -1;
+            reliableMessage.m_Type = exists ? EReliableMessageType::File : EReliableMessageType::FileDoesNotExist;
+            strcpy_s(reliableMessage.m_File.m_Filename, filename);
+
+            void* data = nullptr;
+            int size = 0;
+
+            if (exists)
+            {
+                RValue tmpBuffer = {};
+                RValue tmpArg[3];
+                init_buffer(tmpArg[0], bufferIndex);
+                init_bool(tmpArg[1], true);
+                YYCreateString(&tmpArg[2], filename);
+                Script_Perform(g_gml_Script_fileCompressionCallback, instance, instance, 3, &tmpBuffer, tmpArg);
+                assert(KIND_RValue(&tmpBuffer) == VALUE_REF && GET_REF_TYPE(tmpBuffer.v64) == REFID_BUFFER);
+
+                bool success = BufferGetContent(tmpBuffer.v32, &data, &size);
+                assert(success);
+                assert(data != nullptr);
+                assert(size >= 0);
+
+                RValue tmpResult = {};
+                Script_Perform(g_gml_buffer_delete, instance, instance, 1, &tmpResult, &tmpBuffer);
+            }
+
+            reliableMessage.m_File.m_Data = data;
+            reliableMessage.m_File.m_Size = size;
+
+            SendReliableMessage(reliableMessage, instance);
+
+            if (data != nullptr)
+            {
+                YYFree(data);
+            }
+        }
+
+        void BufferSend(RValue& result, CInstance* instance, const char* filename, int bufferIndex)
+        {
+            if (m_ReplayReader.m_Buffer == nullptr)
+            {
+                auto fileData = FindFileData(filename, m_ClientIndex);
+                assert(fileData->m_Status == EFileStatus::None);
+                assert(fileData->m_Data == nullptr);
+
+                void* data = nullptr;
+                int dataSize = 0;
+                bool success = BufferGetContent(bufferIndex, &data, &dataSize);
+                assert(success);
+                assert(data != nullptr);
+                assert(dataSize >= 0);
+
+                fileData->m_Status = EFileStatus::VirtualExists;
+                fileData->m_Size = dataSize;
+                fileData->m_Data = data;
+
+                BufferSendReliableMessage(instance, filename, bufferIndex);
+            }
+
+            init_bool(result, true);
         }
 
         void FileExists(RValue& result, CInstance* instance, RValue* arg, int clientIndex)
@@ -2641,52 +3067,30 @@ namespace
 
             if (m_OnlineState >= EOnlineState::Online)
             {
-                if (clientIndex == m_ClientIndex)
+                if (clientIndex == m_ClientIndex && m_ReplayReader.m_Buffer == nullptr
+                    && fileData->m_Status == EFileStatus::None || fileData->m_Status == EFileStatus::Physical)
                 {
                     Script_Perform(g_gml_file_exists, instance, instance, 1, &result, arg);
                     bool exists = BOOL_RValue(&result);
 
                     if (fileData->m_Status == EFileStatus::None)
                     {
-                        fileData->m_Status = EFileStatus::Owned;
+                        fileData->m_Status = EFileStatus::Physical;
 
                         if (m_OnlineState == EOnlineState::Online)
                         {
-                            ReliableMessage reliableMessage;
-                            reliableMessage.m_Type = exists ? EReliableMessageType::File : EReliableMessageType::FileDoesNotExist;
-                            strcpy_s(reliableMessage.m_Filename, filename);
-
-                            void* data = nullptr;
-                            int dataSize = 0;
+                            int fileBufferIndex = -1;
 
                             if (exists)
                             {
-                                RValue tmpBuffer = {};
-                                Script_Perform(g_gml_buffer_load, instance, instance, 1, &tmpBuffer, arg);
-                                assert(KIND_RValue(&tmpBuffer) == VALUE_REF && GET_REF_TYPE(tmpBuffer.v64) == REFID_BUFFER);
-
-                                bool success = BufferGetContent(tmpBuffer.v32, &data, &dataSize);
-                                assert(success);
-                                assert(data != nullptr);
-                                assert(dataSize >= 0);
-
-                                RValue tmpResult = {};
-                                Script_Perform(g_gml_buffer_delete, instance, instance, 1, &tmpResult, &tmpBuffer);
+                                RValue fileBuffer = {};
+                                Script_Perform(g_gml_buffer_load, instance, instance, 1, &fileBuffer, arg);
+                                assert(KIND_RValue(&fileBuffer) == VALUE_REF && GET_REF_TYPE(fileBuffer.v64) == REFID_BUFFER);
+                                fileBufferIndex = fileBuffer.v32;
                             }
 
-                            reliableMessage.m_Size = dataSize;
-
-                            SendReliableMessage(reliableMessage, instance, data, dataSize);
-
-                            if (data != nullptr)
-                            {
-                                YYFree(data);
-                            }
+                            BufferSendReliableMessage(instance, filename, fileBufferIndex);
                         }
-                    }
-                    else
-                    {
-                        assert(fileData->m_Status == EFileStatus::Owned);
                     }
                 }
                 else
@@ -2695,17 +3099,17 @@ namespace
                     {
                     case EFileStatus::None:
                     {
-                        fileData->m_Status = EFileStatus::UnownedUnknown;
+                        fileData->m_Status = EFileStatus::VirtualUnknown;
                     } [[fallthrough]];
-                    case EFileStatus::UnownedUnknown:
+                    case EFileStatus::VirtualUnknown:
                     {
                         init_int64(result, -1);
                     } break;
-                    case EFileStatus::UnownedDoesNotExist:
+                    case EFileStatus::VirtualDoesNotExist:
                     {
                         init_int64(result, 0);
                     } break;
-                    case EFileStatus::UnownedExists:
+                    case EFileStatus::VirtualExists:
                     {
                         init_int64(result, 1);
                     } break;
@@ -2740,15 +3144,15 @@ namespace
             switch (fileData->m_Status)
             {
             case EFileStatus::None:
-            case EFileStatus::Owned:
+            case EFileStatus::Physical:
             {
                 Script_Perform(g_gml_buffer_load, instance, instance, 1, &result, arg);
             } break;
-            case EFileStatus::UnownedDoesNotExist:
+            case EFileStatus::VirtualDoesNotExist:
             {
                 init_real(result, -1);
             } break;
-            case EFileStatus::UnownedExists:
+            case EFileStatus::VirtualExists:
             {
                 assert(fileData->m_Data != nullptr);
                 int bufferIndex = CreateBuffer(fileData->m_Size, eBuffer_Format_Fixed, 1);
@@ -2769,14 +3173,14 @@ namespace
             switch (fileData->m_Status)
             {
             case EFileStatus::None:
-            case EFileStatus::Owned:
+            case EFileStatus::Physical:
             {
                 Script_Perform(g_gml_buffer_save, instance, instance, 2, &result, arg);
             } break;
-            case EFileStatus::UnownedDoesNotExist:
-            case EFileStatus::UnownedExists:
+            case EFileStatus::VirtualDoesNotExist:
+            case EFileStatus::VirtualExists:
             {
-                fileData->m_Status = EFileStatus::UnownedDoesNotExist;
+                fileData->m_Status = EFileStatus::VirtualDoesNotExist;
                 fileData->m_Size = 0;
 
                 if (fileData->m_Data != nullptr)
@@ -2792,11 +3196,11 @@ namespace
                 assert(data != nullptr);
                 assert(dataSize >= 0);
 
-                fileData->m_Status = EFileStatus::UnownedExists;
+                fileData->m_Status = EFileStatus::VirtualExists;
                 fileData->m_Size = dataSize;
                 fileData->m_Data = data;
             } break;
-            case EFileStatus::UnownedUnknown:
+            case EFileStatus::VirtualUnknown:
             {
                 // it's ok to attempt to write to an unknown file during shutdown, just do nothing
                 assert(m_OnlineState != EOnlineState::Online);
@@ -2814,17 +3218,17 @@ namespace
             switch (fileData->m_Status)
             {
             case EFileStatus::None:
-            case EFileStatus::Owned:
+            case EFileStatus::Physical:
             {
                 Script_Perform(g_gml_file_delete, instance, instance, 1, &result, arg);
             } break;
-            case EFileStatus::UnownedDoesNotExist:
+            case EFileStatus::VirtualDoesNotExist:
             {
                 init_real(result, 0);
             } break;
-            case EFileStatus::UnownedExists:
+            case EFileStatus::VirtualExists:
             {
-                fileData->m_Status = EFileStatus::UnownedDoesNotExist;
+                fileData->m_Status = EFileStatus::VirtualDoesNotExist;
                 fileData->m_Size = 0;
 
                 assert(fileData->m_Data != nullptr);
@@ -2850,17 +3254,17 @@ namespace
             switch (fileData->m_Status)
             {
             case EFileStatus::None:
-            case EFileStatus::Owned:
+            case EFileStatus::Physical:
             {
                 assert(newData->m_Status == fileData->m_Status);
                 Script_Perform(g_gml_file_copy, instance, instance, 2, &result, arg);
             } break;
-            case EFileStatus::UnownedDoesNotExist:
+            case EFileStatus::VirtualDoesNotExist:
             {
             } break;
-            case EFileStatus::UnownedExists:
+            case EFileStatus::VirtualExists:
             {
-                assert(newData->m_Status == EFileStatus::UnownedDoesNotExist);
+                assert(newData->m_Status == EFileStatus::VirtualDoesNotExist);
                 assert(newData->m_Data == nullptr);
                 assert(fileData->m_Data != nullptr);
 
@@ -2868,7 +3272,7 @@ namespace
                 auto data = YYAlloc(dataSize);
                 assert(data != nullptr);
                 memcpy(data, fileData->m_Data, static_cast<size_t>(dataSize));
-                newData->m_Status = EFileStatus::UnownedExists;
+                newData->m_Status = EFileStatus::VirtualExists;
                 newData->m_Size = dataSize;
                 newData->m_Data = data;
             } break;
@@ -2888,13 +3292,13 @@ namespace
             {
                 init_bool(result, 0);
             } break;
-            case EFileStatus::Owned:
+            case EFileStatus::Physical:
             {
                 init_real(result, 0);
             } break;
-            case EFileStatus::UnownedUnknown:
-            case EFileStatus::UnownedDoesNotExist:
-            case EFileStatus::UnownedExists:
+            case EFileStatus::VirtualUnknown:
+            case EFileStatus::VirtualDoesNotExist:
+            case EFileStatus::VirtualExists:
             {
                 init_int64(result, 0);
             } break;
@@ -2905,32 +3309,6 @@ namespace
     };
 
     Session g_Session;
-
-    void* CreateRingBuffer(size_t bufferSize)
-    {
-        SYSTEM_INFO sysInfo;
-        GetSystemInfo(&sysInfo);
-        assert((bufferSize % sysInfo.dwAllocationGranularity) == 0);
-
-        void* placeholder1 = VirtualAlloc2(nullptr, nullptr, bufferSize * 2, MEM_RESERVE | MEM_RESERVE_PLACEHOLDER, PAGE_NOACCESS, nullptr, 0);
-        assert(placeholder1 != nullptr);
-
-        BOOL result = VirtualFree(placeholder1, bufferSize, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER);
-        assert(result);
-        void* placeholder2 = static_cast<void*>(static_cast<uint8_t*>(placeholder1) + bufferSize);
-
-        ULARGE_INTEGER size = { .QuadPart = bufferSize };
-        HANDLE section = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, size.HighPart, size.LowPart, nullptr);
-        assert(section != nullptr);
-
-        void* view1 = MapViewOfFile3(section, nullptr, placeholder1, 0, bufferSize, MEM_REPLACE_PLACEHOLDER, PAGE_READWRITE, nullptr, 0);
-        assert(view1 != nullptr);
-
-        void* view2 = MapViewOfFile3(section, nullptr, placeholder2, 0, bufferSize, MEM_REPLACE_PLACEHOLDER, PAGE_READWRITE, nullptr, 0);
-        assert(view2 != nullptr);
-
-        return view1;
-    }
 }
 
 YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions, size_t _functions_size)
@@ -2961,9 +3339,27 @@ YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions,
                 auto len = narrow_cast<rsize_t>(cmd - start);
                 auto size = narrow_cast<int>(len + countof(prefix));
                 auto fileName = static_cast<char*>(YYAlloc(size));
-                strcpy_s(fileName, len, prefix);
-                strncpy_s(fileName + countof(prefix) - 1, static_cast<rsize_t>(size), start, len);
+                strcpy_s(fileName, static_cast<rsize_t>(size), prefix);
+                strncpy_s(fileName + countof(prefix) - 1, len + 1, start, len);
                 g_LogFileName = fileName;
+                g_AlwaysSaveReplays = true;
+
+                fileName += countof(prefix) - 1;
+                auto extension = strrchr(fileName, '.');
+                if (extension != nullptr)
+                {
+                    len = narrow_cast<rsize_t>(extension - fileName);
+                }
+                else
+                {
+                    len = strlen(fileName);
+                }
+                size = narrow_cast<int>(len + 2);
+                auto postfix = static_cast<char*>(YYAlloc(size));
+                postfix[0] = '-';
+                strncpy_s(postfix + 1, len + 1, fileName, len);
+                g_FileNamePostfix = postfix;
+
                 break;
             }
             while (*cmd != ' ' && *cmd != '\0') cmd++;
@@ -3027,9 +3423,11 @@ YYEXPORT void YYExtensionInitialise(const struct YYRunnerInterface* _pFunctions,
         ExitProcess(0);
     }
 
-    g_ChecksumRingBuffer = static_cast<uint8_t*>(CreateRingBuffer(c_ChecksumRingBufferSize));
+    g_ChecksumRingBuffer = static_cast<uint8_t*>(AllocateRingBuffer(c_ChecksumRingBufferSize));
     g_GMLChecksumBuffer1 = CreateBuffer(g_GMLChecksumBufferMaxSize, eBuffer_Format_Grow, 1);
     g_GMLChecksumBuffer2 = CreateBuffer(g_GMLChecksumBufferMaxSize, eBuffer_Format_Grow, 1);
+
+    g_ReplayBuffer = static_cast<uint8_t*>(AllocateLargeBuffer(c_ReplayBufferSize));
 
     g_SteamNetworkingUtils->InitRelayNetworkAccess();
     g_SteamNetworkingSockets->InitAuthentication();
@@ -3231,8 +3629,19 @@ YYEXPORT void pfo_init(RValue& result, CInstance* selfinst, CInstance* otherinst
     g_gml_Script_onlineStateChangedCallback = get_script_callback("onlineStateChangedCallback");
     g_gml_Script_getInputCallback = get_script_callback("getInputCallback");
     g_gml_Script_getChecksumCallback = get_script_callback("getChecksumCallback");
+    g_gml_Script_fileCompressionCallback = get_script_callback("fileCompressionCallback");
 
-    init_bool(result, 1);
+    {
+        RValue inputResult = {};
+        RValue inputArg[2];
+        init_real(inputArg[0], 0);
+        init_int64(inputArg[1], static_cast<InputFlags_t>(~0ll));
+        Script_Perform(g_gml_Script_getInputCallback, selfinst, otherinst, 2, &inputResult, inputArg);
+        assert(KIND_RValue(&inputResult) == VALUE_INT64);
+        g_InputDiffMask = bitwise_cast<InputFlags_t>(inputResult.v64);
+    }
+
+    init_bool(result, true);
 }
 
 YYEXPORT void pfo_set_clients(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -3362,6 +3771,17 @@ YYEXPORT void pfo_buffer_save(RValue& result, CInstance* selfinst, CInstance* ot
     g_Session.BufferSave(result, selfinst, arg);
 }
 
+YYEXPORT void pfo_buffer_send(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc == 2);
+    assert(KIND_RValue(&arg[1]) == VALUE_REF && GET_REF_TYPE(arg[1].v64) == REFID_BUFFER);
+
+    auto filename = YYGetString(arg, 0);
+    int bufferIndex = arg[1].v32;
+
+    g_Session.BufferSend(result, selfinst, filename, bufferIndex);
+}
+
 YYEXPORT void pfo_file_delete(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 1);
@@ -3489,15 +3909,23 @@ YYEXPORT void pfo_game_get_speed(RValue& result, CInstance* selfinst, CInstance*
 {
     assert(argc == 1);
 
-    double type = YYGetReal(arg, 0);
+    int type = YYGetInt32(arg, 0);
 
-    if (type == 0.0)
+    switch (type)
     {
+    default:
+    case 0:
         init_real(result, g_BaseGameSpeedFPS);
-    }
-    else
-    {
+        break;
+    case 1:
         init_real(result, 1'000'000.0 / g_BaseGameSpeedFPS);
+        break;
+    case 2:
+        init_real(result, c_CatchupThresholdSpeeds[g_Session.m_CatchupState]);
+        break;
+    case 3:
+        init_real(result, g_Session.m_SpeedMultiplier);
+        break;
     }
 }
 
@@ -3506,16 +3934,26 @@ YYEXPORT void pfo_game_set_speed(RValue& result, CInstance* selfinst, CInstance*
     assert(argc == 2);
 
     double speed = YYGetReal(arg, 0);
-    double type = YYGetReal(arg, 1);
+    int type = YYGetInt32(arg, 1);
 
-    bool changedSpeed = false;
-
-    if (type != 0.0)
+    switch (type)
     {
-        speed = 1'000'000.0 / speed;
+    default:
+    case 0:
+        g_BaseGameSpeedFPS = speed;
+        break;
+    case 1:
+        g_BaseGameSpeedFPS = 1'000'000.0 / speed;
+        break;
+    case 2:
+        assert(false, "Can't set catchup speed, it's automatically applied");
+        break;
+    case 3:
+        g_Session.m_SpeedMultiplier = speed;
+        break;
     }
 
-    g_Session.SetSpeed(speed, selfinst);
+    g_Session.UpdateGameSpeed(selfinst);
 }
 
 YYEXPORT void pfo_client_is_connected(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
@@ -3536,9 +3974,50 @@ YYEXPORT void pfo_show_debug_message(RValue& result, CInstance* selfinst, CInsta
     log("%s\n", message);
 }
 
-YYEXPORT void pfo_get_catchup_speed(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+YYEXPORT void pfo_play_replay(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
+{
+    assert(argc > 0 && argc <= 2);
+
+    auto replay = YYGetString(arg, 0);
+    int clientIndex = argc > 1 ? YYGetInt32(arg, 1) : -1;
+    assert(clientIndex >= -1 && clientIndex < countof(g_Session.m_ClientData));
+
+    if (g_ReplayBuffer != nullptr)
+    {
+        HANDLE replayFile = CreateFileA(replay, FILE_GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (replayFile != INVALID_HANDLE_VALUE)
+        {
+            DWORD bytesRead;
+            if (ReadFile(replayFile, g_ReplayBuffer, c_ReplayBufferSize, &bytesRead, nullptr))
+            {
+                if (bytesRead < c_ReplayBufferSize)
+                {
+                    g_Session.PlayReplay(g_ReplayBuffer, narrow_cast<int>(bytesRead), clientIndex, selfinst);
+                }
+                else
+                {
+                    LogError("Failed to read replay file: %s, file too large", replay);
+                }
+            }
+            else
+            {
+                LogError("Failed to read replay file: %s", replay);
+            }
+        }
+        else
+        {
+            LogError("Couldn't open replay file: %s", replay);
+        }
+    }
+    else
+    {
+        LogError("Failed to allocate buffer to read replay file");
+    }
+}
+
+YYEXPORT void pfo_is_playing_replay(RValue& result, CInstance* selfinst, CInstance* otherinst, int argc, RValue* arg)
 {
     assert(argc == 0);
 
-    init_real(result, c_CatchupThresholdSpeeds[g_Session.m_CatchupState]);
+    init_bool(result, g_Session.m_ReplayReader.m_Buffer != nullptr);
 }

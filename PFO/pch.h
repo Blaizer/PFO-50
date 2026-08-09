@@ -9,6 +9,7 @@
 
 // add headers that you want to pre-compile here
 #include <stddef.h>
+#include <intrin.h>
 #include <new>
 #include <type_traits>
 #include "framework.h"
